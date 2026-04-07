@@ -8,16 +8,15 @@ import { userSessionPath, newUserRegistrationPath } from "@/routes"
 
 export default function SessionNew() {
   const { data, setData, post, processing } = useForm({
-    email: "",
-    password: "",
+    user: {
+      email: "",
+      password: "",
+    },
   })
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    post(userSessionPath(), {
-      data: { user: data },
-      forceFormData: false,
-    })
+    post(userSessionPath())
   }
 
   return (
@@ -97,8 +96,8 @@ export default function SessionNew() {
                   id="email"
                   type="email"
                   placeholder="you@company.com"
-                  value={data.email}
-                  onChange={(e) => setData("email", e.target.value)}
+                  value={data.user.email}
+                  onChange={(e) => setData("user", { ...data.user, email: e.target.value })}
                   required
                   autoFocus
                 />
@@ -109,8 +108,8 @@ export default function SessionNew() {
                   id="password"
                   type="password"
                   placeholder="••••••••"
-                  value={data.password}
-                  onChange={(e) => setData("password", e.target.value)}
+                  value={data.user.password}
+                  onChange={(e) => setData("user", { ...data.user, password: e.target.value })}
                   required
                 />
               </div>

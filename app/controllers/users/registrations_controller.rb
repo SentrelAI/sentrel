@@ -26,7 +26,6 @@ class Users::RegistrationsController < Devise::RegistrationsController
   private
 
   def sign_up_params
-    key = params.key?(:user) ? :user : :registration
-    params.require(key).permit(:name, :email, :password, :password_confirmation, :organization_name)
+    params.require(:user).permit(:name, :email, :password, :password_confirmation, :organization_name)
   end
 end

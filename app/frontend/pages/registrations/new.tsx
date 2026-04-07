@@ -8,19 +8,18 @@ import { userRegistrationPath, newUserSessionPath } from "@/routes"
 
 export default function RegistrationNew() {
   const { data, setData, post, processing } = useForm({
-    name: "",
-    email: "",
-    password: "",
-    password_confirmation: "",
-    organization_name: "",
+    user: {
+      name: "",
+      email: "",
+      password: "",
+      password_confirmation: "",
+      organization_name: "",
+    },
   })
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    post(userRegistrationPath(), {
-      data: { user: data },
-      forceFormData: false,
-    })
+    post(userRegistrationPath())
   }
 
   return (
@@ -99,8 +98,8 @@ export default function RegistrationNew() {
                 <Input
                   id="organization_name"
                   placeholder="ScribeMD"
-                  value={data.organization_name}
-                  onChange={(e) => setData("organization_name", e.target.value)}
+                  value={data.user.organization_name}
+                  onChange={(e) => setData("user", { ...data.user, organization_name: e.target.value })}
                   required
                   autoFocus
                 />
@@ -111,8 +110,8 @@ export default function RegistrationNew() {
                 <Input
                   id="name"
                   placeholder="Abdel"
-                  value={data.name}
-                  onChange={(e) => setData("name", e.target.value)}
+                  value={data.user.name}
+                  onChange={(e) => setData("user", { ...data.user, name: e.target.value })}
                   required
                 />
               </div>
@@ -123,8 +122,8 @@ export default function RegistrationNew() {
                   id="email"
                   type="email"
                   placeholder="you@company.com"
-                  value={data.email}
-                  onChange={(e) => setData("email", e.target.value)}
+                  value={data.user.email}
+                  onChange={(e) => setData("user", { ...data.user, email: e.target.value })}
                   required
                 />
               </div>
@@ -136,8 +135,8 @@ export default function RegistrationNew() {
                     id="password"
                     type="password"
                     placeholder="••••••••"
-                    value={data.password}
-                    onChange={(e) => setData("password", e.target.value)}
+                    value={data.user.password}
+                    onChange={(e) => setData("user", { ...data.user, password: e.target.value })}
                     required
                   />
                 </div>
@@ -147,8 +146,8 @@ export default function RegistrationNew() {
                     id="password_confirmation"
                     type="password"
                     placeholder="••••••••"
-                    value={data.password_confirmation}
-                    onChange={(e) => setData("password_confirmation", e.target.value)}
+                    value={data.user.password_confirmation}
+                    onChange={(e) => setData("user", { ...data.user, password_confirmation: e.target.value })}
                     required
                   />
                 </div>
