@@ -14,6 +14,31 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   let conversationId = job.conversationId;
   let history: Message[] = [];
 
+  // If no conversation ID, create one for inbound messages
+  if (!conversationId && job.type === "inbound_message" && job.payload?.from) {
+    const conversation = await db.findOrCreateConversation(
+      agent.id,
+      agent.organization_id,
+      "external",
+      job.payload.from,
+      job.payload.from,
+      job.payload.from.includes("@") ? job.payload.from : undefined,
+      !job.payload.from.includes("@") ? job.payload.from : undefined
+    );
+    conversationId = conversation.id;
+
+    // Save the inbound message
+    await db.saveMessage(
+      conversationId,
+      "user",
+      job.payload.body || "",
+      "inbound",
+      job.channel,
+      [],
+      { from: job.payload.from, subject: job.payload.subject }
+    );
+  }
+
   if (conversationId) {
     history = await db.getConversationHistory(conversationId, 20);
   }
@@ -39,6 +64,10 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       "Write",
       "Grep",
       "Glob",
+      "Bash",
+      "WebSearch",
+      "WebFetch",
+      "Browser",
     ],
     permissionMode: "dontAsk",
   };
@@ -96,7 +125,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // Sync memory back to DB (agent may have updated MEMORY.md)
     await syncMemoryToDb(agent.id);
 
-    logger.info(`Agent run completed: ${responseContent.slice(0, 100)}...`);
+    logger.info(`Agent run completed (${responseContent.length} chars)`);
   } catch (err) {
     logger.error(`Agent run failed`, { error: (err as Error).message });
     await db.saveAuditLog(

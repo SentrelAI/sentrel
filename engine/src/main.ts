@@ -7,6 +7,7 @@ import { provisionSkills } from "./skills.js";
 import { startHeartbeat } from "./heartbeat.js";
 import { startScheduler } from "./scheduler.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
+import { startInboxPoller } from "./inbox.js";
 import { logger } from "./logger.js";
 import type { JobData } from "./types.js";
 
@@ -39,7 +40,7 @@ async function main() {
     await runAgent(currentAgent, job.data);
     incrementJobCount();
   });
-  logger.info(`Worker listening on queue: employee:${config.employeeId}`);
+  logger.info(`Worker listening on queue: employee-${config.employeeId}`);
 
   // 6. Start heartbeat
   await startHeartbeat(agent);
@@ -49,6 +50,9 @@ async function main() {
 
   // 8. Start health reporter
   startHealthReporter();
+
+  // 9. Start inbox poller (reads from simple Redis list, feeds into BullMQ)
+  startInboxPoller();
 
   logger.info("═══════════════════════════════════════");
   logger.info("  ALCHEMY ENGINE ready. Waiting for jobs...");

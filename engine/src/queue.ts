@@ -8,13 +8,13 @@ export const redis = new IORedis(config.redisUrl, {
   maxRetriesPerRequest: null,
 });
 
-export const queue = new Queue(`employee:${config.employeeId}`, {
+export const queue = new Queue(`employee-${config.employeeId}`, {
   connection: { url: config.redisUrl },
 });
 
 export function createWorker(handler: (job: Job<JobData>) => Promise<void>): Worker<JobData> {
   const worker = new Worker<JobData>(
-    `employee:${config.employeeId}`,
+    `employee-${config.employeeId}`,
     async (job) => {
       logger.info(`Processing job: ${job.name}`, { jobId: job.id, type: job.data.type });
       await handler(job);
