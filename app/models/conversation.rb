@@ -1,4 +1,5 @@
 class Conversation < ApplicationRecord
+  acts_as_tenant :organization
   belongs_to :organization
   belongs_to :agent
   belongs_to :user, optional: true

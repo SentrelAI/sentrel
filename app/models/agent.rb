@@ -1,4 +1,5 @@
 class Agent < ApplicationRecord
+  acts_as_tenant :organization
   belongs_to :organization
   belongs_to :manager, class_name: "Agent", optional: true
 
