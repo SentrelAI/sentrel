@@ -4,6 +4,11 @@ class Users::SessionsController < Devise::SessionsController
   end
 
   def create
+    # Inertia sends params under :session, Devise expects :user
+    if params[:session] && !params[:user]
+      params[:user] = params[:session]
+    end
+
     self.resource = warden.authenticate!(auth_options)
     set_flash_message!(:notice, :signed_in)
     sign_in(resource_name, resource)
