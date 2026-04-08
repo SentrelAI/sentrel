@@ -72,9 +72,6 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
         signal: abortSignal,
       })
 
-      // Yield empty to trigger in-progress state (shows loading dots)
-      yield { content: [{ type: "text" as const, text: "" }] }
-
       // Wait for final response from WebSocket
       try {
         const finalText = await responsePromise

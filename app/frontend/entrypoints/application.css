@@ -303,19 +303,4 @@
   --thread-max-width: 56rem !important;
 }
 
-/* Thinking dots — targets empty assistant message (in-progress state) */
-[data-message-role="assistant"] .aui-assistant-message-content:empty::after,
-.aui-assistant-message-content:empty::after {
-  content: '●  ●  ●';
-  display: block;
-  font-size: 0.75rem;
-  letter-spacing: 0.15em;
-  color: var(--muted-foreground);
-  animation: pulse-dots 1.5s ease-in-out infinite;
-  padding: 0.5rem 0;
-}
-
-@keyframes pulse-dots {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
+/* No custom dots CSS needed — using text yield with animation class */
