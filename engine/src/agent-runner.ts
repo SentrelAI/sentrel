@@ -1,9 +1,11 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
 import * as db from "./db.js";
+import { redis } from "./queue.js";
 import { syncMemoryToDb, readMemoryMd } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
 import { createPermissionHook, createAuditHook } from "./permissions.js";
+import { emitThinking, emitTextDelta, emitToolCall, emitToolResult, emitDone, emitError } from "./gateway.js";
 import type { Agent, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
 
@@ -85,20 +87,35 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   try {
     let responseContent = "";
 
+    // Broadcast: thinking
+    emitThinking();
+
     for await (const message of query({ prompt, options: options as any })) {
-      // Collect response content
       const msg = message as any;
+
       if (msg.message?.content) {
         for (const block of msg.message.content) {
           if (block.type === "text" && block.text) {
-            responseContent += block.text;
+            responseContent = block.text;
+            emitTextDelta(block.text);
+          }
+          if (block.type === "tool_use") {
+            emitToolCall(block.name, block.input);
+          }
+          if (block.type === "tool_result") {
+            const content = typeof block.content === "string" ? block.content : "done";
+            emitToolResult(block.name || "tool", content);
           }
         }
       }
+
       if (msg.result) {
         responseContent = msg.result;
       }
     }
+
+    // Broadcast: done
+    emitDone(responseContent);
 
     // Save response to conversation
     if (conversationId && responseContent) {
@@ -127,6 +144,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     logger.info(`Agent run completed (${responseContent.length} chars)`);
   } catch (err) {
+    emitError((err as Error).message);
     logger.error(`Agent run failed`, { error: (err as Error).message });
     await db.saveAuditLog(
       agent.organization_id,
@@ -144,25 +162,31 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 function buildPrompt(agent: Agent, job: JobData, history: Message[]): string {
   const parts: string[] = [];
 
+  // Remind agent to use memory
+  parts.push("IMPORTANT: Read memory/MEMORY.md first to recall what you know about contacts and previous interactions. After this interaction, update MEMORY.md with any new important facts.\n");
+
   // Conversation history
   if (history.length > 0) {
-    parts.push("## Recent conversation:");
+    const senderName = job.payload?.from_name || job.payload?.from || "User";
+    parts.push("## Conversation history with " + senderName + ":");
     for (const msg of history) {
-      const role = msg.role === "user" ? "Them" : "You";
-      parts.push(`${role}: ${msg.content}`);
+      const role = msg.role === "user" ? senderName : agent.name;
+      parts.push(`**${role}**: ${msg.content}`);
     }
     parts.push("");
   }
 
   // Current job
   switch (job.type) {
-    case "inbound_message":
-      parts.push(`New ${job.channel || "message"} received:`);
-      if (job.payload?.from) parts.push(`From: ${job.payload.from}`);
+    case "inbound_message": {
+      const from = job.payload?.from_name || job.payload?.from || "someone";
+      const channel = job.channel || "message";
+      parts.push(`New ${channel} from ${from}:`);
       if (job.payload?.subject) parts.push(`Subject: ${job.payload.subject}`);
       parts.push(`\n${job.payload?.body || ""}`);
-      parts.push("\nRespond appropriately based on your instructions and personality.");
+      parts.push("\nRespond as yourself (not as an AI assistant). Use your personality and follow your instructions.");
       break;
+    }
 
     case "heartbeat":
       parts.push(job.payload?.instruction || "Heartbeat check — anything need attention?");

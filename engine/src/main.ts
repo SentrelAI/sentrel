@@ -8,6 +8,7 @@ import { startHeartbeat } from "./heartbeat.js";
 import { startScheduler } from "./scheduler.js";
 import { startHealthReporter, incrementJobCount } from "./health.js";
 import { startInboxPoller } from "./inbox.js";
+import { startGateway } from "./gateway.js";
 import { logger } from "./logger.js";
 import type { JobData } from "./types.js";
 
@@ -53,6 +54,9 @@ async function main() {
 
   // 9. Start inbox poller (reads from simple Redis list, feeds into BullMQ)
   startInboxPoller();
+
+  // 10. Start gateway WebSocket server
+  startGateway();
 
   logger.info("═══════════════════════════════════════");
   logger.info("  ALCHEMY ENGINE ready. Waiting for jobs...");
