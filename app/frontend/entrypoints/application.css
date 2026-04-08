@@ -303,22 +303,19 @@
   --thread-max-width: 56rem !important;
 }
 
-/* Thinking dots animation */
-.aui-assistant-message-in-progress .aui-assistant-message-content::after {
-  content: '';
-  display: inline-flex;
-  width: 2rem;
-  height: 1.25rem;
-  margin-left: 0.25rem;
-  background-image: radial-gradient(circle, currentColor 1.5px, transparent 1.5px);
-  background-size: 0.5rem 1.25rem;
-  background-position: 0 center, 0.75rem center, 1.5rem center;
-  animation: thinking-dots 1.4s infinite ease-in-out;
-  opacity: 0.5;
-  vertical-align: middle;
+/* Thinking dots — targets empty assistant message (in-progress state) */
+[data-message-role="assistant"] .aui-assistant-message-content:empty::after,
+.aui-assistant-message-content:empty::after {
+  content: '●  ●  ●';
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  color: var(--muted-foreground);
+  animation: pulse-dots 1.5s ease-in-out infinite;
+  padding: 0.5rem 0;
 }
 
-@keyframes thinking-dots {
-  0%, 80%, 100% { opacity: 0.3; }
-  40% { opacity: 1; }
+@keyframes pulse-dots {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
 }
