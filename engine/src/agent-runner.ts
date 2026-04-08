@@ -162,8 +162,12 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 function buildPrompt(agent: Agent, job: JobData, history: Message[]): string {
   const parts: string[] = [];
 
-  // Remind agent to use memory
-  parts.push("IMPORTANT: Read memory/MEMORY.md first to recall what you know about contacts and previous interactions. After this interaction, update MEMORY.md with any new important facts.\n");
+  // Inject memory directly into prompt
+  const memory = readMemoryMd();
+  if (memory && memory.trim() !== "# Memory\n\nNo memories yet.") {
+    parts.push("## Your Memory (accumulated knowledge):\n" + memory + "\n");
+  }
+  parts.push("After this interaction, update memory/MEMORY.md with any new important facts you learn.\n");
 
   // Conversation history
   if (history.length > 0) {
