@@ -1,7 +1,8 @@
 import { Head, Link } from "@inertiajs/react"
-import { ArrowLeft, Bot, MessageSquare, CheckSquare, Clock, Settings } from "lucide-react"
+import { ArrowLeft, Bot, MessageSquare, CheckSquare, Clock, Settings, Send } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
+import { AgentChat } from "@/components/agent-chat"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,12 +21,13 @@ const statusColor: Record<string, string> = {
 interface Props {
   agent: Agent
   conversations: Conversation[]
+  chat_messages: unknown[]
   tasks: Task[]
   channel_configs: ChannelConfig[]
   scheduled_tasks: ScheduledTask[]
 }
 
-export default function AgentShow({ agent, conversations, tasks, channel_configs, scheduled_tasks }: Props) {
+export default function AgentShow({ agent, conversations, chat_messages, tasks, channel_configs, scheduled_tasks }: Props) {
   return (
     <AppLayout>
       <Head title={agent.name} />
@@ -66,11 +68,15 @@ export default function AgentShow({ agent, conversations, tasks, channel_configs
         </div>
       </div>
 
-      <Tabs defaultValue="conversations">
+      <Tabs defaultValue="chat">
         <TabsList>
+          <TabsTrigger value="chat">
+            <Send className="size-4 mr-1.5" />
+            Chat
+          </TabsTrigger>
           <TabsTrigger value="conversations">
             <MessageSquare className="size-4 mr-1.5" />
-            Conversations ({conversations.length})
+            Inbox ({conversations.length})
           </TabsTrigger>
           <TabsTrigger value="tasks">
             <CheckSquare className="size-4 mr-1.5" />
@@ -85,6 +91,10 @@ export default function AgentShow({ agent, conversations, tasks, channel_configs
             Identity
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="chat" className="mt-6">
+          <AgentChat agentId={agent.id} agentName={agent.name} initialMessages={chat_messages as any} />
+        </TabsContent>
 
         <TabsContent value="conversations" className="mt-6">
           {conversations.length === 0 ? (

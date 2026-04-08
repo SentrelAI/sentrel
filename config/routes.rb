@@ -11,6 +11,16 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # Webhook gateway (external services + dashboard chat)
+  scope :webhooks do
+    post :email, to: "webhooks#email"
+    post :slack, to: "webhooks#slack"
+    post :whatsapp, to: "webhooks#whatsapp"
+    post :sms, to: "webhooks#sms"
+    post "telegram/:bot_token", to: "webhooks#telegram", as: :telegram_webhook
+    post :web, to: "webhooks#web"
+  end
+
   # Authenticated routes
   authenticate :user do
     root "dashboard#index", as: :authenticated_root
@@ -19,6 +29,8 @@ Rails.application.routes.draw do
       resources :conversations, only: [:index, :show]
       resources :channel_configs, only: [:index, :create, :update, :destroy]
       resources :scheduled_tasks, only: [:index, :create, :update, :destroy]
+      get "chat/stream", to: "chat_streams#show"
+      get "chat/poll", to: "chat_polls#show"
     end
 
     resources :tasks

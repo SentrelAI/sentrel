@@ -26,6 +26,7 @@ interface Props {
     slug: string
     email_domain: string | null
     email_domain_verified: boolean
+    context_md: string | null
   }
   members: Member[]
 }
@@ -35,6 +36,7 @@ export default function SettingsShow({ organization, members }: Props) {
     organization: {
       name: organization.name,
       email_domain: organization.email_domain || "",
+      context_md: organization.context_md || "",
     },
   })
 
@@ -104,6 +106,35 @@ export default function SettingsShow({ organization, members }: Props) {
               <div className="flex justify-end">
                 <Button type="submit" disabled={processing}>
                   {processing ? "Saving..." : "Save Domain"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Organization Context</CardTitle>
+            <CardDescription>Tell your agents about your company — shared with all agents</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="context_md">Context</Label>
+                <textarea
+                  id="context_md"
+                  className="flex min-h-[160px] w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus:border-[var(--color-gold)] focus:ring-[3px] focus:ring-[var(--color-gold-border)]"
+                  placeholder={"ScribeMD builds AI-powered medical transcription.\nOur ICP: healthcare companies, 50-500 employees.\nCompetitors: Nuance, DeepScribe.\nCEO prefers Slack for updates."}
+                  value={data.organization.context_md}
+                  onChange={(e) => setData("organization", { ...data.organization, context_md: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  This appears in every agent's context as "About My Organization"
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={processing}>
+                  {processing ? "Saving..." : "Save"}
                 </Button>
               </div>
             </form>

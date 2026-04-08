@@ -90,10 +90,32 @@ class WebhooksController < ApplicationController
     agent = Agent.find(params[:agent_id])
     return head :not_found unless agent
 
+    # Create/find internal conversation with user_id
+    conversation = agent.conversations.find_or_create_by!(
+      organization: agent.organization,
+      kind: "internal",
+      user: current_user,
+      contact_identifier: current_user.email
+    ) do |c|
+      c.contact_name = current_user.name
+      c.contact_email = current_user.email
+      c.status = "active"
+    end
+
+    # Save user's message immediately (so it shows in chat)
+    conversation.messages.create!(
+      role: "user",
+      content: params[:body],
+      direction: "inbound",
+      channel: "web"
+    )
+
+    # Push to engine with conversation ID
     enqueue(agent, "web", {
       from: current_user.email,
       from_name: current_user.name,
       body: params[:body],
+      conversationId: conversation.id,
     })
     head :ok
   end
@@ -119,12 +141,14 @@ class WebhooksController < ApplicationController
   end
 
   def enqueue(agent, channel, payload)
+    conversation_id = payload.delete(:conversationId)
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
     redis.lpush("agent-inbox-#{agent.id}", {
       type: "inbound_message",
       agentId: agent.id.to_s,
       orgId: agent.organization_id,
       channel: channel,
+      conversationId: conversation_id,
       payload: payload,
     }.to_json)
   end

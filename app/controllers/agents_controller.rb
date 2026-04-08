@@ -11,11 +11,18 @@ class AgentsController < ApplicationController
   end
 
   def show
+    # Find internal chat conversation (boss ↔ agent)
+    chat_conversation = @agent.conversations.find_by(kind: "internal", user: current_user)
+    chat_messages = chat_conversation ? chat_conversation.messages.order(id: :asc).as_json(
+      only: [:id, :role, :content, :channel, :created_at]
+    ) : []
+
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
-      conversations: @agent.conversations.order(updated_at: :desc).limit(20).as_json(
+      conversations: @agent.conversations.where(kind: "external").order(updated_at: :desc).limit(20).as_json(
         only: [:id, :kind, :contact_name, :contact_email, :subject, :status, :updated_at]
       ),
+      chat_messages: chat_messages,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
         only: [:id, :title, :status, :priority, :due_at, :completed_at]
       ),

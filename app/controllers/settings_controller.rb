@@ -3,7 +3,7 @@ class SettingsController < ApplicationController
 
   def show
     render inertia: "settings/show", props: {
-      organization: current_tenant.as_json(only: [:id, :name, :slug, :email_domain, :email_domain_verified]),
+      organization: current_tenant.as_json(only: [:id, :name, :slug, :email_domain, :email_domain_verified, :context_md]),
       members: current_tenant.users.order(:name).as_json(only: [:id, :name, :email, :role, :created_at])
     }
   end
@@ -19,6 +19,6 @@ class SettingsController < ApplicationController
   private
 
   def organization_params
-    params.require(:organization).permit(:name, :email_domain)
+    params.require(:organization).permit(:name, :email_domain, :context_md)
   end
 end

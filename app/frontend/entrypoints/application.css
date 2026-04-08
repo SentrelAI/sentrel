@@ -110,9 +110,9 @@
    ══════════════════════════════════ */
 @layer components {
 
-  /* ── Inputs ── */
+  /* ── Inputs (scoped — exclude assistant-ui) ── */
   [data-slot="input"],
-  textarea {
+  textarea:not(.aui-composer-input) {
     border-width: 2px !important;
     border-color: var(--border) !important;
     font-weight: 450;
@@ -120,9 +120,9 @@
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   [data-slot="input"]::placeholder,
-  textarea::placeholder { color: #A8A29E; font-weight: 400; }
+  textarea:not(.aui-composer-input)::placeholder { color: #A8A29E; font-weight: 400; }
   [data-slot="input"]:focus,
-  textarea:focus {
+  textarea:not(.aui-composer-input):focus {
     border-color: var(--color-gold) !important;
     box-shadow: 0 0 0 3px var(--color-gold-border) !important;
     outline: none !important;
@@ -260,4 +260,65 @@
 
   /* ── Separator ── */
   [data-slot="separator-root"] { background: var(--border); }
+
+}
+
+/* ═══ Assistant UI overrides ═══ */
+
+/* Kill ALL borders/rings/shadows on composer and its children */
+.aui-composer-root,
+.aui-composer-root *,
+.aui-composer-root:focus-within,
+.aui-composer-root:focus,
+.aui-composer-input,
+.aui-composer-input:focus,
+.aui-composer-input:focus-visible {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.aui-composer-root {
+  border: 1px solid var(--border) !important;
+  border-radius: 1.5rem !important;
+}
+
+.aui-composer-root:focus-within {
+  border-color: var(--border) !important;
+}
+
+/* User message — visible bg + proper width */
+.aui-user-message-content {
+  max-width: none !important;
+  width: fit-content !important;
+  word-break: normal !important;
+  background: var(--color-ink) !important;
+  color: #FAFAF9 !important;
+  border-radius: 1.25rem 1.25rem 0.25rem 1.25rem !important;
+  padding: 0.625rem 1rem !important;
+}
+
+/* Thread max width — wider */
+.aui-thread-root {
+  --thread-max-width: 56rem !important;
+}
+
+/* Thinking dots animation */
+.aui-assistant-message-in-progress .aui-assistant-message-content::after {
+  content: '';
+  display: inline-flex;
+  width: 2rem;
+  height: 1.25rem;
+  margin-left: 0.25rem;
+  background-image: radial-gradient(circle, currentColor 1.5px, transparent 1.5px);
+  background-size: 0.5rem 1.25rem;
+  background-position: 0 center, 0.75rem center, 1.5rem center;
+  animation: thinking-dots 1.4s infinite ease-in-out;
+  opacity: 0.5;
+  vertical-align: middle;
+}
+
+@keyframes thinking-dots {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
 }

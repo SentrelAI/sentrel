@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_06_212944) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_08_175321) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -138,6 +138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_06_212944) do
 
   create_table "organizations", force: :cascade do |t|
     t.text "composio_api_key_encrypted"
+    t.text "context_md"
     t.datetime "created_at", null: false
     t.string "email_domain"
     t.boolean "email_domain_verified", default: false
