@@ -91,7 +91,7 @@ function TaskCard({ task, overlay, setEditingTask }: { task: TaskItem; overlay?:
       {...(overlay ? {} : { ...attributes, ...listeners })}
       className="cursor-grab active:cursor-grabbing"
     >
-      <Card className={`group ${overlay ? "shadow-lg ring-2 ring-[#00ffff] rotate-2" : ""}`}>
+      <Card className={`group ${overlay ? "shadow-lg ring-2 ring-accent rotate-2" : ""}`}>
         <CardContent className="px-3 py-2">
           <div className="flex items-start justify-between gap-2">
             <p className="font-medium text-sm leading-snug flex-1">{task.title}</p>
@@ -184,8 +184,8 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask }: {
         ref={setNodeRef}
         className={`flex-1 space-y-2 rounded-lg p-2.5 border overflow-y-auto transition-colors ${
           isOver
-            ? "bg-[rgba(0,255,255,0.04)] border-[rgba(0,255,255,0.15)] border-dashed"
-            : "bg-[rgba(255,255,255,0.02)] border-transparent"
+            ? "bg-accent/5 border-accent/20 border-dashed"
+            : "bg-muted/50 border-transparent"
         }`}
       >
         <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>

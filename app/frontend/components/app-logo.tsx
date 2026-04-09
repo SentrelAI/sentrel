@@ -3,8 +3,8 @@ export default function AppLogo({ size = "default" }: { size?: "default" | "lg" 
 
   return (
     <div className="flex items-center">
-      <span className={`font-medium tracking-tight ${textSize} text-white`}>
-        ALCHEMY<span className="text-[#00ffff]">.</span>
+      <span className={`font-medium tracking-tight ${textSize} text-foreground`}>
+        ALCHEMY<span className="text-[var(--color-cyan)]">.</span>
       </span>
     </div>
   )

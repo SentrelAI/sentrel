@@ -8,6 +8,8 @@ import {
   ScrollText,
   Settings,
   Plus,
+  Sun,
+  Moon,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
@@ -15,6 +17,7 @@ import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import { Button } from "@/components/ui/button"
+import { useTheme } from "@/hooks/use-theme"
 import {
   Sidebar,
   SidebarContent,
@@ -52,6 +55,8 @@ const secondaryNavItems: NavItem[] = [
 ]
 
 export function AppSidebar() {
+  const { theme, setTheme } = useTheme()
+
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
@@ -83,6 +88,17 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        <SidebarGroup className="p-0">
+          <SidebarGroupContent>
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted"
+            >
+              {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+              <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+            </button>
+          </SidebarGroupContent>
+        </SidebarGroup>
         <NavUser />
       </SidebarFooter>
     </Sidebar>

@@ -172,7 +172,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
                   onClick={() => { setSection(item.key); setSelectedConvId(null) }}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors text-left ${
                     active
-                      ? "bg-[rgba(0,255,255,0.06)] text-foreground font-medium"
+                      ? "bg-accent/10 text-foreground font-medium"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >

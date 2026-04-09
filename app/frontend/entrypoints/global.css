@@ -44,69 +44,86 @@
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
 
-  /* Alchemy brand palette — dark mode, inspired by Composio */
-  --color-cyan: #00ffff;
-  --color-cyan-hover: #00e0e0;
-  --color-cyan-surface: rgba(0, 255, 255, 0.08);
-  --color-cyan-border: rgba(0, 255, 255, 0.20);
-  --color-cyan-glow: rgba(0, 255, 255, 0.12);
-
-  --color-cobalt: #0007cd;
+  /* Alchemy brand */
+  --color-cyan: #00c8c8;
+  --color-cyan-hover: #00b0b0;
+  --color-cyan-surface: rgba(0, 200, 200, 0.08);
+  --color-cyan-border: rgba(0, 200, 200, 0.20);
+  --color-cyan-glow: rgba(0, 200, 200, 0.12);
   --color-signal: #0089ff;
-  --color-ocean: #0096ff;
-
-  --color-void: #0f0f0f;
-  --color-pure-black: #000000;
-  --color-charcoal: #2c2c2c;
-
-  --color-ghost: rgba(255, 255, 255, 0.6);
-  --color-whisper: rgba(255, 255, 255, 0.5);
-  --color-phantom: rgba(255, 255, 255, 0.2);
-  --color-smoke: #444444;
-
-  --color-border-12: rgba(255, 255, 255, 0.12);
-  --color-border-10: rgba(255, 255, 255, 0.10);
-  --color-border-08: rgba(255, 255, 255, 0.08);
-  --color-border-06: rgba(255, 255, 255, 0.06);
-  --color-border-04: rgba(255, 255, 255, 0.04);
 
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Alchemy Dark Theme */
+/* ── Light Theme (default) ── */
 :root {
-  --radius: 4px;
-  --background: #0f0f0f;
-  --foreground: #ffffff;
-  --card: #000000;
-  --card-foreground: #ffffff;
-  --popover: #000000;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
-  --primary-foreground: #0f0f0f;
-  --secondary: rgba(255, 255, 255, 0.08);
-  --secondary-foreground: #ffffff;
-  --muted: rgba(255, 255, 255, 0.06);
-  --muted-foreground: rgba(255, 255, 255, 0.5);
-  --accent: #00ffff;
-  --accent-foreground: #0f0f0f;
+  --radius: 6px;
+  --background: #fafafa;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #0a0a0a;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #00c8c8;
+  --accent-foreground: #0a0a0a;
   --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
+  --destructive-foreground: #fafafa;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #0089ff;
+  --chart-1: #00c8c8;
+  --chart-2: #0089ff;
+  --chart-3: #ef4444;
+  --chart-4: #8b5cf6;
+  --chart-5: #22c55e;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #71717a;
+  --sidebar-primary: #0a0a0a;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #0a0a0a;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #0089ff;
+}
+
+/* ── Dark Theme ── */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #111111;
+  --card-foreground: #fafafa;
+  --popover: #111111;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #0a0a0a;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #fafafa;
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: #a1a1aa;
+  --accent: #00e0e0;
+  --accent-foreground: #0a0a0a;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
   --border: rgba(255, 255, 255, 0.10);
   --input: rgba(255, 255, 255, 0.10);
   --ring: #0089ff;
-  --chart-1: #00ffff;
+  --chart-1: #00e0e0;
   --chart-2: #0089ff;
   --chart-3: #ef4444;
-  --chart-4: #0007cd;
+  --chart-4: #8b5cf6;
   --chart-5: #22c55e;
-  /* Sidebar */
-  --sidebar: #000000;
-  --sidebar-foreground: rgba(255, 255, 255, 0.6);
-  --sidebar-primary: #00ffff;
-  --sidebar-primary-foreground: #0f0f0f;
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #a1a1aa;
+  --sidebar-primary: #00e0e0;
+  --sidebar-primary-foreground: #0a0a0a;
   --sidebar-accent: rgba(255, 255, 255, 0.06);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-ring: #0089ff;
 }

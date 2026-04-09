@@ -37,12 +37,12 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
       {pending.length > 0 && (
         <div className="mb-8">
           <h2 className="font-semibold mb-3 flex items-center gap-2">
-            <ShieldCheck className="size-4 text-[#00ffff]" />
+            <ShieldCheck className="size-4 text-accent" />
             Pending ({pending.length})
           </h2>
           <div className="space-y-3">
             {pending.map((approval) => (
-              <Card key={approval.id} className="border-[rgba(0,255,255,0.15)]">
+              <Card key={approval.id} className="border-accent/20">
                 <CardContent className="flex items-start justify-between py-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -122,7 +122,7 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
 
 function EmailPreview({ data }: { data: Record<string, unknown> }) {
   return (
-    <div className="mt-2 rounded border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] p-3 space-y-2 text-sm">
+    <div className="mt-2 rounded border border-border bg-muted/50 p-3 space-y-2 text-sm">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Mail className="size-3.5" />
         Email Draft

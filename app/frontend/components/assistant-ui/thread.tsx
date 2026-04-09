@@ -327,7 +327,7 @@ function InlineEmailCard({ email }: { email: { approvalId: number; to: string; c
             <button
               onClick={() => handleAction("approved")}
               disabled={acting !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-white text-[#0f0f0f] text-xs font-medium hover:bg-white/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {acting === "approving" ? <Loader2Icon className="size-3 animate-spin" /> : <CheckIcon className="size-3" />}
               Approve & Send

@@ -22,20 +22,20 @@ export default function SessionNew() {
   return (
     <>
       <Head title="Sign in" />
-      <div className="flex min-h-screen bg-[#0f0f0f]">
+      <div className="flex min-h-screen bg-background">
         {/* Left: Branding */}
-        <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 border-r border-white/[0.06]">
+        <div className="hidden lg:flex lg:w-1/2 bg-primary text-primary-foreground flex-col justify-between p-12">
           <div>
-            <span className="text-2xl font-medium tracking-tight text-white">ALCHEMY<span className="text-[#00ffff]">.</span></span>
+            <span className="text-2xl font-medium tracking-tight">ALCHEMY<span className="text-[var(--color-cyan)]">.</span></span>
           </div>
 
           <div className="space-y-8">
             <div>
-              <h1 className="text-4xl font-normal tracking-tight leading-[0.9] mb-4 text-white">
+              <h1 className="text-4xl font-normal tracking-tight leading-[0.9] mb-4">
                 Your AI team,<br />
-                <span className="text-[#00ffff]">ready to work.</span>
+                <span className="text-[var(--color-cyan)]">ready to work.</span>
               </h1>
-              <p className="text-[rgba(255,255,255,0.5)] text-lg max-w-md">
+              <p className="opacity-50 text-lg max-w-md">
                 Create AI employees with their own email, phone, and Slack. They work autonomously, collaborate as a team, and report to you.
               </p>
             </div>
@@ -47,30 +47,30 @@ export default function SessionNew() {
                 { icon: Shield, title: "You Control", desc: "Auto-send or draft for approval" },
                 { icon: Users, title: "Team Play", desc: "Agents delegate and collaborate" },
               ].map(({ icon: Icon, title, desc }) => (
-                <div key={title} className="flex items-start gap-3 p-3.5 rounded border border-white/[0.06] bg-white/[0.02]">
-                  <Icon className="size-4 text-[#00ffff] mt-0.5 shrink-0" />
+                <div key={title} className="flex items-start gap-3 p-3.5 rounded border border-primary-foreground/10 bg-primary-foreground/5">
+                  <Icon className="size-4 text-[var(--color-cyan)] mt-0.5 shrink-0" />
                   <div>
-                    <p className="font-medium text-sm text-white">{title}</p>
-                    <p className="text-xs text-[rgba(255,255,255,0.4)]">{desc}</p>
+                    <p className="font-medium text-sm">{title}</p>
+                    <p className="text-xs opacity-40">{desc}</p>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <p className="text-xs text-[rgba(255,255,255,0.3)]">Alchemy — Turn effort into outcome</p>
+          <p className="text-xs opacity-30">Alchemy — Turn effort into outcome</p>
         </div>
 
         {/* Right: Form */}
         <div className="flex w-full lg:w-1/2 items-center justify-center p-8">
           <div className="w-full max-w-sm">
             <div className="lg:hidden mb-8 text-center">
-              <span className="text-2xl font-medium tracking-tight text-white">ALCHEMY<span className="text-[#00ffff]">.</span></span>
+              <span className="text-2xl font-medium tracking-tight">ALCHEMY<span className="text-[var(--color-cyan)]">.</span></span>
             </div>
 
             <div className="mb-8">
-              <h2 className="text-2xl font-normal tracking-tight text-white">Welcome back</h2>
-              <p className="text-[rgba(255,255,255,0.5)] mt-1">Sign in to manage your AI team</p>
+              <h2 className="text-2xl font-normal tracking-tight">Welcome back</h2>
+              <p className="text-muted-foreground mt-1">Sign in to manage your AI team</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -102,9 +102,9 @@ export default function SessionNew() {
               </Button>
             </form>
 
-            <p className="mt-8 text-center text-sm text-[rgba(255,255,255,0.4)]">
+            <p className="mt-8 text-center text-sm text-muted-foreground">
               Don't have an account?{" "}
-              <Link href={newUserRegistrationPath()} className="text-[#00ffff] hover:text-[#00e0e0] font-medium">
+              <Link href={newUserRegistrationPath()} className="text-[var(--color-cyan)] hover:text-[var(--color-cyan-hover)] font-medium">
                 Create one
               </Link>
             </p>
