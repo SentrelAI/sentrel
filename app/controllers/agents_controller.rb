@@ -37,6 +37,21 @@ class AgentsController < ApplicationController
           last_message_direction: last_msg&.direction,
         )
       },
+      # Individual email messages for mail-style inbox
+      emails: Message.joins(:conversation)
+        .where(conversations: { agent_id: @agent.id, kind: "external" })
+        .where(channel: "email")
+        .order(created_at: :desc)
+        .limit(50)
+        .map { |m|
+          m.as_json(only: [:id, :role, :content, :direction, :channel, :created_at]).merge(
+            subject: m.metadata&.dig("subject"),
+            to: m.metadata&.dig("to"),
+            from: m.direction == "inbound" ? m.conversation.contact_email : @agent.channel_configs.find_by(channel_type: "email")&.config&.dig("address"),
+            conversation_id: m.conversation_id,
+            contact: m.conversation.contact_email || m.conversation.contact_name,
+          )
+        },
       chat_messages: chat_messages,
       approvals_by_message: approvals_by_message,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
