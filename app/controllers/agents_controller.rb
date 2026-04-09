@@ -28,9 +28,15 @@ class AgentsController < ApplicationController
 
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
-      conversations: @agent.conversations.where(kind: "external").order(updated_at: :desc).limit(20).as_json(
-        only: [:id, :kind, :contact_name, :contact_email, :subject, :status, :updated_at]
-      ),
+      conversations: @agent.conversations.where(kind: "external").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
+        last_msg = c.messages.order(created_at: :desc).first
+        c.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at]).merge(
+          channel: last_msg&.channel,
+          message_count: c.messages.count,
+          last_message_preview: last_msg&.content&.truncate(80),
+          last_message_direction: last_msg&.direction,
+        )
+      },
       chat_messages: chat_messages,
       approvals_by_message: approvals_by_message,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(

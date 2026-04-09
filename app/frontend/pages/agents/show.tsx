@@ -1,5 +1,5 @@
 import { Head, Link } from "@inertiajs/react"
-import { ArrowLeft, Bot, MessageSquare, CheckSquare, Clock, Settings, Send } from "lucide-react"
+import { ArrowLeft, Bot, MessageSquare, CheckSquare, Clock, Settings, Send, Mail, Phone, Hash } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
@@ -112,18 +112,31 @@ export default function AgentShow({ agent, conversations, chat_messages, tasks, 
             </div>
           ) : (
             <div className="divide-y divide-border rounded-lg border">
-              {conversations.map((conv) => (
-                <Link key={conv.id} href={agentConversationsPath(agent.id) + `/${conv.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-medium text-sm">{conv.contact_name || conv.contact_email || "Unknown"}</span>
-                    <Badge variant={conv.kind === "internal" ? "default" : "secondary"} className="text-[10px]">
-                      {conv.kind}
-                    </Badge>
-                    {conv.subject && <span className="text-xs text-muted-foreground">{conv.subject}</span>}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{new Date(conv.updated_at).toLocaleDateString()}</span>
-                </Link>
-              ))}
+              {conversations.map((conv) => {
+                const ChannelIcon = conv.channel === "email" ? Mail : conv.channel === "whatsapp" ? Phone : conv.channel === "telegram" ? Send : MessageSquare
+                return (
+                  <Link key={conv.id} href={agentConversationsPath(agent.id) + `/${conv.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
+                    <div className="flex size-8 items-center justify-center rounded-md bg-muted shrink-0">
+                      <ChannelIcon className="size-3.5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{conv.contact_name || conv.contact_email || conv.contact_phone || "Unknown"}</span>
+                        {conv.subject && <span className="text-xs text-muted-foreground truncate">{conv.subject}</span>}
+                      </div>
+                      {conv.last_message_preview && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {conv.last_message_direction === "outbound" ? `${agent.name}: ` : ""}{conv.last_message_preview}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-muted-foreground bg-muted rounded px-1.5 py-0.5">{conv.message_count}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(conv.updated_at).toLocaleDateString()}</span>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </TabsContent>
