@@ -17,13 +17,7 @@ class WebhooksController < ApplicationController
       sns_body = JSON.parse(request.body.read)
       ses_notification = JSON.parse(sns_body["Message"])
 
-      # If raw email content available, use Action Mailbox
-      if ses_notification["content"].present?
-        ActionMailbox::InboundEmail.create_and_extract_message_id!(source: ses_notification["content"])
-        return head :ok
-      end
-
-      # Otherwise parse SES notification manually
+      # Parse SES notification
       mail_info = ses_notification["mail"]
       from = mail_info["source"]
       from_name = mail_info.dig("commonHeaders", "from")&.first
@@ -36,7 +30,7 @@ class WebhooksController < ApplicationController
         next unless agent
 
         # Use threading logic: find or create email thread
-        conversation = find_or_create_email_thread(agent, from, from_name, subject)
+        conversation = find_or_create_email_thread(agent, from, from_name, subject, message_id)
 
         # Save inbound message
         conversation.messages.create!(
@@ -216,13 +210,35 @@ class WebhooksController < ApplicationController
     validator.validate(url, request.POST, request.headers["X-Twilio-Signature"] || "")
   end
 
-  def find_or_create_email_thread(agent, from_address, from_name, subject)
-    clean_subject = subject&.gsub(/^(Re|Fwd|Fw):\s*/i, "")&.strip
+  def find_or_create_email_thread(agent, from_address, from_name, subject, message_id = nil)
+    # Clean the from_name (remove email if included like "Name <email>")
+    clean_name = from_name&.gsub(/<[^>]+>/, "")&.strip || from_address
 
+    # Try to find by in_reply_to / message_id first
+    if message_id.present?
+      existing = agent.conversations.joins(:messages)
+        .where(kind: "external")
+        .where("messages.metadata->>'message_id' = ?", message_id)
+        .first
+      return existing if existing
+    end
+
+    # Fall back to clean subject match (try with contact first, then without)
+    clean_subject = subject&.gsub(/^(Re|Fwd|Fw):\s*/i, "")&.strip
     if clean_subject.present?
+      # Try matching by contact + subject
       existing = agent.conversations
-        .where(kind: "external", contact_identifier: from_address)
+        .where(kind: "external")
+        .where("contact_identifier = ? OR contact_email = ?", from_address, from_address)
         .where("subject ILIKE ?", "%#{clean_subject}%")
+        .order(updated_at: :desc)
+        .first
+      return existing if existing
+
+      # Try matching by subject only (same agent, any contact — e.g. CC'd conversations)
+      existing = agent.conversations
+        .where(kind: "external")
+        .where("subject ILIKE ?", clean_subject)
         .order(updated_at: :desc)
         .first
       return existing if existing
@@ -232,7 +248,7 @@ class WebhooksController < ApplicationController
       organization: agent.organization,
       kind: "external",
       contact_identifier: from_address,
-      contact_name: from_name || from_address,
+      contact_name: clean_name,
       contact_email: from_address,
       subject: subject,
       status: "active"
