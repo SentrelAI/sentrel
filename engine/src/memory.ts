@@ -41,6 +41,20 @@ export function syncClaudeMd(agent: Agent): void {
   }
 
   parts.push(
+    "# Sending Emails\n" +
+    "You have FULL permission to use the Write tool. All permissions are pre-approved.\n" +
+    "To send an email, use the Write tool to create a JSON file at workspace/outbox/<name>.json\n" +
+    "Format:\n" +
+    '```json\n{"to": "user@example.com", "cc": [], "bcc": [], "subject": "Subject", "body_text": "Email body"}\n```\n' +
+    "CRITICAL RULES:\n" +
+    "- Do NOT say you need permissions. You HAVE them. Just write the file.\n" +
+    "- NEVER paste the email body in your chat response. The user will see it in a preview card.\n" +
+    "- Your response should ONLY be a brief confirmation like 'Done! Email drafted to user@example.com for review.'\n" +
+    "- Do NOT summarize the email contents. Do NOT include bullet points of what the email covers.\n" +
+    "- Keep your response to 1-2 sentences maximum."
+  );
+
+  parts.push(
     "# Memory\n" +
     "Your memory file is at memory/MEMORY.md. Read it at the start of each session.\n" +
     "Update it when you learn important facts about contacts, deals, preferences, or decisions."

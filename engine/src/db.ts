@@ -121,13 +121,14 @@ export async function savePendingApproval(
   agentId: number,
   toolName: string,
   toolInput: unknown,
-  context?: string
+  context?: string,
+  messageId?: number
 ): Promise<number> {
   const { rows } = await pool.query(
-    `INSERT INTO pending_approvals (organization_id, agent_id, tool_name, tool_input, context, status, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 'pending', NOW(), NOW())
+    `INSERT INTO pending_approvals (organization_id, agent_id, tool_name, tool_input, context, status, message_id, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW(), NOW())
      RETURNING id`,
-    [orgId, agentId, toolName, JSON.stringify(toolInput || {}), context || null]
+    [orgId, agentId, toolName, JSON.stringify(toolInput || {}), context || null, messageId || null]
   );
   return rows[0].id;
 }

@@ -7,7 +7,7 @@ import { redis } from "./queue.js";
 import { syncMemoryToDb, readMemoryMd } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
 import { createPermissionHook, createAuditHook } from "./permissions.js";
-import { emitThinking, emitTextDelta, emitToolCall, emitToolResult, emitDone, emitError } from "./gateway.js";
+import { emitThinking, emitTextDelta, emitToolCall, emitToolResult, emitDone, emitError, emitApproval } from "./gateway.js";
 import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
 import type { Agent, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
@@ -18,6 +18,15 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     setWhatsAppPendingReply(job.payload.from);
   }
   logger.info(`Running agent: ${agent.name} (${agent.role})`, { jobType: job.type });
+
+  // Check if this is an approval response (YES/NO) from a non-web channel
+  if (job.type === "inbound_message" && job.channel && job.channel !== "web") {
+    const body = (job.payload?.body || "").trim().toUpperCase();
+    if (body === "YES" || body === "NO" || body === "APPROVE" || body === "REJECT") {
+      const handled = await handleApprovalResponse(agent, job, body);
+      if (handled) return;
+    }
+  }
 
   // Build conversation context
   let conversationId = job.conversationId;
@@ -78,7 +87,8 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       "WebFetch",
       "Browser",
     ],
-    permissionMode: "dontAsk",
+    permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
   };
 
   // Add model if specified
@@ -93,6 +103,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
   try {
     let responseContent = "";
+    const capturedEmails: Record<string, unknown>[] = [];
 
     // Broadcast: thinking
     emitThinking();
@@ -108,6 +119,13 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
           }
           if (block.type === "tool_use") {
             emitToolCall(block.name, block.input);
+            // Capture Write calls to outbox — intercept email data
+            if (block.name === "Write" && typeof block.input?.file_path === "string" && block.input.file_path.includes("outbox") && block.input.file_path.endsWith(".json")) {
+              try {
+                const emailData = JSON.parse(block.input.content || "{}");
+                if (emailData.to) capturedEmails.push(emailData);
+              } catch {}
+            }
           }
           if (block.type === "tool_result") {
             const content = typeof block.content === "string" ? block.content : "done";
@@ -121,19 +139,36 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       }
     }
 
-    // Broadcast: done
-    emitDone(responseContent);
-
-    // Save response to conversation
+    // Save response to conversation FIRST (to get message ID for approvals)
+    let savedMessageId: number | null = null;
     if (conversationId && responseContent) {
-      await db.saveMessage(
+      const saved = await db.saveMessage(
         conversationId,
         "assistant",
         responseContent,
         "outbound",
         job.channel
       );
+      savedMessageId = saved.id;
     }
+
+    // Process email outbox BEFORE done (so approval events reach the client)
+    const approvalResults = await processOutbox(agent, job, savedMessageId, capturedEmails);
+
+    // For non-web channels, append draft preview to the response
+    if (approvalResults.length > 0 && job.channel && job.channel !== "web") {
+      const drafts = approvalResults.map((a) => {
+        return `\n📧 *Email Draft* (Approval #${a.approvalId})\n` +
+          `*To:* ${a.to}\n` +
+          `*Subject:* ${a.subject}\n` +
+          `---\n${a.body_text?.slice(0, 500)}${(a.body_text?.length || 0) > 500 ? "..." : ""}\n---\n` +
+          `Reply *YES* to send, *NO* to cancel, or type feedback to revise.`;
+      }).join("\n\n");
+      responseContent += drafts;
+    }
+
+    // Broadcast: done
+    emitDone(responseContent);
 
     // Log the action
     await db.saveAuditLog(
@@ -145,9 +180,6 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       { response: responseContent.slice(0, 500) },
       "success"
     );
-
-    // Process email outbox (agent may have written email drafts)
-    await processOutbox(agent, job);
 
     // Sync memory back to DB (agent may have updated MEMORY.md)
     await syncMemoryToDb(agent.id);
@@ -227,31 +259,105 @@ function buildPrompt(agent: Agent, job: JobData, history: Message[]): string {
   return parts.join("\n");
 }
 
-async function processOutbox(agent: Agent, job: JobData): Promise<void> {
-  const outboxDir = path.join(config.dataDir, "workspace", "outbox");
-  if (!fs.existsSync(outboxDir)) return;
+async function handleApprovalResponse(agent: Agent, job: JobData, response: string): Promise<boolean> {
+  // Find the most recent pending approval for this agent
+  const { rows } = await db.pool.query(
+    `SELECT id, tool_name, tool_input FROM pending_approvals
+     WHERE agent_id = $1 AND status = 'pending'
+     ORDER BY created_at DESC LIMIT 1`,
+    [agent.id]
+  );
 
-  const files = fs.readdirSync(outboxDir).filter(f => f.endsWith(".json"));
-  if (files.length === 0) return;
+  if (rows.length === 0) return false;
 
+  const approval = rows[0];
+  const isApproved = response === "YES" || response === "APPROVE";
+  const newStatus = isApproved ? "approved" : "rejected";
+
+  // Update approval status
+  await db.pool.query(
+    `UPDATE pending_approvals SET status = $1, reviewed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+    [newStatus, approval.id]
+  );
+
+  if (isApproved && approval.tool_name === "send_email") {
+    // Push to outbound email queue
+    const payload = typeof approval.tool_input === "string" ? JSON.parse(approval.tool_input) : approval.tool_input;
+    payload.agent_id = agent.id;
+    payload.org_id = agent.organization_id;
+    await redis.lpush("outbound-email", JSON.stringify(payload));
+    logger.info(`Approval #${approval.id} approved via ${job.channel}, email queued`);
+  }
+
+  // Send confirmation back through the channel
+  const confirmMsg = isApproved
+    ? `✅ Email approved and sending to ${(approval.tool_input as any)?.to || "recipient"}`
+    : `❌ Email cancelled.`;
+
+  emitDone(confirmMsg);
+  logger.info(`Approval #${approval.id} ${newStatus} via ${job.channel}`);
+  return true;
+}
+
+interface ApprovalResult {
+  approvalId: number;
+  to: string;
+  subject: string;
+  body_text: string;
+}
+
+async function processOutbox(agent: Agent, job: JobData, messageId?: number | null, capturedEmails?: Record<string, unknown>[]): Promise<ApprovalResult[]> {
+  const results: ApprovalResult[] = [];
   // Get email channel config for from address
   const channels = await db.getChannelConfigs(String(agent.id));
   const emailConfig = channels.find(c => c.channel_type === "email");
 
   if (!emailConfig) {
-    logger.warn("No email channel configured, skipping outbox");
-    return;
+    if (capturedEmails && capturedEmails.length > 0) {
+      logger.warn("No email channel configured, skipping captured emails");
+    }
+    return results;
   }
 
-  for (const file of files) {
-    const filePath = path.join(outboxDir, file);
-    try {
-      const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  // Collect emails from both sources: files on disk + captured tool calls
+  const emailsToProcess: Record<string, unknown>[] = [];
 
+  // 1. Check outbox directory for files
+  const outboxDir = path.join(config.dataDir, "workspace", "outbox");
+  if (fs.existsSync(outboxDir)) {
+    const files = fs.readdirSync(outboxDir).filter(f => f.endsWith(".json"));
+    for (const file of files) {
+      const filePath = path.join(outboxDir, file);
+      try {
+        const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        if (content.to) emailsToProcess.push(content);
+        fs.unlinkSync(filePath);
+      } catch (err) {
+        logger.error(`Failed to read outbox file ${file}`, { error: (err as Error).message });
+      }
+    }
+  }
+
+  // 2. Add captured emails from intercepted Write tool calls (fallback)
+  if (capturedEmails) {
+    for (const captured of capturedEmails) {
+      // Dedupe: skip if we already have this email from a file
+      const alreadyHave = emailsToProcess.some(e => e.to === captured.to && e.subject === captured.subject);
+      if (!alreadyHave && captured.to) {
+        emailsToProcess.push(captured);
+      }
+    }
+  }
+
+  if (emailsToProcess.length === 0) return results;
+
+  // Process each email
+  for (const content of emailsToProcess) {
+    try {
       const emailPayload = {
         agent_id: agent.id,
         org_id: agent.organization_id,
-        conversation_id: job.conversationId || null,
+        conversation_id: null, // Don't link to chat conversation
         to: content.to,
         cc: content.cc || [],
         bcc: content.bcc || [],
@@ -267,24 +373,29 @@ async function processOutbox(agent: Agent, job: JobData): Promise<void> {
       if (permLevel === "never") {
         logger.info(`Email blocked by permissions: ${content.to}`);
       } else if (permLevel === "draft") {
-        await db.savePendingApproval(
+        const approvalId = await db.savePendingApproval(
           agent.organization_id,
           agent.id,
           "send_email",
           emailPayload,
-          `Email to ${content.to}: "${content.subject}"`
+          `Email to ${content.to}: "${content.subject}"`,
+          messageId || undefined
         );
+        emitApproval(approvalId, "send_email", emailPayload);
+        results.push({
+          approvalId,
+          to: content.to as string,
+          subject: (content.subject || "(no subject)") as string,
+          body_text: (content.body_text || "") as string,
+        });
         logger.info(`Email queued for approval: ${content.to}`);
       } else {
-        // auto — send immediately via Redis → Rails
         await redis.lpush("outbound-email", JSON.stringify(emailPayload));
         logger.info(`Email queued for send: ${content.to}`);
       }
-
-      // Remove processed file
-      fs.unlinkSync(filePath);
     } catch (err) {
-      logger.error(`Failed to process outbox file ${file}`, { error: (err as Error).message });
+      logger.error(`Failed to process email to ${content.to}`, { error: (err as Error).message });
     }
   }
+  return results;
 }

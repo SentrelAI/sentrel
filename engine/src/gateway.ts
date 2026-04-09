@@ -73,6 +73,10 @@ export function emitDone(content: string): void {
   }
 }
 
+export function emitApproval(approvalId: number, toolName: string, toolInput: Record<string, unknown>): void {
+  broadcast({ type: "pending_approval", approvalId, toolName, toolInput, timestamp: Date.now() });
+}
+
 export function emitError(error: string): void {
   broadcast({ type: "error", error, timestamp: Date.now() });
 }
