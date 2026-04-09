@@ -5,6 +5,39 @@ class WebhooksController < ApplicationController
 
   # POST /webhooks/email
   def email
+    # Handle SNS subscription confirmation
+    if request.headers["x-amz-sns-message-type"] == "SubscriptionConfirmation"
+      body = JSON.parse(request.body.read)
+      Net::HTTP.get(URI(body["SubscribeURL"]))
+      return head :ok
+    end
+
+    # Handle SNS notification (SES inbound email)
+    if request.headers["x-amz-sns-message-type"] == "Notification"
+      sns_body = JSON.parse(request.body.read)
+      ses_notification = JSON.parse(sns_body["Message"])
+      mail = ses_notification["mail"]
+
+      from = mail["source"]
+      from_name = mail.dig("commonHeaders", "from")&.first
+      subject = mail.dig("commonHeaders", "subject")
+      body_text = extract_email_body(ses_notification)
+
+      # Route to the right agent based on To address
+      Array(mail["destination"]).each do |to_addr|
+        agent = find_agent_by_channel("email", "address", to_addr)
+        next unless agent
+        enqueue(agent, "email", {
+          from: from,
+          from_name: from_name,
+          subject: subject,
+          body: body_text,
+        })
+      end
+      return head :ok
+    end
+
+    # Fallback: simple format (for testing)
     agent = find_agent_by_channel("email", "address", params[:to])
     return head :not_found unless agent
 
@@ -150,6 +183,21 @@ class WebhooksController < ApplicationController
     validator = Twilio::Security::RequestValidator.new(ENV["TWILIO_AUTH_TOKEN"])
     url = request.original_url
     validator.validate(url, request.POST, request.headers["X-Twilio-Signature"] || "")
+  end
+
+  def extract_email_body(ses_notification)
+    # If content is included inline (UTF-8 encoding)
+    if ses_notification["content"].present?
+      # Parse raw email content
+      mail = Mail.new(ses_notification["content"])
+      return mail.text_part&.decoded || mail.html_part&.decoded || mail.body.decoded
+    end
+
+    # Fallback: common headers may have snippet
+    ses_notification.dig("mail", "commonHeaders", "subject") || ""
+  rescue => e
+    Rails.logger.error "Failed to parse email body: #{e.message}"
+    ""
   end
 
   def enqueue(agent, channel, payload)

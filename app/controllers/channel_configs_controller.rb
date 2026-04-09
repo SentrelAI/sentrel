@@ -15,6 +15,17 @@ class ChannelConfigsController < ApplicationController
     config = @agent.channel_configs.build(channel_config_params)
     config.status = "connected"
 
+    # Validate email domain (warn but don't block in dev)
+    if config.channel_type == "email"
+      address = config.config["address"]
+      domain = address&.split("@")&.last
+      if current_tenant.email_domain.present? && current_tenant.email_domain != domain
+        redirect_back fallback_location: agent_channel_configs_path(@agent),
+          alert: "Email must use your org domain @#{current_tenant.email_domain}"
+        return
+      end
+    end
+
     # Auto-configure Twilio webhook for WhatsApp/SMS
     if config.channel_type.in?(%w[whatsapp sms]) && twilio_client
       phone = config.config["phone_number"]

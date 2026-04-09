@@ -29,6 +29,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
       max_tokens: agent.ai_config?.max_tokens || 8192,
       thinking_level: agent.ai_config?.thinking_level || "none",
     },
+    permissions: (agent as any).permissions || {},
   })
 
   function handleSubmit(e: React.FormEvent) {
@@ -134,6 +135,34 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
                 />
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Permissions</CardTitle>
+            <CardDescription>Control what actions require approval</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Send Email</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Agent can compose and send emails</p>
+              </div>
+              <Select
+                value={data.permissions?.send_email || "auto"}
+                onValueChange={(v) => setData("permissions", { ...data.permissions, send_email: v })}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto (send immediately)</SelectItem>
+                  <SelectItem value="draft">Draft (requires approval)</SelectItem>
+                  <SelectItem value="never">Never (disabled)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
 

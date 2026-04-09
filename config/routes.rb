@@ -44,7 +44,10 @@ Rails.application.routes.draw do
     resources :pending_approvals, only: [:index, :update]
     resources :audit_logs, only: [:index]
 
-    resource :settings, only: [:show, :update]
+    resource :settings, only: [:show, :update] do
+      post :verify_domain
+      post :check_domain_verification
+    end
   end
 
   # Unauthenticated root

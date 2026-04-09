@@ -1,5 +1,5 @@
 import { Head, router } from "@inertiajs/react"
-import { ShieldCheck, Check, X } from "lucide-react"
+import { ShieldCheck, Check, X, Mail } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { PageHeader } from "@/components/page-header"
@@ -50,12 +50,18 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
                       <span className="text-muted-foreground">wants to</span>
                       <Badge variant="secondary" className="font-mono text-xs">{approval.tool_name}</Badge>
                     </div>
-                    {approval.context && (
-                      <p className="text-sm text-muted-foreground mt-1">{approval.context}</p>
+                    {approval.tool_name === "send_email" ? (
+                      <EmailPreview data={approval.tool_input as Record<string, unknown>} />
+                    ) : (
+                      <>
+                        {approval.context && (
+                          <p className="text-sm text-muted-foreground mt-1">{approval.context}</p>
+                        )}
+                        <pre className="text-xs text-muted-foreground mt-2 bg-muted p-2 rounded overflow-auto max-h-24">
+                          {JSON.stringify(approval.tool_input, null, 2)}
+                        </pre>
+                      </>
                     )}
-                    <pre className="text-xs text-muted-foreground mt-2 bg-muted p-2 rounded overflow-auto max-h-24">
-                      {JSON.stringify(approval.tool_input, null, 2)}
-                    </pre>
                     <p className="text-xs text-muted-foreground mt-2">
                       {new Date(approval.created_at).toLocaleString()}
                     </p>
@@ -111,5 +117,44 @@ export default function ApprovalsIndex({ approvals }: { approvals: Approval[] })
         />
       )}
     </AppLayout>
+  )
+}
+
+function EmailPreview({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="mt-2 rounded-lg border bg-white p-3 space-y-2 text-sm">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Mail className="size-3.5" />
+        Email Draft
+      </div>
+      <div className="space-y-1 text-xs">
+        <div className="flex gap-2">
+          <span className="font-medium w-12 shrink-0 text-muted-foreground">From</span>
+          <span>{data.from_name as string} &lt;{data.from_address as string}&gt;</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-medium w-12 shrink-0 text-muted-foreground">To</span>
+          <span>{Array.isArray(data.to) ? (data.to as string[]).join(", ") : data.to as string}</span>
+        </div>
+        {data.cc && (data.cc as string[]).length > 0 && (
+          <div className="flex gap-2">
+            <span className="font-medium w-12 shrink-0 text-muted-foreground">CC</span>
+            <span>{(data.cc as string[]).join(", ")}</span>
+          </div>
+        )}
+        {data.bcc && (data.bcc as string[]).length > 0 && (
+          <div className="flex gap-2">
+            <span className="font-medium w-12 shrink-0 text-muted-foreground">BCC</span>
+            <span>{(data.bcc as string[]).join(", ")}</span>
+          </div>
+        )}
+      </div>
+      <div className="border-t pt-2">
+        <p className="font-medium text-sm">{data.subject as string}</p>
+      </div>
+      <div className="border-t pt-2 text-sm text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">
+        {data.body_text as string || data.body_html as string}
+      </div>
+    </div>
   )
 }

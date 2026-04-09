@@ -12,6 +12,17 @@ Sidekiq.configure_server do |config|
         Sidekiq.logger.error "Health check error: #{e.message}"
       end
     end
+
+    # Poll outbound email queue every 3 seconds
+    Sidekiq.logger.info "Starting outbound email poller..."
+    Thread.new do
+      loop do
+        sleep 3
+        OutboundEmailPollerJob.perform_later
+      rescue => e
+        Sidekiq.logger.error "Email poller error: #{e.message}"
+      end
+    end
   end
 end
 

@@ -160,7 +160,7 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
         </Card>
       </div>
 
-      {/* Connect dialog — Twilio flow for WhatsApp/SMS, generic for others */}
+      {/* Connect dialog — channel-specific flows */}
       {connectingChannel && isTwilioChannel(connectingChannel) && twilio_configured && (
         <TwilioConnectDialog
           channelKey={connectingChannel}
@@ -169,7 +169,14 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
           onClose={() => setConnectingChannel(null)}
         />
       )}
-      {connectingChannel && !(isTwilioChannel(connectingChannel) && twilio_configured) && (
+      {connectingChannel && connectingChannel === "email" && (
+        <EmailConnectDialog
+          agentSlug={agent.slug}
+          agentId={agent.id}
+          onClose={() => setConnectingChannel(null)}
+        />
+      )}
+      {connectingChannel && connectingChannel !== "email" && !(isTwilioChannel(connectingChannel) && twilio_configured) && (
         <GenericConnectDialog
           channelKey={connectingChannel}
           channel={available_channels[connectingChannel]!}
@@ -410,6 +417,58 @@ function TwilioConnectDialog({ channelKey, channel, agentId, onClose }: {
             </div>
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Generic connect dialog for non-Twilio channels ──
+// ── Email connect dialog — auto-suggest address ──
+function EmailConnectDialog({ agentSlug, agentId, onClose }: {
+  agentSlug: string
+  agentId: number
+  onClose: () => void
+}) {
+  const [address, setAddress] = useState(`${agentSlug}@alchemy.scribemd.ai`)
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    router.post(`/agents/${agentId}/channel_configs`, {
+      channel_config: {
+        channel_type: "email",
+        enabled: true,
+        config: { address },
+      },
+    }, { onSuccess: onClose })
+  }
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Connect Email</DialogTitle>
+          <DialogDescription>
+            This agent will send and receive emails from this address
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Email Address</Label>
+            <Input
+              type="email"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Make sure the domain is verified in Settings before sending
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" type="button" onClick={onClose}>Cancel</Button>
+            <Button type="submit">Connect</Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   )
