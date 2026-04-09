@@ -25,6 +25,7 @@ gem "twilio-ruby"
 # AWS
 gem "aws-sdk-ec2"
 gem "aws-sdk-ses"
+gem "aws-sdk-sns"
 
 # Security & Utilities
 gem "rack-attack"

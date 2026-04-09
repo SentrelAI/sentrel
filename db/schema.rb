@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_08_175321) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_09_195241) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -152,6 +152,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_08_175321) do
     t.bigint "agent_id", null: false
     t.text "context"
     t.datetime "created_at", null: false
+    t.bigint "message_id"
     t.bigint "organization_id", null: false
     t.datetime "reviewed_at"
     t.bigint "reviewed_by_id"
@@ -160,6 +161,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_08_175321) do
     t.string "tool_name", null: false
     t.datetime "updated_at", null: false
     t.index ["agent_id"], name: "index_pending_approvals_on_agent_id"
+    t.index ["message_id"], name: "index_pending_approvals_on_message_id"
     t.index ["organization_id", "status"], name: "index_pending_approvals_on_organization_id_and_status"
     t.index ["organization_id"], name: "index_pending_approvals_on_organization_id"
     t.index ["reviewed_by_id"], name: "index_pending_approvals_on_reviewed_by_id"
@@ -233,6 +235,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_08_175321) do
   add_foreign_key "integrations", "organizations"
   add_foreign_key "messages", "conversations"
   add_foreign_key "pending_approvals", "agents"
+  add_foreign_key "pending_approvals", "messages"
   add_foreign_key "pending_approvals", "organizations"
   add_foreign_key "pending_approvals", "users", column: "reviewed_by_id"
   add_foreign_key "scheduled_tasks", "agents"

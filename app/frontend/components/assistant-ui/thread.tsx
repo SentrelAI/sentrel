@@ -8,6 +8,7 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { parseMessageWithApprovals } from "@/components/agent-chat";
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -28,12 +29,15 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  MailIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
   SquareIcon,
+  XIcon,
+  Loader2Icon,
 } from "lucide-react";
-import type { FC } from "react";
+import { type FC, useState } from "react";
 
 export const Thread: FC = () => {
   return (
@@ -211,7 +215,7 @@ const AssistantMessage: FC = () => {
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
         <MessagePrimitive.Parts>
           {({ part }) => {
-            if (part.type === "text") return <MarkdownText />;
+            if (part.type === "text") return <TextWithApprovals />;
             if (part.type === "tool-call")
               return part.toolUI ?? <ToolFallback {...part} />;
             return null;
@@ -227,6 +231,132 @@ const AssistantMessage: FC = () => {
     </MessagePrimitive.Root>
   );
 };
+
+const TextWithApprovals: FC = () => {
+  const text = useAuiState((s) => {
+    const parts = s.message.content;
+    const textPart = parts?.find((p: any) => p.type === "text");
+    return (textPart as any)?.text || "";
+  });
+
+  const { cleanText, approvals } = parseMessageWithApprovals(text);
+
+  if (approvals.length === 0) {
+    return <MarkdownText />;
+  }
+
+  // When approvals exist, render cleaned text via a simple div
+  // (MarkdownText reads raw state which still has the marker)
+  return (
+    <>
+      {cleanText && (
+        <div className="aui-md" dangerouslySetInnerHTML={{
+          __html: cleanText
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n\n/g, '</p><p class="my-2.5 leading-normal">')
+            .replace(/\n/g, '<br>')
+            .replace(/^/, '<p class="my-2.5 leading-normal first:mt-0">')
+            .replace(/$/, '</p>')
+        }} />
+      )}
+      {approvals.map((email) => (
+        <InlineEmailCard key={email.approvalId} email={email} />
+      ))}
+    </>
+  );
+};
+
+function InlineEmailCard({ email }: { email: { approvalId: number; to: string; cc?: string[]; subject: string; body_text: string; from_address: string; from_name: string; status?: string } }) {
+  const [acting, setActing] = useState<"approving" | "rejecting" | null>(null);
+  const [result, setResult] = useState<"approved" | "rejected" | null>(
+    email.status === "approved" ? "approved" : email.status === "rejected" ? "rejected" : null
+  );
+
+  const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
+
+  async function handleAction(status: "approved" | "rejected") {
+    setActing(status === "approved" ? "approving" : "rejecting");
+    try {
+      await fetch(`/pending_approvals/${email.approvalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ status }),
+      });
+      setResult(status);
+    } catch {
+      setActing(null);
+    }
+  }
+
+  return (
+    <div className="my-3 rounded-lg border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <MailIcon className="size-3.5" />
+        {result === "approved" ? "Email sent" : result === "rejected" ? "Email rejected" : "Email draft — review before sending"}
+      </div>
+
+      {!result && (
+        <>
+          <div className="space-y-1 text-xs">
+            <div className="flex gap-2">
+              <span className="font-medium w-10 shrink-0 text-muted-foreground">From</span>
+              <span>{email.from_name} &lt;{email.from_address}&gt;</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-medium w-10 shrink-0 text-muted-foreground">To</span>
+              <span>{Array.isArray(email.to) ? email.to.join(", ") : email.to}</span>
+            </div>
+            {email.cc && email.cc.length > 0 && (
+              <div className="flex gap-2">
+                <span className="font-medium w-10 shrink-0 text-muted-foreground">CC</span>
+                <span>{email.cc.join(", ")}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-2">
+            <p className="font-medium text-sm">{email.subject}</p>
+          </div>
+
+          <div className="border-t pt-2 text-sm text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto leading-relaxed">
+            {email.body_text}
+          </div>
+
+          <div className="flex gap-2 pt-1 border-t">
+            <button
+              onClick={() => handleAction("approved")}
+              disabled={acting !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--color-ink)] text-white text-xs font-medium hover:bg-[var(--color-ink-soft)] transition-colors disabled:opacity-50"
+            >
+              {acting === "approving" ? <Loader2Icon className="size-3 animate-spin" /> : <CheckIcon className="size-3" />}
+              Approve & Send
+            </button>
+            <button
+              onClick={() => handleAction("rejected")}
+              disabled={acting !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {acting === "rejecting" ? <Loader2Icon className="size-3 animate-spin" /> : <XIcon className="size-3" />}
+              Reject
+            </button>
+          </div>
+        </>
+      )}
+
+      {result === "approved" && (
+        <p className="text-xs text-green-700 flex items-center gap-1.5">
+          <CheckIcon className="size-3" /> Email approved and sending
+        </p>
+      )}
+      {result === "rejected" && (
+        <p className="text-xs text-red-600 flex items-center gap-1.5">
+          <XIcon className="size-3" /> Email rejected
+        </p>
+      )}
+    </div>
+  );
+}
 
 const AssistantActionBar: FC = () => {
   return (

@@ -13,11 +13,11 @@ Sidekiq.configure_server do |config|
       end
     end
 
-    # Poll outbound email queue every 3 seconds
+    # Poll outbound email queue every 10 seconds
     Sidekiq.logger.info "Starting outbound email poller..."
     Thread.new do
       loop do
-        sleep 3
+        sleep 10
         OutboundEmailPollerJob.perform_later
       rescue => e
         Sidekiq.logger.error "Email poller error: #{e.message}"

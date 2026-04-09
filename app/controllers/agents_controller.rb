@@ -17,12 +17,22 @@ class AgentsController < ApplicationController
       only: [:id, :role, :content, :channel, :created_at]
     ) : []
 
+    # Get approvals keyed by message_id for inline rendering
+    approvals_by_message = @agent.pending_approvals
+      .where.not(message_id: nil)
+      .where("created_at > ?", 7.days.ago)
+      .group_by(&:message_id)
+      .transform_values { |approvals|
+        approvals.map { |a| a.as_json(only: [:id, :tool_name, :tool_input, :status, :created_at]) }
+      }
+
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
       conversations: @agent.conversations.where(kind: "external").order(updated_at: :desc).limit(20).as_json(
         only: [:id, :kind, :contact_name, :contact_email, :subject, :status, :updated_at]
       ),
       chat_messages: chat_messages,
+      approvals_by_message: approvals_by_message,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
         only: [:id, :title, :status, :priority, :due_at, :completed_at]
       ),

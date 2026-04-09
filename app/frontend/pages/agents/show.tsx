@@ -25,9 +25,10 @@ interface Props {
   tasks: Task[]
   channel_configs: ChannelConfig[]
   scheduled_tasks: ScheduledTask[]
+  approvals_by_message: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string; created_at: string }[]>
 }
 
-export default function AgentShow({ agent, conversations, chat_messages, tasks, channel_configs, scheduled_tasks }: Props) {
+export default function AgentShow({ agent, conversations, chat_messages, tasks, channel_configs, scheduled_tasks, approvals_by_message }: Props) {
   return (
     <AppLayout>
       <Head title={agent.name} />
@@ -101,7 +102,7 @@ export default function AgentShow({ agent, conversations, chat_messages, tasks, 
         </TabsList>
 
         <TabsContent value="chat" className="mt-4">
-          <AgentChat agentId={agent.id} agentName={agent.name} initialMessages={chat_messages as any} />
+          <AgentChat agentId={agent.id} agentName={agent.name} initialMessages={chat_messages as any} approvalsByMessage={approvals_by_message} />
         </TabsContent>
 
         <TabsContent value="conversations" className="mt-4">

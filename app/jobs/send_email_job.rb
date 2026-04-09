@@ -33,27 +33,36 @@ class SendEmailJob < ApplicationJob
         subject: { data: payload[:subject] || "(no subject)" },
         body: {
           text: { data: payload[:body_text] || "" },
-          html: { data: payload[:body_html] || payload[:body_text] || "" },
+          html: { data: build_html_body(payload) },
         },
       }
     )
 
-    # Save outbound message to conversation
-    if payload[:conversation_id].present?
-      conversation = Conversation.find_by(id: payload[:conversation_id])
-      conversation&.messages&.create!(
-        role: "assistant",
-        content: payload[:body_text] || payload[:body_html] || "",
-        direction: "outbound",
-        channel: "email",
-        metadata: {
-          to: payload[:to],
-          cc: payload[:cc],
-          bcc: payload[:bcc],
-          subject: payload[:subject],
-        }
-      )
+    # Save outbound message to an email conversation (NOT internal chat)
+    email_conversation = Conversation.find_or_create_by!(
+      agent_id: agent.id,
+      organization_id: org.id,
+      kind: "external",
+      contact_identifier: Array(payload[:to]).first
+    ) do |c|
+      c.contact_email = Array(payload[:to]).first
+      c.contact_name = Array(payload[:to]).first
+      c.subject = payload[:subject]
+      c.status = "active"
     end
+
+    email_conversation.messages.create!(
+      role: "assistant",
+      content: payload[:body_text] || payload[:body_html] || "",
+      direction: "outbound",
+      channel: "email",
+      metadata: {
+        to: payload[:to],
+        cc: payload[:cc],
+        bcc: payload[:bcc],
+        subject: payload[:subject],
+      }
+    )
 
     AuditLog.create!(
       organization: org, agent: agent,
@@ -74,5 +83,29 @@ class SendEmailJob < ApplicationJob
       output: { error: e.message },
       status: "failed"
     )
+  end
+
+  private
+
+  def build_html_body(payload)
+    # If explicit HTML provided, use it
+    return payload[:body_html] if payload[:body_html].present?
+
+    # Convert plain text to styled HTML
+    text = payload[:body_text] || ""
+    escaped = ERB::Util.html_escape(text)
+    # Convert newlines to <br>, preserve double newlines as paragraph breaks
+    html_content = escaped
+      .gsub(/\n\n/, "</p><p style=\"margin: 0 0 1em 0;\">")
+      .gsub(/\n/, "<br>")
+
+    <<~HTML
+      <!DOCTYPE html>
+      <html>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p style="margin: 0 0 1em 0;">#{html_content}</p>
+      </body>
+      </html>
+    HTML
   end
 end

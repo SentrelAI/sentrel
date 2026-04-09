@@ -8,6 +8,22 @@ import { Thread } from "@/components/assistant-ui/thread"
 
 const GATEWAY_URL = "ws://localhost:3300"
 
+interface PendingEmail {
+  approvalId: number
+  to: string
+  cc?: string[]
+  bcc?: string[]
+  subject: string
+  body_text: string
+  from_address: string
+  from_name: string
+  status?: string
+}
+
+// Encode approval data as a special marker in the response text
+const APPROVAL_MARKER = "<!--EMAIL_APPROVAL:"
+const APPROVAL_MARKER_END = ":EMAIL_APPROVAL-->"
+
 function createAgentAdapter(agentId: number): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
@@ -19,9 +35,9 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 
       const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 
-      // Connect to engine gateway
       const ws = new WebSocket(GATEWAY_URL)
       let responseText = ""
+      let approvalData: PendingEmail | null = null
       let done = false
       let resolveResponse: (value: string) => void
       let rejectResponse: (reason: Error) => void
@@ -36,10 +52,16 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
           const data = JSON.parse(event.data)
           if (data.type === "text_delta") {
             responseText = data.text
+          } else if (data.type === "pending_approval" && data.toolName === "send_email") {
+            approvalData = { approvalId: data.approvalId, ...data.toolInput }
           } else if (data.type === "done") {
             responseText = data.content || responseText
+            // Append approval marker to response if we got one
+            if (approvalData) {
+              responseText += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
+            }
             done = true
-            ws.close()
+            setTimeout(() => ws.close(), 100)
             resolveResponse(responseText)
           } else if (data.type === "error") {
             done = true
@@ -58,13 +80,11 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 
       abortSignal?.addEventListener("abort", () => { ws.close(); clearTimeout(timeout) })
 
-      // Wait for WS to open, then send message via Rails
       await new Promise<void>((resolve) => {
         ws.onopen = () => resolve()
-        setTimeout(resolve, 3000) // fallback if WS doesn't connect
+        setTimeout(resolve, 3000)
       })
 
-      // Send via Rails webhook
       await fetch("/webhooks/web", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
@@ -72,7 +92,8 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
         signal: abortSignal,
       })
 
-      // Wait for final response from WebSocket
+      yield { content: [{ type: "text" as const, text: "" }] }
+
       try {
         const finalText = await responsePromise
         clearTimeout(timeout)
@@ -88,16 +109,41 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 interface AgentChatProps {
   agentId: number
   agentName: string
-  initialMessages?: { role: string; content: string; created_at: string }[]
+  initialMessages?: { id?: number; role: string; content: string; created_at: string }[]
+  approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
 }
 
-export function AgentChat({ agentId, agentName, initialMessages = [] }: AgentChatProps) {
+export function AgentChat({ agentId, agentName, initialMessages = [], approvalsByMessage = {} }: AgentChatProps) {
   const adapter = useRef(createAgentAdapter(agentId)).current
   const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
 
+  // Inject approval markers into the specific messages they belong to
+  const messagesWithApprovals = sorted.map((m) => {
+    const msgId = String((m as any).id || "")
+    const approvals = approvalsByMessage[msgId]
+    if (m.role === "assistant" && approvals && approvals.length > 0) {
+      const markers = approvals.map((a) => {
+        const emailData: PendingEmail = {
+          approvalId: a.id,
+          to: a.tool_input.to as string,
+          cc: a.tool_input.cc as string[],
+          bcc: a.tool_input.bcc as string[],
+          subject: a.tool_input.subject as string,
+          body_text: a.tool_input.body_text as string,
+          from_address: a.tool_input.from_address as string,
+          from_name: a.tool_input.from_name as string,
+          status: a.status,
+        }
+        return APPROVAL_MARKER + JSON.stringify(emailData) + APPROVAL_MARKER_END
+      }).join("\n")
+      return { ...m, content: m.content + "\n\n" + markers }
+    }
+    return m
+  })
+
   const runtime = useLocalRuntime(adapter, {
-    initialMessages: sorted.length > 0
-      ? sorted.map((m) => ({
+    initialMessages: messagesWithApprovals.length > 0
+      ? messagesWithApprovals.map((m) => ({
           role: m.role as "user" | "assistant",
           content: [{ type: "text" as const, text: m.content }],
         }))
@@ -110,5 +156,102 @@ export function AgentChat({ agentId, agentName, initialMessages = [] }: AgentCha
         <Thread />
       </div>
     </AssistantRuntimeProvider>
+  )
+}
+
+// Extract and render approval cards from message text
+export function parseMessageWithApprovals(text: string): { cleanText: string; approvals: PendingEmail[] } {
+  const approvals: PendingEmail[] = []
+  let cleanText = text
+
+  const regex = new RegExp(`${APPROVAL_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(.+?)${APPROVAL_MARKER_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g')
+  cleanText = text.replace(regex, (_, json) => {
+    try { approvals.push(JSON.parse(json)) } catch {}
+    return ""
+  }).trim()
+
+  return { cleanText, approvals }
+}
+
+function InlineEmailApproval({ email, onDone }: { email: PendingEmail; onDone: () => void }) {
+  const [acting, setActing] = useState<"approving" | "rejecting" | null>(null)
+  const [result, setResult] = useState<"approved" | "rejected" | null>(null)
+
+  const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+
+  async function handleAction(status: "approved" | "rejected") {
+    setActing(status === "approved" ? "approving" : "rejecting")
+    try {
+      await fetch(`/pending_approvals/${email.approvalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ status }),
+      })
+      setResult(status)
+      setTimeout(onDone, 2000)
+    } catch {
+      setActing(null)
+    }
+  }
+
+  if (result) {
+    return (
+      <div className={`rounded-lg border p-3 text-sm ${result === "approved" ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"}`}>
+        {result === "approved" ? "Email approved and sending..." : "Email rejected."}
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border bg-white shadow-lg p-4 space-y-3 animate-slide-up">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Mail className="size-3.5" />
+        Email draft — review before sending
+      </div>
+
+      <div className="space-y-1 text-xs">
+        <div className="flex gap-2">
+          <span className="font-medium w-10 shrink-0 text-muted-foreground">From</span>
+          <span>{email.from_name} &lt;{email.from_address}&gt;</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-medium w-10 shrink-0 text-muted-foreground">To</span>
+          <span>{Array.isArray(email.to) ? email.to.join(", ") : email.to}</span>
+        </div>
+        {email.cc && email.cc.length > 0 && (
+          <div className="flex gap-2">
+            <span className="font-medium w-10 shrink-0 text-muted-foreground">CC</span>
+            <span>{email.cc.join(", ")}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t pt-2">
+        <p className="font-medium text-sm">{email.subject}</p>
+      </div>
+
+      <div className="border-t pt-2 text-sm text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">
+        {email.body_text}
+      </div>
+
+      <div className="flex gap-2 pt-1 border-t">
+        <button
+          onClick={() => handleAction("approved")}
+          disabled={acting !== null}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--color-ink)] text-white text-xs font-medium hover:bg-[var(--color-ink-soft)] transition-colors disabled:opacity-50"
+        >
+          {acting === "approving" ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+          Approve & Send
+        </button>
+        <button
+          onClick={() => handleAction("rejected")}
+          disabled={acting !== null}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50"
+        >
+          {acting === "rejecting" ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
+          Reject
+        </button>
+      </div>
+    </div>
   )
 }
