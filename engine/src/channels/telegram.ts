@@ -33,11 +33,19 @@ export async function startTelegramPolling(): Promise<void> {
 }
 
 async function poll(botToken: string, orgId: number): Promise<void> {
+  let consecutiveErrors = 0;
+
   while (pollingActive) {
     try {
       const url = `https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`;
       const res = await fetch(url);
       const data = await res.json() as { ok: boolean; result: TelegramUpdate[] };
+
+      // Reset error counter on success
+      if (consecutiveErrors > 0) {
+        logger.info(`Telegram: recovered after ${consecutiveErrors} errors`);
+        consecutiveErrors = 0;
+      }
 
       if (data.ok && data.result.length > 0) {
         for (const update of data.result) {
@@ -46,8 +54,15 @@ async function poll(botToken: string, orgId: number): Promise<void> {
         }
       }
     } catch (err) {
-      logger.error("Telegram poll error", { error: (err as Error).message });
-      await sleep(5000); // back off on error
+      consecutiveErrors++;
+      // Only log every 10th error to reduce spam during outages
+      if (consecutiveErrors === 1 || consecutiveErrors % 10 === 0) {
+        logger.warn(`Telegram poll error (${consecutiveErrors} consecutive)`, { error: (err as Error).message });
+      }
+      // Exponential backoff: 5s, 10s, 20s, 40s, max 60s
+      const backoff = Math.min(5000 * Math.pow(2, Math.min(consecutiveErrors - 1, 4)), 60000);
+      await sleep(backoff);
+      continue;
     }
   }
 }

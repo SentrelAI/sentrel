@@ -16,9 +16,14 @@ When you need to send an email, write a JSON file to `workspace/outbox/` with a 
   "bcc": [],
   "subject": "Your subject line",
   "body_text": "Plain text version of your email",
-  "body_html": "<p>HTML version (optional, falls back to body_text)</p>"
+  "body_html": "<p>HTML version (optional, falls back to body_text)</p>",
+  "attachments": ["report.pdf", "screenshot.png"]
 }
 ```
+
+### Attachments
+
+To attach files, list their paths relative to your workspace directory in the `attachments` array. The system will upload them to the recipient. Example: if you have `workspace/reports/q4.pdf`, use `"attachments": ["reports/q4.pdf"]`.
 
 ## Rules
 

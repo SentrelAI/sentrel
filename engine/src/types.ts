@@ -87,6 +87,7 @@ export interface JobData {
     from?: string;
     from_name?: string;
     to?: string;
+    cc?: string[];
     subject?: string;
     body?: string;
     instruction?: string;
