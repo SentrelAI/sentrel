@@ -11,9 +11,16 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # API for engine→Rails (blob uploads, etc.)
+  namespace :api do
+    resources :blobs, only: [:create]
+  end
+
   # Webhook gateway (external services + dashboard chat)
   scope :webhooks do
     post :email, to: "webhooks#email"
+    post :email_bounces, to: "webhooks#email_bounces"
+    post :email_complaints, to: "webhooks#email_complaints"
     post :slack, to: "webhooks#slack"
     post :whatsapp, to: "webhooks#whatsapp"
     post :sms, to: "webhooks#sms"

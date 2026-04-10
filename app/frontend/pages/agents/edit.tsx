@@ -30,6 +30,7 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
     identity_md: agent.identity_md || "",
     personality_md: agent.personality_md || "",
     instructions_md: agent.instructions_md || "",
+    email_signature_md: (agent as any).email_signature_md || "",
     heartbeat_enabled: agent.heartbeat_enabled,
     heartbeat_interval_minutes: agent.heartbeat_interval_minutes,
     ai_config: {
@@ -104,6 +105,22 @@ export default function AgentEdit({ agent }: { agent: Agent }) {
                 onChange={(e) => setData("instructions_md", e.target.value)}
               />
             </div>
+          </div>
+        </section>
+
+        {/* Email Signature */}
+        <section>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Email Signature</h2>
+          <div className="rounded-lg border border-border p-4 space-y-2">
+            <Label htmlFor="email_signature_md">Signature appended to outgoing emails</Label>
+            <textarea
+              id="email_signature_md"
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
+              placeholder={`--\n${agent.name}\n${agent.role} @ Alchemy`}
+              value={data.email_signature_md}
+              onChange={(e) => setData("email_signature_md", e.target.value)}
+            />
+            <p className="text-[10px] text-muted-foreground">If empty, a default signature with name and email will be used</p>
           </div>
         </section>
 

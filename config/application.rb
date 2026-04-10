@@ -8,7 +8,6 @@ require "active_record/railtie"
 require "active_storage/engine"
 require "action_controller/railtie"
 require "action_mailer/railtie"
-require "action_mailbox/engine"
 require "action_text/engine"
 require "action_view/railtie"
 require "action_cable/engine"
@@ -42,5 +41,8 @@ module Alchemy
     # Use Sidekiq for background jobs
     config.active_job.queue_adapter = :sidekiq
     config.hosts << "unevolved-toccara-intermastoid.ngrok-free.dev"
+
+    # Rate limiting / abuse protection
+    config.middleware.use Rack::Attack
   end
 end

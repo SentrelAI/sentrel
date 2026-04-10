@@ -117,12 +117,24 @@ function PendingCard({ approval, onAction }: { approval: Approval; onAction: (id
         <div className="px-4 py-3 space-y-2.5">
           <div className="space-y-1 text-xs">
             <div className="flex gap-3">
-              <span className="w-8 text-muted-foreground shrink-0">To</span>
+              <span className="w-10 text-muted-foreground shrink-0">To</span>
               <span className="font-medium">{Array.isArray(emailData.to) ? (emailData.to as string[]).join(", ") : emailData.to as string}</span>
             </div>
+            {Array.isArray(emailData.cc) && (emailData.cc as string[]).length > 0 && (
+              <div className="flex gap-3">
+                <span className="w-10 text-muted-foreground shrink-0">CC</span>
+                <span>{(emailData.cc as string[]).join(", ")}</span>
+              </div>
+            )}
+            {Array.isArray(emailData.bcc) && (emailData.bcc as string[]).length > 0 && (
+              <div className="flex gap-3">
+                <span className="w-10 text-muted-foreground shrink-0">BCC</span>
+                <span>{(emailData.bcc as string[]).join(", ")}</span>
+              </div>
+            )}
             {emailData.subject && (
               <div className="flex gap-3">
-                <span className="w-8 text-muted-foreground shrink-0">Subj</span>
+                <span className="w-10 text-muted-foreground shrink-0">Subj</span>
                 <span className="font-medium">{emailData.subject as string}</span>
               </div>
             )}
@@ -186,16 +198,28 @@ function HistoryRow({ approval }: { approval: Approval }) {
         <div className="px-4 py-3 border-t border-border space-y-2">
           <div className="space-y-1 text-xs">
             <div className="flex gap-3">
-              <span className="w-8 text-muted-foreground shrink-0">From</span>
+              <span className="w-10 text-muted-foreground shrink-0">From</span>
               <span>{emailData.from_name as string} &lt;{emailData.from_address as string}&gt;</span>
             </div>
             <div className="flex gap-3">
-              <span className="w-8 text-muted-foreground shrink-0">To</span>
+              <span className="w-10 text-muted-foreground shrink-0">To</span>
               <span>{Array.isArray(emailData.to) ? (emailData.to as string[]).join(", ") : emailData.to as string}</span>
             </div>
+            {Array.isArray(emailData.cc) && (emailData.cc as string[]).length > 0 && (
+              <div className="flex gap-3">
+                <span className="w-10 text-muted-foreground shrink-0">CC</span>
+                <span>{(emailData.cc as string[]).join(", ")}</span>
+              </div>
+            )}
+            {Array.isArray(emailData.bcc) && (emailData.bcc as string[]).length > 0 && (
+              <div className="flex gap-3">
+                <span className="w-10 text-muted-foreground shrink-0">BCC</span>
+                <span>{(emailData.bcc as string[]).join(", ")}</span>
+              </div>
+            )}
             {emailData.subject && (
               <div className="flex gap-3">
-                <span className="w-8 text-muted-foreground shrink-0">Subj</span>
+                <span className="w-10 text-muted-foreground shrink-0">Subj</span>
                 <span className="font-medium">{emailData.subject as string}</span>
               </div>
             )}

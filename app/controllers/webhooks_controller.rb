@@ -1,83 +1,52 @@
 class WebhooksController < ApplicationController
   skip_before_action :verify_authenticity_token
   skip_before_action :set_tenant
-  before_action :authenticate_user!, only: []
 
   # POST /webhooks/email
   def email
-    # Handle SNS subscription confirmation
-    if request.headers["x-amz-sns-message-type"] == "SubscriptionConfirmation"
-      body = JSON.parse(request.body.read)
-      Net::HTTP.get(URI(body["SubscribeURL"]))
-      return head :ok
+    case sns_message_type
+    when "SubscriptionConfirmation"
+      confirm_sns_subscription
+    when "Notification"
+      notification = parse_sns_message
+      Email::InboundProcessor.new(notification).call if notification
+      head :ok
+    else
+      # Fallback: simple form-encoded format (for testing without SNS)
+      process_simple_inbound
     end
+  end
 
-    # Handle SNS notification (SES inbound email)
-    if request.headers["x-amz-sns-message-type"] == "Notification"
-      sns_body = JSON.parse(request.body.read)
-      ses_notification = JSON.parse(sns_body["Message"])
-
-      # Parse SES notification
-      mail_info = ses_notification["mail"]
-      from = mail_info["source"]
-      from_name = mail_info.dig("commonHeaders", "from")&.first
-      subject = mail_info.dig("commonHeaders", "subject")
-      body_text = extract_email_body(ses_notification)
-      message_id = mail_info["messageId"]
-
-      Array(mail_info["destination"]).each do |to_addr|
-        agent = find_agent_by_channel("email", "address", to_addr)
-        next unless agent
-
-        # Use threading logic: find or create email thread
-        conversation = find_or_create_email_thread(agent, from, from_name, subject, message_id)
-
-        # Save inbound message
-        conversation.messages.create!(
-          role: "user",
-          content: body_text,
-          direction: "inbound",
-          channel: "email",
-          metadata: { from: from, from_name: from_name, to: to_addr, subject: subject, message_id: message_id }
-        )
-
-        enqueue(agent, "email", {
-          from: from,
-          from_name: from_name,
-          subject: subject,
-          body: body_text,
-          conversationId: conversation.id,
-        })
-      end
-      return head :ok
+  # POST /webhooks/email_bounces
+  def email_bounces
+    case sns_message_type
+    when "SubscriptionConfirmation"
+      confirm_sns_subscription
+    when "Notification"
+      notification = parse_sns_message
+      Email::BounceHandler.new(notification).call if notification
+      head :ok
+    else
+      head :ok
     end
+  end
 
-    # Fallback: simple format (for testing)
-    agent = find_agent_by_channel("email", "address", params[:to])
-    return head :not_found unless agent
-
-    conversation = find_or_create_email_thread(agent, params[:from], params[:from_name], params[:subject])
-    conversation.messages.create!(
-      role: "user",
-      content: params[:text] || params[:body] || params[:html] || "",
-      direction: "inbound",
-      channel: "email",
-      metadata: { from: params[:from], from_name: params[:from_name], subject: params[:subject] }
-    )
-
-    enqueue(agent, "email", {
-      from: params[:from],
-      from_name: params[:from_name],
-      subject: params[:subject],
-      body: params[:text] || params[:body] || params[:html],
-      conversationId: conversation.id,
-    })
-    head :ok
+  # POST /webhooks/email_complaints
+  def email_complaints
+    case sns_message_type
+    when "SubscriptionConfirmation"
+      confirm_sns_subscription
+    when "Notification"
+      notification = parse_sns_message
+      Email::ComplaintHandler.new(notification).call if notification
+      head :ok
+    else
+      head :ok
+    end
   end
 
   # POST /webhooks/slack
   def slack
-    # Slack URL verification challenge
     if params[:type] == "url_verification"
       return render json: { challenge: params[:challenge] }
     end
@@ -152,27 +121,24 @@ class WebhooksController < ApplicationController
     agent = Agent.find(params[:agent_id])
     return head :not_found unless agent
 
-    # Create/find internal conversation with user_id
     conversation = agent.conversations.find_or_create_by!(
       organization: agent.organization,
       kind: "internal",
       user: current_user,
-      contact_identifier: current_user.email
+      contact_identifier: current_user.email,
     ) do |c|
       c.contact_name = current_user.name
       c.contact_email = current_user.email
       c.status = "active"
     end
 
-    # Save user's message immediately (so it shows in chat)
     conversation.messages.create!(
       role: "user",
       content: params[:body],
       direction: "inbound",
-      channel: "web"
+      channel: "web",
     )
 
-    # Push to engine with conversation ID
     enqueue(agent, "web", {
       from: current_user.email,
       from_name: current_user.name,
@@ -184,15 +150,78 @@ class WebhooksController < ApplicationController
 
   private
 
+  # ── SNS helpers ────────────────────────────────────────────────
+
+  def sns_message_type
+    request.headers["x-amz-sns-message-type"]
+  end
+
+  def parse_sns_message
+    raw = request.body.read
+    sns_body = Email::SnsVerifier.verify(raw)
+    return nil unless sns_body
+
+    JSON.parse(sns_body["Message"])
+  rescue JSON::ParserError => e
+    Rails.logger.error "Invalid SNS Message field: #{e.message}"
+    nil
+  end
+
+  def confirm_sns_subscription
+    raw = request.body.read
+    body = Email::SnsVerifier.verify(raw)
+    return head :forbidden unless body
+
+    # Only confirm subscriptions to our known SNS topics
+    topic_arn = body["TopicArn"].to_s
+    unless topic_arn.start_with?("arn:aws:sns:") && topic_arn.include?("alchemy-")
+      Rails.logger.warn "Refusing SNS subscription to unknown topic: #{topic_arn}"
+      return head :forbidden
+    end
+
+    Net::HTTP.get(URI(body["SubscribeURL"]))
+    head :ok
+  end
+
+  # ── Simple inbound (testing fallback) ──────────────────────────
+
+  def process_simple_inbound
+    agent = find_agent_by_channel("email", "address", params[:to])
+    return head :not_found unless agent
+
+    conversation = Email::Threading.find_or_create(
+      agent: agent,
+      contact_email: params[:from],
+      contact_name: params[:from_name],
+      subject: params[:subject],
+    )
+
+    conversation.messages.create!(
+      role: "user",
+      content: params[:text] || params[:body] || params[:html] || "",
+      direction: "inbound",
+      channel: "email",
+      metadata: { from: params[:from], from_name: params[:from_name], subject: params[:subject] },
+    )
+
+    Email::Queue.enqueue_inbound(agent, conversation, {
+      from: params[:from],
+      from_name: params[:from_name],
+      subject: params[:subject],
+      body: params[:text] || params[:body] || params[:html],
+    })
+    head :ok
+  end
+
+  # ── Channel agent lookup ───────────────────────────────────────
+
   def find_agent_by_channel(channel_type, config_key, value)
     return nil unless value.present?
 
-    channel_config = ChannelConfig
+    ChannelConfig
       .where(channel_type: channel_type, enabled: true)
       .where("config->>? = ?", config_key, value)
-      .first
-
-    channel_config&.agent
+      .first&.agent
   end
 
   def find_agent_by_channel_config(channel_type, &block)
@@ -203,72 +232,13 @@ class WebhooksController < ApplicationController
   end
 
   def valid_twilio_request?
-    return true unless ENV["TWILIO_AUTH_TOKEN"].present? # skip in dev if not configured
+    return true unless ENV["TWILIO_AUTH_TOKEN"].present?
 
     validator = Twilio::Security::RequestValidator.new(ENV["TWILIO_AUTH_TOKEN"])
-    url = request.original_url
-    validator.validate(url, request.POST, request.headers["X-Twilio-Signature"] || "")
+    validator.validate(request.original_url, request.POST, request.headers["X-Twilio-Signature"] || "")
   end
 
-  def find_or_create_email_thread(agent, from_address, from_name, subject, message_id = nil)
-    # Clean the from_name (remove email if included like "Name <email>")
-    clean_name = from_name&.gsub(/<[^>]+>/, "")&.strip || from_address
-
-    # Try to find by in_reply_to / message_id first
-    if message_id.present?
-      existing = agent.conversations.joins(:messages)
-        .where(kind: "external")
-        .where("messages.metadata->>'message_id' = ?", message_id)
-        .first
-      return existing if existing
-    end
-
-    # Fall back to clean subject match (try with contact first, then without)
-    clean_subject = subject&.gsub(/^(Re|Fwd|Fw):\s*/i, "")&.strip
-    if clean_subject.present?
-      # Try matching by contact + subject
-      existing = agent.conversations
-        .where(kind: "external")
-        .where("contact_identifier = ? OR contact_email = ?", from_address, from_address)
-        .where("subject ILIKE ?", "%#{clean_subject}%")
-        .order(updated_at: :desc)
-        .first
-      return existing if existing
-
-      # Try matching by subject only (same agent, any contact — e.g. CC'd conversations)
-      existing = agent.conversations
-        .where(kind: "external")
-        .where("subject ILIKE ?", clean_subject)
-        .order(updated_at: :desc)
-        .first
-      return existing if existing
-    end
-
-    agent.conversations.create!(
-      organization: agent.organization,
-      kind: "external",
-      contact_identifier: from_address,
-      contact_name: clean_name,
-      contact_email: from_address,
-      subject: subject,
-      status: "active"
-    )
-  end
-
-  def extract_email_body(ses_notification)
-    # If content is included inline (UTF-8 encoding)
-    if ses_notification["content"].present?
-      # Parse raw email content
-      mail = Mail.new(ses_notification["content"])
-      return mail.text_part&.decoded || mail.html_part&.decoded || mail.body.decoded
-    end
-
-    # Fallback: common headers may have snippet
-    ses_notification.dig("mail", "commonHeaders", "subject") || ""
-  rescue => e
-    Rails.logger.error "Failed to parse email body: #{e.message}"
-    ""
-  end
+  # ── Generic enqueue (non-email channels) ───────────────────────
 
   def enqueue(agent, channel, payload)
     conversation_id = payload.delete(:conversationId)

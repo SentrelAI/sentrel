@@ -108,7 +108,7 @@ class AgentsController < ApplicationController
   def agent_params
     params.require(:agent).permit(
       :name, :slug, :role, :status, :manager_id,
-      :identity_md, :personality_md, :instructions_md,
+      :identity_md, :personality_md, :instructions_md, :email_signature_md,
       :heartbeat_enabled, :heartbeat_interval_minutes,
       permissions: {}
     )
@@ -121,7 +121,7 @@ class AgentsController < ApplicationController
   def agent_json(agent)
     agent.as_json(only: [
       :id, :name, :slug, :role, :status,
-      :identity_md, :personality_md, :instructions_md, :memory_md,
+      :identity_md, :personality_md, :instructions_md, :memory_md, :email_signature_md,
       :heartbeat_enabled, :heartbeat_interval_minutes, :permissions,
       :created_at, :updated_at
     ]).merge(

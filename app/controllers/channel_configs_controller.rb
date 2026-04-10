@@ -176,30 +176,49 @@ class ChannelConfigsController < ApplicationController
   end
 
   def ses_client
-    @ses_client ||= Aws::SES::Client.new(region: ENV.fetch("AWS_REGION", "us-east-1"))
+    @ses_client ||= SesClient.for(current_tenant)
   end
 
   def sns_client
-    @sns_client ||= Aws::SNS::Client.new(region: ENV.fetch("AWS_REGION", "us-east-1"))
+    @sns_client ||= SesClient.sns_for(current_tenant)
   end
 
   def setup_ses_inbound(address)
     region = ENV.fetch("AWS_REGION", "us-east-1")
     account_id = ENV["AWS_ACCOUNT_ID"]
 
-    # 1. Create or find SNS topic for this org
-    topic_name = "alchemy-email-#{current_tenant.slug}"
-    topic = sns_client.create_topic(name: topic_name)
-    topic_arn = topic.topic_arn
+    # 1. Create or find SNS topics for this org (inbound, bounce, complaint)
+    topic_arn = current_tenant.email_sns_topic_arn.presence || begin
+      arn = sns_client.create_topic(name: "alchemy-email-#{current_tenant.slug}").topic_arn
+      current_tenant.update!(email_sns_topic_arn: arn)
+      arn
+    end
 
-    # 2. Subscribe webhook URL to the topic (idempotent — SNS dedupes)
-    webhook_url = "#{webhook_base_url}/webhooks/email"
-    sns_client.subscribe(
-      topic_arn: topic_arn,
-      protocol: "https",
-      endpoint: webhook_url,
-      attributes: { "RawMessageDelivery" => "false" }
-    )
+    bounce_arn = current_tenant.email_bounce_topic_arn.presence || begin
+      arn = sns_client.create_topic(name: "alchemy-bounces-#{current_tenant.slug}").topic_arn
+      current_tenant.update!(email_bounce_topic_arn: arn)
+      arn
+    end
+
+    complaint_arn = current_tenant.email_complaint_topic_arn.presence || begin
+      arn = sns_client.create_topic(name: "alchemy-complaints-#{current_tenant.slug}").topic_arn
+      current_tenant.update!(email_complaint_topic_arn: arn)
+      arn
+    end
+
+    # 2. Subscribe webhook URLs (idempotent — SNS dedupes)
+    sns_client.subscribe(topic_arn: topic_arn, protocol: "https", endpoint: "#{webhook_base_url}/webhooks/email")
+    sns_client.subscribe(topic_arn: bounce_arn, protocol: "https", endpoint: "#{webhook_base_url}/webhooks/email_bounces")
+    sns_client.subscribe(topic_arn: complaint_arn, protocol: "https", endpoint: "#{webhook_base_url}/webhooks/email_complaints")
+
+    # Wire bounce/complaint topics to the SES identity
+    domain = address.split("@").last
+    begin
+      ses_client.set_identity_notification_topic(identity: domain, notification_type: "Bounce", sns_topic: bounce_arn)
+      ses_client.set_identity_notification_topic(identity: domain, notification_type: "Complaint", sns_topic: complaint_arn)
+    rescue => e
+      Rails.logger.warn "Failed to set SES notification topics: #{e.message}"
+    end
 
     # 3. Ensure receipt rule set exists
     rule_set_name = "alchemy-inbound"

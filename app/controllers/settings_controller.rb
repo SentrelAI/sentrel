@@ -3,7 +3,7 @@ class SettingsController < ApplicationController
 
   def show
     render inertia: "settings/show", props: {
-      organization: current_tenant.as_json(only: [:id, :name, :slug, :email_domain, :email_domain_verified, :context_md]),
+      organization: current_tenant.as_json(only: [:id, :name, :slug, :email_domain, :email_domain_verified, :context_md, :email_provider, :email_aws_region]),
       members: current_tenant.users.order(:name).as_json(only: [:id, :name, :email, :role, :created_at])
     }
   end
@@ -21,7 +21,7 @@ class SettingsController < ApplicationController
     domain = current_tenant.email_domain
     return render json: { error: "No domain set" }, status: :unprocessable_entity unless domain.present?
 
-    ses = Aws::SES::Client.new
+    ses = SesClient.for(current_tenant)
     result = ses.verify_domain_identity(domain: domain)
     dkim = ses.verify_domain_dkim(domain: domain)
 
@@ -40,7 +40,7 @@ class SettingsController < ApplicationController
     domain = current_tenant.email_domain
     return render json: { verified: false, status: "no_domain" } unless domain.present?
 
-    ses = Aws::SES::Client.new
+    ses = SesClient.for(current_tenant)
     result = ses.get_identity_verification_attributes(identities: [domain])
     attrs = result.verification_attributes[domain]
 
@@ -55,10 +55,11 @@ class SettingsController < ApplicationController
   private
 
   def organization_params
-    params.require(:organization).permit(:name, :email_domain, :context_md)
+    params.require(:organization).permit(:name, :email_domain, :context_md, :email_provider, :email_aws_region)
   end
 
   def build_dns_records(domain, verification_token, dkim_tokens)
+    region = current_tenant.email_aws_region.presence || ENV.fetch("AWS_REGION", "us-east-1")
     records = [
       { type: "TXT", name: "_amazonses.#{domain}", value: verification_token, purpose: "Domain verification" },
     ]
@@ -66,7 +67,7 @@ class SettingsController < ApplicationController
       records << { type: "CNAME", name: "#{token}._domainkey.#{domain}", value: "#{token}.dkim.amazonses.com", purpose: "DKIM signing" }
     end
     records << { type: "TXT", name: domain, value: "v=spf1 include:amazonses.com ~all", purpose: "SPF" }
-    records << { type: "MX", name: domain, value: "10 inbound-smtp.#{ENV.fetch('AWS_REGION', 'us-east-1')}.amazonaws.com", purpose: "Inbound email" }
+    records << { type: "MX", name: domain, value: "10 inbound-smtp.#{region}.amazonaws.com", purpose: "Inbound email" }
     records
   end
 end

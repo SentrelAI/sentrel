@@ -1,0 +1,33 @@
+class Api::BlobsController < ApplicationController
+  skip_before_action :verify_authenticity_token
+  skip_before_action :set_tenant
+  before_action :authenticate_engine!
+
+  # POST /api/blobs
+  # Used by the engine to upload files (e.g. email attachments)
+  def create
+    file = params[:file]
+    return render json: { error: "No file" }, status: :bad_request unless file
+
+    blob = ActiveStorage::Blob.create_and_upload!(
+      io: file.tempfile,
+      filename: file.original_filename,
+      content_type: file.content_type,
+    )
+
+    render json: {
+      signed_id: blob.signed_id,
+      filename: blob.filename.to_s,
+      content_type: blob.content_type,
+      byte_size: blob.byte_size,
+    }
+  end
+
+  private
+
+  def authenticate_engine!
+    secret = ENV["ENGINE_API_SECRET"]
+    return head :unauthorized unless secret.present?
+    return head :unauthorized unless request.headers["X-Engine-Secret"] == secret
+  end
+end

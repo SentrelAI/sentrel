@@ -10,18 +10,9 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_09_210144) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_10_195649) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
-
-  create_table "action_mailbox_inbound_emails", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "message_checksum", null: false
-    t.string "message_id", null: false
-    t.integer "status", default: 0, null: false
-    t.datetime "updated_at", null: false
-    t.index ["message_id", "message_checksum"], name: "index_action_mailbox_inbound_emails_uniqueness", unique: true
-  end
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
@@ -53,6 +44,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_09_210144) do
 
   create_table "agents", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.text "email_signature_md"
     t.boolean "heartbeat_enabled", default: true
     t.integer "heartbeat_interval_minutes", default: 30
     t.text "identity_md"
@@ -132,6 +124,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_09_210144) do
     t.index ["user_id"], name: "index_conversations_on_user_id"
   end
 
+  create_table "email_events", force: :cascade do |t|
+    t.bigint "agent_id"
+    t.string "bounce_subtype"
+    t.string "bounce_type"
+    t.datetime "created_at", null: false
+    t.text "diagnostic"
+    t.string "event_type", null: false
+    t.bigint "organization_id", null: false
+    t.jsonb "raw", default: {}
+    t.string "recipient"
+    t.datetime "updated_at", null: false
+    t.index ["agent_id"], name: "index_email_events_on_agent_id"
+    t.index ["organization_id"], name: "index_email_events_on_organization_id"
+    t.index ["recipient", "event_type"], name: "index_email_events_on_recipient_and_event_type"
+  end
+
+  create_table "email_suppressions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "email_address", null: false
+    t.bigint "organization_id", null: false
+    t.string "reason", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "email_address"], name: "index_email_suppressions_on_organization_id_and_email_address", unique: true
+    t.index ["organization_id"], name: "index_email_suppressions_on_organization_id"
+  end
+
   create_table "instances", force: :cascade do |t|
     t.bigint "agent_id", null: false
     t.string "aws_instance_id"
@@ -169,6 +187,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_09_210144) do
     t.string "role", null: false
     t.jsonb "tool_calls", default: []
     t.datetime "updated_at", null: false
+    t.index "((metadata ->> 'message_id'::text))", name: "index_messages_on_metadata_message_id", where: "(metadata ? 'message_id'::text)"
     t.index ["conversation_id", "created_at"], name: "index_messages_on_conversation_id_and_created_at"
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
   end
@@ -177,8 +196,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_09_210144) do
     t.text "composio_api_key_encrypted"
     t.text "context_md"
     t.datetime "created_at", null: false
+    t.string "email_aws_region", default: "us-east-1"
+    t.string "email_bounce_topic_arn"
+    t.string "email_complaint_topic_arn"
     t.string "email_domain"
     t.boolean "email_domain_verified", default: false
+    t.string "email_provider", default: "ses_managed"
+    t.string "email_sns_topic_arn"
     t.string "name", null: false
     t.string "slug", null: false
     t.datetime "updated_at", null: false
@@ -270,6 +294,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_09_210144) do
   add_foreign_key "conversations", "agents"
   add_foreign_key "conversations", "organizations"
   add_foreign_key "conversations", "users"
+  add_foreign_key "email_events", "agents"
+  add_foreign_key "email_events", "organizations"
+  add_foreign_key "email_suppressions", "organizations"
   add_foreign_key "instances", "agents"
   add_foreign_key "integrations", "organizations"
   add_foreign_key "messages", "conversations"
