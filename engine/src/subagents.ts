@@ -1,4 +1,4 @@
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import type { Agent } from "./types.js";
 import { logger } from "./logger.js";
 
@@ -10,7 +10,7 @@ interface AgentDefinition {
 }
 
 export async function buildSubAgentDefinitions(agent: Agent): Promise<Record<string, AgentDefinition>> {
-  const subAgents = await db.getSubAgents(agent.id);
+  const subAgents = await host.getSubAgents(agent.id);
   const definitions: Record<string, AgentDefinition> = {};
 
   for (const sub of subAgents) {

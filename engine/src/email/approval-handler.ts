@@ -1,4 +1,4 @@
-import * as db from "../db.js";
+import { host } from "../host/index.js";
 import { redis } from "../queue.js";
 import { emitDone } from "../gateway.js";
 import { logger } from "../logger.js";
@@ -21,29 +21,14 @@ export async function maybeHandleApprovalResponse(agent: Agent, job: JobData): P
 }
 
 async function applyApproval(agent: Agent, job: JobData, isApproved: boolean): Promise<boolean> {
-  const { rows } = await db.pool.query(
-    `SELECT id, tool_name, tool_input FROM pending_approvals
-     WHERE agent_id = $1 AND status = 'pending'
-     ORDER BY created_at DESC LIMIT 1`,
-    [agent.id],
-  );
+  const approval = await host.getLatestPendingApproval(agent.id);
+  if (!approval) return false;
 
-  if (rows.length === 0) return false;
-
-  const approval = rows[0];
   const newStatus = isApproved ? "approved" : "rejected";
-
-  await db.pool.query(
-    `UPDATE pending_approvals SET status = $1, reviewed_at = NOW(), updated_at = NOW() WHERE id = $2`,
-    [newStatus, approval.id],
-  );
+  await host.updateApprovalStatus(approval.id, newStatus);
 
   if (isApproved && approval.tool_name === "send_email") {
-    const payload = typeof approval.tool_input === "string"
-      ? JSON.parse(approval.tool_input)
-      : approval.tool_input;
-    payload.agent_id = agent.id;
-    payload.org_id = agent.organization_id;
+    const payload = { ...approval.tool_input, agent_id: agent.id, org_id: agent.organization_id };
     await redis.lpush("outbound-email", JSON.stringify(payload));
     logger.info(`Approval #${approval.id} approved via ${job.channel}, email queued`);
   }

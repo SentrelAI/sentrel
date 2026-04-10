@@ -1,6 +1,6 @@
 import { queue } from "./queue.js";
 import { config } from "./config.js";
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import { logger } from "./logger.js";
 
 export async function startScheduler(): Promise<void> {
@@ -12,7 +12,7 @@ export async function startScheduler(): Promise<void> {
 
 async function loadSchedules(): Promise<void> {
   try {
-    const tasks = await db.getScheduledTasks(parseInt(config.employeeId));
+    const tasks = await host.getScheduledTasks(parseInt(config.employeeId));
 
     for (const task of tasks) {
       await queue.add(

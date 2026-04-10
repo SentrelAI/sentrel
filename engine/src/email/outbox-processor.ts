@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { config } from "../config.js";
-import * as db from "../db.js";
+import { host } from "../host/index.js";
 import { redis } from "../queue.js";
 import { emitApproval } from "../gateway.js";
 import { logger } from "../logger.js";
@@ -27,7 +27,7 @@ export async function processOutbox(
 ): Promise<ApprovalResult[]> {
   const results: ApprovalResult[] = [];
 
-  const channels = await db.getChannelConfigs(String(agent.id));
+  const channels = await host.getChannelConfigs(String(agent.id));
   const emailConfig = channels.find((c) => c.channel_type === "email");
 
   if (!emailConfig) {
@@ -122,7 +122,7 @@ async function processOneEmail(
   }
 
   if (permLevel === "draft") {
-    const approvalId = await db.savePendingApproval(
+    const approvalId = await host.savePendingApproval(
       agent.organization_id,
       agent.id,
       "send_email",

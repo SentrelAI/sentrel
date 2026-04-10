@@ -1,5 +1,5 @@
 import { config } from "./config.js";
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import { createWorker } from "./queue.js";
 import { runAgent } from "./agent-runner.js";
 import { syncWorkspace } from "./memory.js";
@@ -21,7 +21,7 @@ async function main() {
   logger.info(`Agent ID: ${config.employeeId}`);
 
   // 1. Load agent from DB
-  const agent = await db.getAgent(config.employeeId);
+  const agent = await host.getAgent(config.employeeId);
   logger.info(`Agent: ${agent.name} (${agent.role})`);
   logger.info(`Model: ${agent.ai_config?.provider}/${agent.ai_config?.model_id}`);
   logger.info(`Organization: ${agent.organization?.name}`);
@@ -35,12 +35,12 @@ async function main() {
   provisionSkills(agent);
 
   // 4. Update agent status
-  await db.updateAgentStatus(agent.id, "running");
+  await host.updateAgentStatus(agent.id, "running");
 
   // 5. Start worker
   const worker = createWorker(async (job) => {
     // Reload agent for latest config
-    const currentAgent = await db.getAgent(config.employeeId);
+    const currentAgent = await host.getAgent(config.employeeId);
     await runAgent(currentAgent, job.data);
     incrementJobCount();
   });
@@ -72,7 +72,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     logger.info("Shutting down...");
-    await db.updateAgentStatus(agent.id, "stopped");
+    await host.updateAgentStatus(agent.id, "stopped");
     await worker.close();
     process.exit(0);
   };

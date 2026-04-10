@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { config } from "./config.js";
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import type { Agent } from "./types.js";
 
 const dataDir = config.dataDir;
@@ -40,7 +40,7 @@ export function readMemoryMd(): string {
 export async function syncMemoryToDb(agentId: number): Promise<void> {
   const memoryMd = readMemoryMd();
   if (memoryMd) {
-    await db.updateAgentMemory(agentId, memoryMd);
+    await host.updateAgentMemory(agentId, memoryMd);
   }
 }
 

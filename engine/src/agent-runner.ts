@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import { syncMemoryToDb } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
 import { buildPrompt, type UserMessageInput } from "./prompt-builder.js";
@@ -42,9 +42,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const isInbound = job.type === "inbound_message";
   let conversation: Conversation | null = null;
   if (job.conversationId) {
-    conversation = await db.getConversation(job.conversationId);
+    conversation = await host.getConversation(job.conversationId);
   } else if (isInbound && job.payload?.from) {
-    conversation = await db.findOrCreateConversation(
+    conversation = await host.findOrCreateConversation(
       agent.id,
       agent.organization_id,
       "external",
@@ -85,7 +85,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         conversation.claude_session_turn_count ?? 0,
       );
       if (summary) {
-        await db.appendConversationSummary(conversation.id, summary);
+        await host.appendConversationSummary(conversation.id, summary);
         logger.info(
           `Conversation ${conversation.id} summarized (${summary.summary.length} chars, range ${summary.turn_range})`
         );
@@ -95,7 +95,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
   // ── Save the inbound user message (NOW it's safe to bump last_message_at) ──
   if (isInbound && conversation && job.payload?.body !== undefined) {
-    await db.saveMessage(
+    await host.saveMessage(
       conversation.id,
       "user",
       job.payload.body || "",
@@ -109,12 +109,12 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // ── Refetch conversation so prompt sees the new summary ──
   // (only needed if we just appended a summary)
   if (conversation && resumeSessionId === null && conversation.claude_session_id) {
-    conversation = await db.getConversation(conversation.id);
+    conversation = await host.getConversation(conversation.id);
   }
 
   // ── Build prompt with refreshed history + summaries ──
   const conversationId = conversation?.id;
-  const history = conversationId ? await db.getConversationHistory(conversationId, 20) : [];
+  const history = conversationId ? await host.getConversationHistory(conversationId, 20) : [];
   const built = buildPrompt(agent, job, history, conversation);
 
   const options = await buildQueryOptions(agent);
@@ -129,7 +129,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // ── Persist captured session ID for future resumption ──
     if (isInbound && conversation && result.capturedSessionId) {
       const newTurnCount = resumeSessionId ? priorTurnCount + 1 : 1;
-      await db.updateConversationSessionId(
+      await host.updateConversationSessionId(
         conversation.id,
         result.capturedSessionId,
         newTurnCount,
@@ -139,7 +139,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // Save the assistant's response so future runs see it in history
     let savedMessageId: number | null = null;
     if (conversationId && result.responseContent) {
-      const saved = await db.saveMessage(
+      const saved = await host.saveMessage(
         conversationId,
         "assistant",
         result.responseContent,
@@ -166,7 +166,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     emitDone(finalResponse);
 
-    await db.saveAuditLog(
+    await host.saveAuditLog(
       agent.organization_id,
       agent.id,
       job.type,
@@ -181,7 +181,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   } catch (err) {
     emitError((err as Error).message);
     logger.error(`Agent run failed`, { error: (err as Error).message });
-    await db.saveAuditLog(
+    await host.saveAuditLog(
       agent.organization_id,
       agent.id,
       job.type,

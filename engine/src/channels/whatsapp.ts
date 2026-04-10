@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import * as db from "../db.js";
+import { host } from "../host/index.js";
 import { onDone } from "../gateway.js";
 import { logger } from "../logger.js";
 
@@ -7,7 +7,7 @@ let pendingReply: { from: string } | null = null;
 let botNumber = "";
 
 export async function initWhatsApp(): Promise<void> {
-  const channelConfigs = await db.getChannelConfigs(config.employeeId);
+  const channelConfigs = await host.getChannelConfigs(config.employeeId);
   const waConfig = channelConfigs.find((c) => c.channel_type === "whatsapp");
 
   if (!waConfig || !waConfig.config?.phone_number) {

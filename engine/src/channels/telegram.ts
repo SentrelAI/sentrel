@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { redis } from "../queue.js";
-import * as db from "../db.js";
+import { host } from "../host/index.js";
 import { onDone } from "../gateway.js";
 import { logger } from "../logger.js";
 
@@ -15,8 +15,8 @@ interface TelegramConfig {
 
 export async function startTelegramPolling(): Promise<void> {
   // Get telegram channel config from DB
-  const agent = await db.getAgent(config.employeeId);
-  const channelConfigs = await db.getChannelConfigs(config.employeeId);
+  const agent = await host.getAgent(config.employeeId);
+  const channelConfigs = await host.getChannelConfigs(config.employeeId);
   const telegramConfig = channelConfigs.find((c) => c.channel_type === "telegram");
 
   if (!telegramConfig || !telegramConfig.config?.bot_token) {

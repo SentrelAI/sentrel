@@ -1,5 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import type { Agent, ConversationSummary } from "./types.js";
@@ -17,7 +17,7 @@ export async function summarizeConversation(
 ): Promise<ConversationSummary | null> {
   // Pull the conversation history. Cap at 100 most recent messages — anything
   // older is already covered by prior summaries.
-  const messages = await db.getConversationHistory(conversationId, 100);
+  const messages = await host.getConversationHistory(conversationId, 100);
   if (messages.length < 5) {
     logger.info(`Summarizer: skipping conversation ${conversationId}, only ${messages.length} messages`);
     return null;

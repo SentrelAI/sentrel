@@ -1,4 +1,4 @@
-import * as db from "./db.js";
+import { host } from "./host/index.js";
 import type { Agent } from "./types.js";
 import { logger } from "./logger.js";
 
@@ -12,7 +12,7 @@ export function createPermissionHook(agent: Agent) {
 
     if (level === "draft") {
       // Create pending approval record
-      await db.savePendingApproval(
+      await host.savePendingApproval(
         agent.organization_id,
         agent.id,
         input.toolName,
@@ -20,7 +20,7 @@ export function createPermissionHook(agent: Agent) {
         `Agent ${agent.name} wants to use ${input.toolName}`
       );
       // Also log for audit trail
-      await db.saveAuditLog(
+      await host.saveAuditLog(
         agent.organization_id,
         agent.id,
         "approval_requested",
@@ -44,7 +44,7 @@ export function createPermissionHook(agent: Agent) {
 
 export function createAuditHook(agent: Agent) {
   return async (input: { toolName: string; toolInput: unknown }, result: unknown) => {
-    await db.saveAuditLog(
+    await host.saveAuditLog(
       agent.organization_id,
       agent.id,
       "tool_call",
