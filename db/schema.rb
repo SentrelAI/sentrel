@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_10_195649) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_10_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -106,20 +106,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_10_195649) do
 
   create_table "conversations", force: :cascade do |t|
     t.bigint "agent_id", null: false
+    t.string "claude_session_id"
+    t.integer "claude_session_turn_count", default: 0, null: false
     t.string "contact_email"
     t.string "contact_identifier"
     t.string "contact_name"
     t.string "contact_phone"
     t.datetime "created_at", null: false
     t.string "kind", default: "external", null: false
+    t.datetime "last_message_at"
     t.bigint "organization_id", null: false
     t.string "status", default: "active", null: false
     t.string "subject"
+    t.jsonb "summaries", default: []
     t.datetime "updated_at", null: false
     t.bigint "user_id"
     t.index ["agent_id", "contact_identifier"], name: "index_conversations_on_agent_id_and_contact_identifier"
     t.index ["agent_id", "kind"], name: "index_conversations_on_agent_id_and_kind"
     t.index ["agent_id"], name: "index_conversations_on_agent_id"
+    t.index ["claude_session_id"], name: "index_conversations_on_claude_session_id"
     t.index ["organization_id"], name: "index_conversations_on_organization_id"
     t.index ["user_id"], name: "index_conversations_on_user_id"
   end
