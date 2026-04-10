@@ -61,8 +61,17 @@ export function buildSystemPrompt(agent: Agent): string {
 
   parts.push(
     `# Memory\n` +
-    `Read memory/MEMORY.md at the start of each task for accumulated context about contacts, deals, and decisions.\n` +
-    `Update it via the Write tool when you learn important new facts. Keep it concise — bullet points, not prose.`
+    `You have three layers of memory:\n` +
+    `1. memory/MEMORY.md — your curated long-term notes (contacts, deals, preferences, lessons). Read it at the start of each task. Update via the Write tool when you learn something important. Keep it concise — bullet points, not prose.\n` +
+    `2. Conversation context — the recent messages in your current thread are already in your context.\n` +
+    `3. The search_messages tool — when someone references something from a previous conversation that isn't in your current context, call this tool to find the relevant older messages.\n` +
+    `\n` +
+    `# Tool: search_messages\n` +
+    `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older context. Examples:\n` +
+    `- "What was Bob's budget last time we talked?" → search_messages({ contact: "bob@example.com", query: "budget" })\n` +
+    `- "Did anyone email me about the contract?" → search_messages({ query: "contract", channel: "email" })\n` +
+    `- "What did we discuss with Acme last month?" → search_messages({ contact: "acme", days_back: 45 })\n` +
+    `Don't call search_messages if the answer is already in your current conversation context — only when you need older information.`
   );
 
   parts.push(`Current date: ${today}`);

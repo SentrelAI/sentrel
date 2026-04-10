@@ -6,6 +6,7 @@ import { buildSubAgentDefinitions } from "./subagents.js";
 import { buildPrompt, type UserMessageInput } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
+import { buildRecallMcpServer } from "./tools/recall.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -278,6 +279,10 @@ async function buildQueryOptions(agent: Agent): Promise<Record<string, unknown>>
     process.env.ANTHROPIC_BASE_URL = config.anthropicBaseUrl;
   }
 
+  // Sprint 0e — register the recall MCP server with the agent's organizationId
+  // baked into the tool handler (tenant isolation enforced at construction)
+  const recallServer = buildRecallMcpServer(agent.organization_id);
+
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
     // No settingSources — identity comes from buildSystemPrompt() in agent-runner,
@@ -293,9 +298,14 @@ async function buildQueryOptions(agent: Agent): Promise<Record<string, unknown>>
       "WebSearch",
       "WebFetch",
       "Browser",
+      // Recall MCP tool is exposed via mcpServers below
+      "mcp__recall__search_messages",
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
+    mcpServers: {
+      recall: recallServer,
+    },
   };
 
   if (agent.ai_config?.model_id) {

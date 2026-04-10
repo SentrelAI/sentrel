@@ -16,7 +16,13 @@ import type {
   ScheduledTask,
   SubAgent,
 } from "../types.js";
-import type { ChannelConfig, Host, PendingApproval } from "./host.js";
+import type {
+  ChannelConfig,
+  Host,
+  PendingApproval,
+  SearchMessageResult,
+  SearchMessagesFilters,
+} from "./host.js";
 
 export class PostgresHost implements Host {
   private pool: pg.Pool;
@@ -267,5 +273,86 @@ export class PostgresHost implements Host {
       [agentId],
     );
     return rows as ScheduledTask[];
+  }
+
+  // ── Cross-conversation message recall (Sprint 0e) ──
+
+  async searchMessages(filters: SearchMessagesFilters): Promise<SearchMessageResult[]> {
+    // SECURITY: organizationId is mandatory. Never run a search without it.
+    if (!filters.organizationId) {
+      throw new Error("searchMessages: organizationId is required (tenant isolation)");
+    }
+
+    const limit = Math.min(filters.limit ?? 20, 100);
+    const daysBack = filters.daysBack ?? 90;
+
+    // Build the WHERE clause incrementally with parameterized values.
+    const wheres: string[] = [
+      "c.organization_id = $1",
+      "m.created_at > NOW() - ($2 || ' days')::interval",
+    ];
+    const params: unknown[] = [filters.organizationId, String(daysBack)];
+
+    if (filters.query) {
+      // pg_trgm similarity match. % operator uses the GIN trigram index.
+      params.push(filters.query);
+      wheres.push(`m.content % $${params.length}`);
+    }
+
+    if (filters.contact) {
+      params.push(filters.contact);
+      const i = params.length;
+      wheres.push(
+        `(c.contact_email = $${i} OR c.contact_phone = $${i} OR c.contact_identifier = $${i} OR c.contact_name ILIKE '%' || $${i} || '%')`,
+      );
+    }
+
+    if (filters.conversationId) {
+      params.push(filters.conversationId);
+      wheres.push(`m.conversation_id = $${params.length}`);
+    }
+
+    if (filters.channel) {
+      params.push(filters.channel);
+      wheres.push(`m.channel = $${params.length}`);
+    }
+
+    params.push(limit);
+
+    // ORDER: when query is set, rank by trigram similarity (best matches first).
+    // Otherwise, most recent first.
+    const orderClause = filters.query
+      ? `similarity(m.content, $3) DESC, m.created_at DESC`
+      : `m.created_at DESC`;
+
+    const sql = `
+      SELECT
+        m.conversation_id,
+        m.channel,
+        m.role,
+        m.content,
+        m.created_at,
+        c.agent_id,
+        c.contact_identifier,
+        c.contact_name
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE ${wheres.join(" AND ")}
+      ORDER BY ${orderClause}
+      LIMIT $${params.length}
+    `;
+
+    const { rows } = await this.pool.query(sql, params);
+
+    return rows.map((r): SearchMessageResult => ({
+      conversation_id: r.conversation_id,
+      channel: r.channel,
+      contact_identifier: r.contact_identifier,
+      contact_name: r.contact_name,
+      role: r.role,
+      content: typeof r.content === "string" ? r.content.slice(0, 500) : String(r.content).slice(0, 500),
+      created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+      agent_id: r.agent_id,
+    }));
   }
 }

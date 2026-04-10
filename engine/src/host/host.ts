@@ -28,6 +28,28 @@ export interface PendingApproval {
   message_id?: number | null;
 }
 
+// Sprint 0e — cross-conversation message recall
+export interface SearchMessagesFilters {
+  organizationId: number;     // MANDATORY — tenant scoping, never allow null/undefined
+  query?: string;             // fuzzy text search via pg_trgm
+  contact?: string;           // matches conversation contact_email/phone/identifier
+  conversationId?: number;
+  channel?: string;
+  daysBack?: number;          // default 90
+  limit?: number;             // default 20, max 100
+}
+
+export interface SearchMessageResult {
+  conversation_id: number;
+  channel: string | null;
+  contact_identifier: string | null;
+  contact_name: string | null;
+  role: string;
+  content: string;            // truncated to 500 chars by host
+  created_at: string;
+  agent_id: number;
+}
+
 export interface Host {
   // ── Identity & config ──
   getAgent(id: string): Promise<Agent>;
@@ -91,4 +113,10 @@ export interface Host {
 
   // ── Scheduling ──
   getScheduledTasks(agentId: number): Promise<ScheduledTask[]>;
+
+  // ── Cross-conversation message recall (Sprint 0e) ──
+  // Returns messages matching the filters, scoped to organizationId.
+  // Implementations MUST enforce the organizationId filter — never allow
+  // cross-org reads, even if other filters are missing.
+  searchMessages(filters: SearchMessagesFilters): Promise<SearchMessageResult[]>;
 }
