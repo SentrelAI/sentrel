@@ -1,7 +1,9 @@
 class Api::BlobsController < ApplicationController
   skip_before_action :verify_authenticity_token
   skip_before_action :set_tenant
-  before_action :authenticate_engine!
+  before_action :authenticate_engine!, only: [:create]
+  # show (download) is open — the signed_id is unguessable and acts as auth.
+  # This lets Twilio fetch media URLs for WhatsApp outbound.
 
   # POST /api/blobs
   # Used by the engine to upload files (e.g. email attachments)

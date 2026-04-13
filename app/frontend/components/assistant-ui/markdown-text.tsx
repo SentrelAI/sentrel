@@ -67,6 +67,21 @@ const useCopyToClipboard = ({
 };
 
 const defaultComponents = memoizeMarkdownComponents({
+  // Sprint 3 — render images from agent (screenshots, logos, etc.)
+  img: ({ className, src, alt, ...props }) => (
+    <a href={src} target="_blank" rel="noopener noreferrer" className="block my-2">
+      <img
+        src={src}
+        alt={alt || ""}
+        className={cn(
+          "aui-md-img max-w-full rounded-lg border border-border/50 shadow-sm cursor-pointer hover:opacity-90 transition-opacity",
+          className,
+        )}
+        loading="lazy"
+        {...props}
+      />
+    </a>
+  ),
   h1: ({ className, ...props }) => (
     <h1
       className={cn(
@@ -130,15 +145,40 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  a: ({ className, href, children, ...props }) => {
+    // Render download links for blob URLs as styled chips
+    const isBlob = href?.includes("/api/blobs/")
+    if (isBlob) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "aui-md-a inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground no-underline hover:bg-muted transition-colors my-1",
+            className,
+          )}
+          download
+          {...props}
+        >
+          <svg className="size-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+          {children}
+        </a>
+      )
+    }
+    return (
+      <a
+        href={href}
+        className={cn(
+          "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </a>
+    )
+  },
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(

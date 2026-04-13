@@ -14,7 +14,7 @@ class AgentsController < ApplicationController
     # Find internal chat conversation (boss ↔ agent)
     chat_conversation = @agent.conversations.find_by(kind: "internal", user: current_user)
     chat_messages = chat_conversation ? chat_conversation.messages.order(id: :asc).as_json(
-      only: [:id, :role, :content, :channel, :created_at]
+      only: [:id, :role, :content, :channel, :metadata, :created_at]
     ) : []
 
     # Get approvals keyed by message_id for inline rendering

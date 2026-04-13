@@ -223,15 +223,28 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
         rejectResponse = reject
       })
 
+      const mediaAttachments: Array<{ url: string; filename: string; contentType: string }> = []
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
           if (data.type === "text_delta") {
             responseText = data.text
+          } else if (data.type === "media_attachment") {
+            // Sprint 3 — agent sent an image/file via send_image/send_file
+            mediaAttachments.push({ url: data.url, filename: data.filename, contentType: data.contentType })
           } else if (data.type === "pending_approval" && data.toolName === "send_email") {
             approvalData = { approvalId: data.approvalId, ...data.toolInput }
           } else if (data.type === "done") {
             responseText = data.content || responseText
+            // Append media as markdown images/links to the response
+            for (const m of mediaAttachments) {
+              if (m.contentType.startsWith("image/")) {
+                responseText += `\n\n![${m.filename}](${m.url})`
+              } else {
+                responseText += `\n\n[Download ${m.filename}](${m.url})`
+              }
+            }
             // Append approval marker to response if we got one
             if (approvalData) {
               responseText += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
@@ -291,7 +304,7 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 interface AgentChatProps {
   agentId: number
   agentName: string
-  initialMessages?: { id?: number; role: string; content: string; created_at: string }[]
+  initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown> }[]
   approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
 }
 
@@ -299,8 +312,21 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
   const adapter = useRef(createAgentAdapter(agentId)).current
   const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
 
-  // Inject approval markers into the specific messages they belong to
+  // Inject media attachments + approval markers into message content for rendering
   const messagesWithApprovals = sorted.map((m) => {
+    let content = m.content
+    const meta = (m as any).metadata || {}
+
+    // Sprint 3 — render persisted media from message metadata
+    const media = Array.isArray(meta.media) ? meta.media as Array<{ url: string; filename: string; contentType: string }> : []
+    for (const med of media) {
+      if (med.contentType?.startsWith("image/")) {
+        content += `\n\n![${med.filename}](${med.url})`
+      } else {
+        content += `\n\n[Download ${med.filename}](${med.url})`
+      }
+    }
+
     const msgId = String((m as any).id || "")
     const approvals = approvalsByMessage[msgId]
     if (m.role === "assistant" && approvals && approvals.length > 0) {
@@ -318,9 +344,9 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
         }
         return APPROVAL_MARKER + JSON.stringify(emailData) + APPROVAL_MARKER_END
       }).join("\n")
-      return { ...m, content: m.content + "\n\n" + markers }
+      return { ...m, content: content + "\n\n" + markers }
     }
-    return m
+    return { ...m, content }
   })
 
   const attachmentAdapter = useRef(new DirectUploadAdapter()).current
