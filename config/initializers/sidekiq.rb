@@ -13,8 +13,18 @@ Sidekiq.configure_server do |config|
       end
     end
 
-    # OutboundEmailPollerJob removed — engine now calls POST /api/send_email
-    # directly, which enqueues SendEmailJob instantly. No more polling delay.
+    # Archive dormant conversations daily at 3am
+    Thread.new do
+      loop do
+        now = Time.current
+        next_3am = now.change(hour: 3)
+        next_3am += 1.day if next_3am <= now
+        sleep(next_3am - now)
+        ArchiveDormantConversationsJob.perform_later
+      rescue => e
+        Sidekiq.logger.error "Archive scheduler error: #{e.message}"
+      end
+    end
   end
 end
 
