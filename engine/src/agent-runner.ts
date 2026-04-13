@@ -8,6 +8,7 @@ import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
 import { processAttachments } from "./media/pipeline.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
+import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -18,6 +19,7 @@ import {
   emitToolResult,
   emitDone,
   emitError,
+  consumePendingMedia,
 } from "./gateway.js";
 import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
@@ -145,7 +147,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const history = conversationId ? await host.getConversationHistory(conversationId, 20) : [];
   const built = buildPrompt(agent, job, history, conversation, processedMedia);
 
-  const options = await buildQueryOptions(agent);
+  const options = await buildQueryOptions(agent, job);
   options.systemPrompt = buildSystemPrompt(agent);
   if (resumeSessionId) {
     options.resume = resumeSessionId;
@@ -165,6 +167,8 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     }
 
     // Save the assistant's response so future runs see it in history
+    // Include any media the agent sent during this run so they persist on refresh
+    const sentMedia = consumePendingMedia();
     let savedMessageId: number | null = null;
     if (conversationId && result.responseContent) {
       const saved = await host.saveMessage(
@@ -173,6 +177,17 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         result.responseContent,
         "outbound",
         job.channel,
+        [],
+        sentMedia.length > 0
+          ? {
+              media: sentMedia.map((m) => ({
+                url: m.url,
+                filename: m.filename,
+                contentType: m.contentType,
+                signedId: m.signedId,
+              })),
+            }
+          : undefined,
       );
       savedMessageId = saved.id;
     }
@@ -293,21 +308,32 @@ async function runAgentLoop(
   return { responseContent, interceptor, capturedSessionId };
 }
 
-async function buildQueryOptions(agent: Agent): Promise<Record<string, unknown>> {
+async function buildQueryOptions(
+  agent: Agent,
+  job: JobData,
+): Promise<Record<string, unknown>> {
   const subAgents = await buildSubAgentDefinitions(agent);
 
   if (config.anthropicBaseUrl) {
     process.env.ANTHROPIC_BASE_URL = config.anthropicBaseUrl;
   }
 
-  // Sprint 0e — register the recall MCP server with the agent's organizationId
-  // baked into the tool handler (tenant isolation enforced at construction)
+  // Sprint 0e — recall tool (tenant-scoped)
   const recallServer = buildRecallMcpServer(agent.organization_id);
+
+  // Sprint 3 — send media tools (channel + metadata baked in)
+  // Read bot number from channel config so WhatsApp From number is correct
+  const channelConfigs = await host.getChannelConfigs(String(agent.id));
+  const waConfig = channelConfigs.find((c) => c.channel_type === "whatsapp");
+  const channelMeta = {
+    ...(job.payload?.metadata || {}),
+    from: job.payload?.from,
+    bot_number: waConfig?.config?.phone_number || process.env.WHATSAPP_BOT_NUMBER || "",
+  };
+  const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
 
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
-    // No settingSources — identity comes from buildSystemPrompt() in agent-runner,
-    // not from a CLAUDE.md file. Single source of truth is the DB.
     allowedTools: [
       "Skill",
       "Agent",
@@ -319,13 +345,17 @@ async function buildQueryOptions(agent: Agent): Promise<Record<string, unknown>>
       "WebSearch",
       "WebFetch",
       "Browser",
-      // Recall MCP tool is exposed via mcpServers below
+      // MCP tools exposed via mcpServers below
       "mcp__recall__search_messages",
+      "mcp__send-media__send_voice",
+      "mcp__send-media__send_image",
+      "mcp__send-media__send_file",
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     mcpServers: {
       recall: recallServer,
+      "send-media": sendMediaServer,
     },
   };
 

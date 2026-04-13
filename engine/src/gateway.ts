@@ -80,3 +80,25 @@ export function emitApproval(approvalId: number, toolName: string, toolInput: Re
 export function emitError(error: string): void {
   broadcast({ type: "error", error, timestamp: Date.now() });
 }
+
+// Sprint 3 — media sent during the current agent run. Collected here so
+// agent-runner can persist them on the assistant message after the run.
+let pendingMedia: Array<{ url: string; filename: string; contentType: string; byteSize: number; signedId?: string }> = [];
+
+export function emitMediaAttachment(media: {
+  url: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  caption?: string;
+  signedId?: string;
+}): void {
+  broadcast({ type: "media_attachment", ...media, timestamp: Date.now() });
+  pendingMedia.push(media);
+}
+
+export function consumePendingMedia() {
+  const result = [...pendingMedia];
+  pendingMedia = [];
+  return result;
+}

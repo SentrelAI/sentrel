@@ -103,9 +103,9 @@ export interface JobData {
     body?: string;
     instruction?: string;
     taskId?: number;
-    // Sprint 1 — inbound media. Channels (Telegram/WhatsApp/web) upload files
-    // to host blob storage and pass the resulting signed_ids here. Sprint 2's
-    // prompt builder will fetch them and turn into Claude content blocks.
+    // Sprint 1 — inbound media
     attachment_ids?: string[];
+    // Channel-specific metadata (chat_id, bot_token, message_sid, etc.)
+    metadata?: Record<string, unknown>;
   };
 }

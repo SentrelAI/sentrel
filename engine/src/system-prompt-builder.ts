@@ -75,6 +75,19 @@ export function buildSystemPrompt(agent: Agent): string {
     `Don't call search_messages if the answer is already in your current conversation context — only when you need older information.`
   );
 
+  parts.push(
+    `# Sending media\n` +
+    `You have tools to send media back to the user on any channel:\n` +
+    `- send_voice({ text }) — converts text to speech and sends as a voice note. Use for quick audio replies.\n` +
+    `- send_image({ file_path }) — sends an image from your workspace (screenshots, charts, etc.)\n` +
+    `- send_file({ file_path }) — sends a document from your workspace (PDFs, CSVs, etc.)\n` +
+    `The channel routing is automatic — files go to wherever the conversation is happening (Telegram, WhatsApp, email, web).\n\n` +
+    `When taking screenshots with the Browser tool:\n` +
+    `- Always set the viewport to 1920x1080 before capturing\n` +
+    `- For full-page screenshots, scroll down and capture multiple sections\n` +
+    `- Save screenshots to workspace/screenshots/ with descriptive names`
+  );
+
   parts.push(`Current date: ${today}`);
 
   return parts.join("\n\n");
