@@ -23,6 +23,19 @@ class Api::BlobsController < ApplicationController
     }
   end
 
+  # GET /api/blobs/:signed_id
+  # Sprint 2 — engine downloads blob bytes for media processing
+  # (transcription, saving to workspace for agent to Read, etc.)
+  def show
+    blob = ActiveStorage::Blob.find_signed!(params[:signed_id])
+    send_data blob.download,
+              filename: blob.filename.to_s,
+              type: blob.content_type,
+              disposition: "inline"
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    head :not_found
+  end
+
   private
 
   def authenticate_engine!

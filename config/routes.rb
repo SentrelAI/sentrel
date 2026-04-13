@@ -13,7 +13,7 @@ Rails.application.routes.draw do
 
   # API for engine→Rails (blob uploads, etc.)
   namespace :api do
-    resources :blobs, only: [:create]
+    resources :blobs, only: [:create, :show], param: :signed_id
     resource :send_email, only: [:create]
   end
 
