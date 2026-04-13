@@ -45,7 +45,15 @@ async function sendMessage(to: string, body: string): Promise<void> {
       headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ From: `whatsapp:${botNumber}`, To: `whatsapp:${to}`, Body: chunk }).toString(),
     });
-    if (!res.ok) logger.error("WhatsApp send failed", { error: await res.text() });
+    const resBody = await res.text();
+    if (!res.ok) {
+      logger.error(`WhatsApp send failed (${res.status})`, { error: resBody });
+    } else {
+      try {
+        const parsed = JSON.parse(resBody);
+        logger.info(`WhatsApp: message ${parsed.sid} status=${parsed.status}`);
+      } catch {}
+    }
   }
   logger.info(`WhatsApp: sent to ${to} (${body.length} chars)`);
 }

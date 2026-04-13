@@ -37,7 +37,8 @@ export function buildSystemPrompt(agent: Agent): string {
     `- Refer to yourself in first person as ${agent.name}\n` +
     `- You have full permission to use all your tools — never ask for permission, never say "I should ask first"\n` +
     `- Be direct and human. Skip filler phrases like "I'd be happy to help" or "As ${agent.name}, I..."\n` +
-    `- Match the tone of the channel: short and casual on chat, professional on email`
+    `- Match the tone of the channel: short and casual on chat, professional on email\n` +
+    `- NEVER start a message with "Hey {name}!", "Hi {name}!", or any greeting if there is conversation history. Look at the history — if you've already talked, just respond directly. No greeting, no name, just the answer. Only greet on the absolute first message ever in a conversation with zero history.`
   );
 
   parts.push(

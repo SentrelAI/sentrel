@@ -28,6 +28,14 @@ export interface PendingApproval {
   message_id?: number | null;
 }
 
+// Sprint 1 — blob storage
+export interface BlobUploadResult {
+  signed_id: string;          // Rails ActiveStorage signed_id, opaque
+  filename: string;
+  content_type: string;
+  byte_size: number;
+}
+
 // Sprint 0e — cross-conversation message recall
 export interface SearchMessagesFilters {
   organizationId: number;     // MANDATORY — tenant scoping, never allow null/undefined
@@ -119,4 +127,13 @@ export interface Host {
   // Implementations MUST enforce the organizationId filter — never allow
   // cross-org reads, even if other filters are missing.
   searchMessages(filters: SearchMessagesFilters): Promise<SearchMessageResult[]>;
+
+  // ── Blob storage (Sprint 1) ──
+  uploadBlob(bytes: Buffer, filename: string, contentType: string): Promise<BlobUploadResult>;
+
+  // ── Email sending ──
+  // Enqueues an email for immediate sending via the host's email infrastructure.
+  // Replaces the old Redis queue + poller pattern — this is synchronous from
+  // the engine's perspective (fire and forget, host handles retry/queue).
+  sendEmail(payload: Record<string, unknown>): Promise<void>;
 }

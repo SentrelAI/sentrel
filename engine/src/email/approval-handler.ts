@@ -1,5 +1,4 @@
 import { host } from "../host/index.js";
-import { redis } from "../queue.js";
 import { emitDone } from "../gateway.js";
 import { logger } from "../logger.js";
 import type { Agent, JobData } from "../types.js";
@@ -29,8 +28,8 @@ async function applyApproval(agent: Agent, job: JobData, isApproved: boolean): P
 
   if (isApproved && approval.tool_name === "send_email") {
     const payload = { ...approval.tool_input, agent_id: agent.id, org_id: agent.organization_id };
-    await redis.lpush("outbound-email", JSON.stringify(payload));
-    logger.info(`Approval #${approval.id} approved via ${job.channel}, email queued`);
+    await host.sendEmail(payload);
+    logger.info(`Approval #${approval.id} approved via ${job.channel}, email sent`);
   }
 
   const recipient = (approval.tool_input as { to?: string })?.to || "recipient";

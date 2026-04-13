@@ -1,10 +1,15 @@
 import fs from "fs";
 import path from "path";
 import { config } from "../config.js";
+import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 
-// Uploads a file from the agent workspace to Rails, returns the blob signed_id.
-// Used by the outbox processor to attach files to outbound emails.
+// Reads a file from the agent workspace and uploads it via the Host abstraction.
+// Returns the blob's signed_id (Rails ActiveStorage), or null on failure.
+//
+// Used by the outbox processor to attach files to outbound emails. Generic blob
+// upload (e.g. inbound media from Telegram/WhatsApp) bypasses this and calls
+// host.uploadBlob directly with bytes.
 export async function uploadAttachment(relPath: string): Promise<string | null> {
   const fullPath = path.join(config.dataDir, "workspace", relPath);
   if (!fs.existsSync(fullPath)) {
@@ -12,35 +17,41 @@ export async function uploadAttachment(relPath: string): Promise<string | null> 
     return null;
   }
 
-  const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
-  const secret = process.env.ENGINE_API_SECRET || "";
-  if (!secret) {
-    logger.warn("ENGINE_API_SECRET not set, cannot upload attachment");
-    return null;
-  }
-
   try {
-    const fileBuffer = fs.readFileSync(fullPath);
+    const bytes = fs.readFileSync(fullPath);
     const filename = path.basename(fullPath);
-    const formData = new FormData();
-    formData.append("file", new Blob([fileBuffer]), filename);
+    const contentType = guessContentType(filename);
 
-    const res = await fetch(`${railsUrl}/api/blobs`, {
-      method: "POST",
-      headers: { "X-Engine-Secret": secret },
-      body: formData,
-    });
-
-    if (!res.ok) {
-      logger.error(`Attachment upload failed: ${res.status} ${await res.text()}`);
-      return null;
-    }
-
-    const data = await res.json() as { signed_id: string };
-    logger.info(`Uploaded attachment: ${filename}`);
-    return data.signed_id;
+    const result = await host.uploadBlob(bytes, filename, contentType);
+    logger.info(`Uploaded attachment: ${filename} (${result.byte_size} bytes)`);
+    return result.signed_id;
   } catch (err) {
     logger.error(`Attachment upload error: ${(err as Error).message}`);
     return null;
   }
+}
+
+function guessContentType(filename: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  const map: Record<string, string> = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".csv": "text/csv",
+    ".txt": "text/plain",
+    ".json": "application/json",
+    ".md": "text/markdown",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".mp3": "audio/mpeg",
+    ".mp4": "video/mp4",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+  };
+  return map[ext] || "application/octet-stream";
 }

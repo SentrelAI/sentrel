@@ -4,6 +4,16 @@ import { host } from "../host/index.js";
 import { onDone } from "../gateway.js";
 import { logger } from "../logger.js";
 
+// Sprint 1a — Telegram media types we accept (best-largest size for photos,
+// otherwise the file_id verbatim).
+interface TelegramFileRef {
+  file_id: string;
+  file_unique_id?: string;
+  file_size?: number;
+  mime_type?: string;
+  file_name?: string;
+}
+
 let pollingActive = false;
 let lastUpdateId = 0;
 
@@ -69,20 +79,82 @@ async function poll(botToken: string, orgId: number): Promise<void> {
 
 async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: number): Promise<void> {
   const message = update.message;
-  if (!message || !message.text) return;
+  if (!message) return;
+
+  // Sprint 1a — accept text OR any supported media type
+  const hasText = !!message.text;
+  const hasMedia = !!(message.photo || message.document || message.voice || message.audio || message.video);
+  if (!hasText && !hasMedia) return;
 
   const chatId = message.chat.id;
   const from = message.from;
   const fromName = [from?.first_name, from?.last_name].filter(Boolean).join(" ") || "Unknown";
   const username = from?.username || "";
 
-  logger.info(`Telegram: message from ${fromName} (@${username}): ${message.text.slice(0, 50)}`);
+  // Log a useful summary
+  const summary = message.text?.slice(0, 50)
+    || (message.photo ? `[photo]` : "")
+    || (message.document ? `[document: ${message.document.file_name || "file"}]` : "")
+    || (message.voice ? `[voice ${message.voice.file_size || "?"}b]` : "")
+    || (message.audio ? `[audio]` : "")
+    || (message.video ? `[video]` : "");
+  logger.info(`Telegram: message from ${fromName} (@${username}): ${summary}`);
 
-  // Send "typing" indicator
+  // Show "typing" while we download + process
   await sendTyping(botToken, chatId);
-
-  // Start repeating typing every 4 seconds
   const typingInterval = setInterval(() => sendTyping(botToken, chatId), 4000);
+
+  // Download any media and upload to Rails ActiveStorage via host
+  const attachmentSignedIds: string[] = [];
+  try {
+    if (message.photo && message.photo.length > 0) {
+      // Photos arrive as a size ladder; pick the largest
+      const largest = message.photo.reduce((a, b) => (a.file_size ?? 0) >= (b.file_size ?? 0) ? a : b);
+      const id = await downloadAndUpload(botToken, largest, "photo.jpg", "image/jpeg");
+      if (id) attachmentSignedIds.push(id);
+    }
+    if (message.document) {
+      const id = await downloadAndUpload(
+        botToken,
+        message.document,
+        message.document.file_name || `document-${message.document.file_unique_id || "file"}`,
+        message.document.mime_type || "application/octet-stream",
+      );
+      if (id) attachmentSignedIds.push(id);
+    }
+    if (message.voice) {
+      const id = await downloadAndUpload(
+        botToken,
+        message.voice,
+        `voice-${message.voice.file_unique_id || message.message_id}.ogg`,
+        message.voice.mime_type || "audio/ogg",
+      );
+      if (id) attachmentSignedIds.push(id);
+    }
+    if (message.audio) {
+      const id = await downloadAndUpload(
+        botToken,
+        message.audio,
+        message.audio.file_name || `audio-${message.audio.file_unique_id || message.message_id}.mp3`,
+        message.audio.mime_type || "audio/mpeg",
+      );
+      if (id) attachmentSignedIds.push(id);
+    }
+    if (message.video) {
+      const id = await downloadAndUpload(
+        botToken,
+        message.video,
+        `video-${message.video.file_unique_id || message.message_id}.mp4`,
+        message.video.mime_type || "video/mp4",
+      );
+      if (id) attachmentSignedIds.push(id);
+    }
+  } catch (err) {
+    logger.error("Telegram: failed to download/upload media", { error: (err as Error).message });
+  }
+
+  // Body falls back to caption if there's no text but there is media
+  const body = message.text || message.caption || "";
 
   // Push to agent inbox
   await redis.lpush(`agent-inbox-${config.employeeId}`, JSON.stringify({
@@ -93,7 +165,8 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
     payload: {
       from: username || String(from?.id),
       from_name: fromName,
-      body: message.text,
+      body,
+      attachment_ids: attachmentSignedIds,
       metadata: {
         chat_id: chatId,
         message_id: message.message_id,
@@ -103,15 +176,45 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   }));
 
   // Wait for response from gateway WebSocket broadcast
-  // The agent-runner will emit "done" event — we listen for it
   const response = await waitForResponse(120_000);
 
-  // Stop typing
   clearInterval(typingInterval);
 
-  // Send response to Telegram
   if (response) {
     await sendMessage(botToken, chatId, response);
+  }
+}
+
+// Calls Telegram getFile, downloads bytes from the CDN, uploads via host.
+async function downloadAndUpload(
+  botToken: string,
+  file: TelegramFileRef,
+  filename: string,
+  contentType: string,
+): Promise<string | null> {
+  try {
+    const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${file.file_id}`);
+    const fileInfo = await fileInfoRes.json() as { ok: boolean; result?: { file_path: string } };
+    if (!fileInfo.ok || !fileInfo.result?.file_path) {
+      logger.warn(`Telegram getFile failed for ${file.file_id}`);
+      return null;
+    }
+
+    const cdnUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
+    const bytesRes = await fetch(cdnUrl);
+    if (!bytesRes.ok) {
+      logger.warn(`Telegram CDN fetch failed: ${bytesRes.status}`);
+      return null;
+    }
+    const arrayBuffer = await bytesRes.arrayBuffer();
+    const bytes = Buffer.from(arrayBuffer);
+
+    const result = await host.uploadBlob(bytes, filename, contentType);
+    logger.info(`Telegram: uploaded ${filename} (${result.byte_size} bytes)`);
+    return result.signed_id;
+  } catch (err) {
+    logger.error(`Telegram downloadAndUpload error for ${filename}`, { error: (err as Error).message });
+    return null;
   }
 }
 
@@ -210,5 +313,12 @@ interface TelegramUpdate {
     from?: { id: number; first_name?: string; last_name?: string; username?: string };
     chat: { id: number; type: string };
     text?: string;
+    caption?: string;
+    // Sprint 1a — media types
+    photo?: TelegramFileRef[];          // size ladder; pick the largest
+    document?: TelegramFileRef;
+    voice?: TelegramFileRef;
+    audio?: TelegramFileRef;
+    video?: TelegramFileRef;
   };
 }

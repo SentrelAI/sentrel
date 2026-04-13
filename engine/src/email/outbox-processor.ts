@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { config } from "../config.js";
 import { host } from "../host/index.js";
-import { redis } from "../queue.js";
 import { emitApproval } from "../gateway.js";
 import { logger } from "../logger.js";
 import { uploadAttachment } from "./attachment-uploader.js";
@@ -140,8 +139,8 @@ async function processOneEmail(
     };
   }
 
-  // auto: push to Redis for Rails to send
-  await redis.lpush("outbound-email", JSON.stringify(emailPayload));
-  logger.info(`Email queued for send: ${content.to}`);
+  // auto: send immediately via host (Rails enqueues SendEmailJob)
+  await host.sendEmail(emailPayload);
+  logger.info(`Email sent: ${content.to}`);
   return null;
 }

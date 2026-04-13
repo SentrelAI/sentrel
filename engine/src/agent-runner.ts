@@ -3,7 +3,7 @@ import { config } from "./config.js";
 import { host } from "./host/index.js";
 import { syncMemoryToDb } from "./memory.js";
 import { buildSubAgentDefinitions } from "./subagents.js";
-import { buildPrompt, type UserMessageInput } from "./prompt-builder.js";
+import { buildPrompt } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
@@ -62,16 +62,25 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   let resumeSessionId: string | null = null;
   let priorTurnCount = 0;
 
+  // TODO: SDK session resume is disabled. The SDK loads the ENTIRE previous
+  // session transcript (including all tool calls), which can balloon context
+  // and cause multi-minute hangs. The DB history injection (last 20 messages
+  // + summaries) provides continuity without this overhead. Re-enable once
+  // we understand the SDK's session size characteristics.
+  const RESUME_ENABLED = false;
+
   if (isInbound && conversation) {
     if (shouldResumeSession(conversation)) {
-      resumeSessionId = conversation.claude_session_id ?? null;
+      // Session is still valid (within turn cap + time gap) — continue it
       priorTurnCount = conversation.claude_session_turn_count ?? 0;
-      logger.info(
-        `Resuming session ${resumeSessionId} for conversation ${conversation.id} ` +
-        `(turn ${priorTurnCount + 1}/${SESSION_TURN_CAP})`
-      );
+      if (RESUME_ENABLED) {
+        resumeSessionId = conversation.claude_session_id ?? null;
+        logger.info(
+          `Resuming session for conversation ${conversation.id} (turn ${priorTurnCount + 1}/${SESSION_TURN_CAP})`
+        );
+      }
     } else if (conversation.claude_session_id) {
-      // Session exists but rotation triggered — summarize before abandoning
+      // Session expired (turn cap OR time gap) — summarize before rotating
       const reason =
         (conversation.claude_session_turn_count ?? 0) >= SESSION_TURN_CAP
           ? "turn cap"
@@ -95,7 +104,14 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   }
 
   // ── Save the inbound user message (NOW it's safe to bump last_message_at) ──
-  if (isInbound && conversation && job.payload?.body !== undefined) {
+  // Skip if conversationId was provided in the job — that means the channel
+  // webhook (e.g. Rails /webhooks/web) already saved the user message before
+  // enqueueing. Only save here for engine-polled channels (telegram) or
+  // channels that don't pre-save (whatsapp via Rails webhook doesn't save
+  // the message, it just enqueues).
+  const railsAlreadySaved = !!job.conversationId;
+  if (isInbound && conversation && job.payload?.body !== undefined && !railsAlreadySaved) {
+    const attachmentIds = job.payload.attachment_ids || [];
     await host.saveMessage(
       conversation.id,
       "user",
@@ -103,7 +119,11 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       "inbound",
       job.channel,
       [],
-      { from: job.payload.from, subject: job.payload.subject },
+      {
+        from: job.payload.from,
+        subject: job.payload.subject,
+        ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+      },
     );
   }
 
@@ -125,7 +145,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   }
 
   try {
-    const result = await runAgentLoop(built.messages, options);
+    const result = await runAgentLoop(built.promptText, options);
 
     // ── Persist captured session ID for future resumption ──
     if (isInbound && conversation && result.capturedSessionId) {
@@ -217,7 +237,7 @@ interface QueryResult {
 }
 
 async function runAgentLoop(
-  messages: UserMessageInput[],
+  promptText: string,
   options: Record<string, unknown>,
 ): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
@@ -226,18 +246,12 @@ async function runAgentLoop(
 
   emitThinking();
 
-  // Sprint 0c — pass an async generator of SDKUserMessage objects instead of
-  // a string. This is the streaming-input form of `query()` and is the
-  // prerequisite for multimodal: each message's content is an array of
-  // ContentBlockParam (text now, image/document in Sprint 2).
-  async function* promptGenerator() {
-    for (const m of messages) {
-      // The SDK fills session_id when streaming. We just provide the shape.
-      yield { ...m, session_id: "" } as any;
-    }
-  }
-
-  for await (const message of query({ prompt: promptGenerator(), options: options as any })) {
+  // Pass as a plain string for now. Sprint 0c's content-block shape is
+  // preserved in prompt-builder for future multimodal use (Sprint 2), but
+  // the SDK's async generator input form caused hangs in practice.
+  // When Sprint 2 needs image/document blocks, we'll switch to the
+  // Anthropic Messages API directly instead of the Claude Agent SDK wrapper.
+  for await (const message of query({ prompt: promptText, options: options as any })) {
     const msg = message as any;
 
     // Capture sessionId from the first message that has one (per sdk.d.ts:2467+,

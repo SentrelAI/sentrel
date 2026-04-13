@@ -17,6 +17,7 @@ import type {
   SubAgent,
 } from "../types.js";
 import type {
+  BlobUploadResult,
   ChannelConfig,
   Host,
   PendingApproval,
@@ -273,6 +274,68 @@ export class PostgresHost implements Host {
       [agentId],
     );
     return rows as ScheduledTask[];
+  }
+
+  // ── Blob storage (Sprint 1) ──
+  //
+  // Bytes flow through Rails ActiveStorage. The engine doesn't run an HTTP
+  // server, so we POST to Rails /api/blobs with the shared engine secret.
+  // A future LocalFsHost or S3Host would implement this differently.
+
+  async uploadBlob(
+    bytes: Buffer,
+    filename: string,
+    contentType: string,
+  ): Promise<BlobUploadResult> {
+    const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
+    const secret = process.env.ENGINE_API_SECRET;
+    if (!secret) {
+      throw new Error("uploadBlob: ENGINE_API_SECRET not set");
+    }
+
+    const formData = new FormData();
+    formData.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), filename);
+
+    const res = await fetch(`${railsUrl}/api/blobs`, {
+      method: "POST",
+      headers: { "X-Engine-Secret": secret },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`uploadBlob failed: ${res.status} ${body}`);
+    }
+
+    const data = (await res.json()) as {
+      signed_id: string;
+      filename: string;
+      content_type: string;
+      byte_size: number;
+    };
+    return data;
+  }
+
+  // ── Email sending ──
+
+  async sendEmail(payload: Record<string, unknown>): Promise<void> {
+    const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
+    const secret = process.env.ENGINE_API_SECRET;
+    if (!secret) throw new Error("sendEmail: ENGINE_API_SECRET not set");
+
+    const res = await fetch(`${railsUrl}/api/send_email`, {
+      method: "POST",
+      headers: {
+        "X-Engine-Secret": secret,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`sendEmail failed: ${res.status} ${body}`);
+    }
   }
 
   // ── Cross-conversation message recall (Sprint 0e) ──
