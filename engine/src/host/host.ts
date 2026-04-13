@@ -128,8 +128,9 @@ export interface Host {
   // cross-org reads, even if other filters are missing.
   searchMessages(filters: SearchMessagesFilters): Promise<SearchMessageResult[]>;
 
-  // ── Blob storage (Sprint 1) ──
+  // ── Blob storage (Sprint 1+2) ──
   uploadBlob(bytes: Buffer, filename: string, contentType: string): Promise<BlobUploadResult>;
+  loadBlob(signedId: string): Promise<{ bytes: Buffer; filename: string; contentType: string }>;
 
   // ── Email sending ──
   // Enqueues an email for immediate sending via the host's email infrastructure.

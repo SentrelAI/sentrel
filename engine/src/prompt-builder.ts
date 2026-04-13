@@ -1,5 +1,6 @@
 import { readMemoryMd } from "./memory.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
+import type { ProcessedAttachment } from "./media/pipeline.js";
 
 // Sprint 0c — return SDK content blocks instead of a string.
 // For now (text-only) each call returns a single user message with one text block.
@@ -32,7 +33,8 @@ export function buildPrompt(
   agent: Agent,
   job: JobData,
   history: Message[],
-  conversation?: Conversation | null
+  conversation?: Conversation | null,
+  processedAttachments?: ProcessedAttachment[],
 ): BuiltPrompt {
   const parts: string[] = [];
 
@@ -81,6 +83,35 @@ export function buildPrompt(
       parts.push(`You have been assigned a task:\n${job.payload?.instruction || ""}`);
       parts.push("\nComplete this task thoroughly and report your results.");
       break;
+  }
+
+  // Sprint 2 — media attachments: voice transcripts inline, files as Read paths
+  if (processedAttachments && processedAttachments.length > 0) {
+    parts.push("");
+    parts.push("## Attached media from this message:");
+    for (const att of processedAttachments) {
+      if (att.transcript) {
+        // Voice notes and text files — content is inlined
+        parts.push(`\n### ${att.description}`);
+        parts.push(att.transcript);
+      } else if (att.workspacePath) {
+        // PDFs, images, office docs — saved to workspace for the agent to Read
+        parts.push(`\n- ${att.description}`);
+        parts.push(`  File path: ${att.workspacePath}`);
+      }
+    }
+    // Remind the agent how to access the files
+    const filePaths = processedAttachments
+      .filter((a) => a.workspacePath)
+      .map((a) => a.workspacePath);
+    if (filePaths.length > 0) {
+      parts.push("");
+      parts.push(
+        "To view these files, use the Read tool with the file paths above. " +
+        "The Read tool supports images (vision), PDFs (document reading), " +
+        "and most text-based formats. Read each file you need to answer the user's question."
+      );
+    }
   }
 
   const promptText = parts.join("\n");

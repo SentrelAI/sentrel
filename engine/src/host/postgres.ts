@@ -316,6 +316,29 @@ export class PostgresHost implements Host {
     return data;
   }
 
+  async loadBlob(signedId: string): Promise<{ bytes: Buffer; filename: string; contentType: string }> {
+    const railsUrl = process.env.RAILS_API_URL || "http://localhost:3200";
+    const secret = process.env.ENGINE_API_SECRET;
+    if (!secret) throw new Error("loadBlob: ENGINE_API_SECRET not set");
+
+    const res = await fetch(`${railsUrl}/api/blobs/${encodeURIComponent(signedId)}`, {
+      headers: { "X-Engine-Secret": secret },
+    });
+
+    if (!res.ok) {
+      throw new Error(`loadBlob failed: ${res.status}`);
+    }
+
+    const contentType = res.headers.get("content-type") || "application/octet-stream";
+    // Extract filename from Content-Disposition header if available
+    const disposition = res.headers.get("content-disposition") || "";
+    const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
+    const filename = filenameMatch?.[1] || `blob-${Date.now()}`;
+
+    const arrayBuffer = await res.arrayBuffer();
+    return { bytes: Buffer.from(arrayBuffer), filename, contentType };
+  }
+
   // ── Email sending ──
 
   async sendEmail(payload: Record<string, unknown>): Promise<void> {

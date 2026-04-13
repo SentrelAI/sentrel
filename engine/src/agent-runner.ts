@@ -6,6 +6,7 @@ import { buildSubAgentDefinitions } from "./subagents.js";
 import { buildPrompt } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
+import { processAttachments } from "./media/pipeline.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
@@ -133,10 +134,16 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     conversation = await host.getConversation(conversation.id);
   }
 
-  // ── Build prompt with refreshed history + summaries ──
+  // ── Sprint 2: process media attachments (transcribe audio, save files) ──
+  const attachmentIds = job.payload?.attachment_ids || [];
+  const processedMedia = attachmentIds.length > 0
+    ? await processAttachments(attachmentIds)
+    : [];
+
+  // ── Build prompt with refreshed history + summaries + processed media ──
   const conversationId = conversation?.id;
   const history = conversationId ? await host.getConversationHistory(conversationId, 20) : [];
-  const built = buildPrompt(agent, job, history, conversation);
+  const built = buildPrompt(agent, job, history, conversation, processedMedia);
 
   const options = await buildQueryOptions(agent);
   options.systemPrompt = buildSystemPrompt(agent);
