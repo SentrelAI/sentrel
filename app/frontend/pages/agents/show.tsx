@@ -13,8 +13,16 @@ import {
   ArrowDownLeft,
   Settings,
   Radio,
+  Paperclip,
 } from "lucide-react"
 import { useState } from "react"
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
 
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
@@ -46,6 +54,14 @@ interface ConversationItem {
   last_message_direction: string | null
 }
 
+interface MessageAttachment {
+  id: number
+  filename: string
+  content_type: string
+  byte_size: number
+  url: string
+}
+
 interface MessageItem {
   id: number
   role: "user" | "assistant" | "system"
@@ -54,6 +70,7 @@ interface MessageItem {
   channel: string | null
   metadata: Record<string, unknown>
   created_at: string
+  attachments?: MessageAttachment[]
 }
 
 interface EmailItem {
@@ -394,6 +411,24 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
                               <span className="text-[10px] text-muted-foreground">{new Date(msg.created_at).toLocaleString()}</span>
                             </div>
                             <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {msg.attachments.map((att) => (
+                                  <a
+                                    key={att.id}
+                                    href={att.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                    title={`${att.filename} (${formatBytes(att.byte_size)})`}
+                                  >
+                                    <Paperclip className="size-3" />
+                                    <span className="max-w-[160px] truncate">{att.filename}</span>
+                                    <span className="text-[10px] text-muted-foreground/60">{formatBytes(att.byte_size)}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )
                       })}

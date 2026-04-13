@@ -32,6 +32,7 @@ import {
   MailIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PlusIcon,
   RefreshCwIcon,
   SquareIcon,
   XIcon,
@@ -138,20 +139,32 @@ const ThreadSuggestionItem: FC = () => {
 };
 
 const Composer: FC = () => {
+  const isRunning = useAuiState((s) => s.thread.isRunning);
+
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           data-slot="composer-shell"
-          className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
+          className="group relative flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-all focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/40 data-[dragging=true]:ring-4 data-[dragging=true]:ring-ring/10"
         >
+          {/* Drop overlay — visible only while dragging files over the composer */}
+          <div className="pointer-events-none absolute inset-0 hidden items-center justify-center rounded-(--composer-radius) bg-background/80 backdrop-blur-sm group-data-[dragging=true]:flex">
+            <div className="flex flex-col items-center gap-1 text-center">
+              <PlusIcon className="size-6 text-muted-foreground" />
+              <span className="text-sm font-medium">Drop files to attach</span>
+              <span className="text-xs text-muted-foreground">Images, documents, audio, video</span>
+            </div>
+          </div>
+
           <ComposerAttachments />
           <ComposerPrimitive.Input
-            placeholder="Send a message..."
+            placeholder={isRunning ? "Waiting for response…" : "Send a message — or drop files"}
             className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
             rows={1}
             autoFocus
             aria-label="Message input"
+            disabled={isRunning}
           />
           <ComposerAction />
         </div>
@@ -162,8 +175,16 @@ const Composer: FC = () => {
 
 const ComposerAction: FC = () => {
   return (
-    <div className="aui-composer-action-wrapper relative flex items-center justify-between">
+    <div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
       <ComposerAddAttachment />
+
+      <AuiIf condition={(s) => s.thread.isRunning}>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2Icon className="size-3.5 animate-spin" />
+          <span>Thinking…</span>
+        </div>
+      </AuiIf>
+
       <AuiIf condition={(s) => !s.thread.isRunning}>
         <ComposerPrimitive.Send asChild>
           <TooltipIconButton

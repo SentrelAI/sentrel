@@ -1,10 +1,18 @@
 import { Head, router } from "@inertiajs/react"
-import { ShieldCheck, Check, X, Mail, ChevronDown, ChevronUp, Clock } from "lucide-react"
+import { ShieldCheck, Check, X, Mail, ChevronDown, ChevronUp, Clock, Paperclip } from "lucide-react"
 import { useState } from "react"
 
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+
+interface ApprovalAttachment {
+  signed_id: string
+  filename: string
+  content_type: string
+  byte_size: number
+  url: string
+}
 
 interface Approval {
   id: number
@@ -16,6 +24,36 @@ interface Approval {
   created_at: string
   agent: { id: number; name: string; slug: string }
   reviewed_by: { id: number; name: string } | null
+  attachments?: ApprovalAttachment[]
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+function AttachmentChips({ attachments }: { attachments?: ApprovalAttachment[] }) {
+  if (!attachments || attachments.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-border mt-2">
+      {attachments.map((att) => (
+        <a
+          key={att.signed_id}
+          href={att.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          title={`${att.filename} (${formatBytes(att.byte_size)})`}
+        >
+          <Paperclip className="size-3" />
+          <span className="max-w-[180px] truncate">{att.filename}</span>
+          <span className="text-[10px] text-muted-foreground/60">{formatBytes(att.byte_size)}</span>
+        </a>
+      ))}
+    </div>
+  )
 }
 
 function timeAgo(dateStr: string): string {
@@ -142,6 +180,7 @@ function PendingCard({ approval, onAction }: { approval: Approval; onAction: (id
           <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border-t border-border pt-2.5">
             {String(emailData.body_text || emailData.body_html || "")}
           </div>
+          <AttachmentChips attachments={approval.attachments} />
         </div>
       )}
 
@@ -151,6 +190,7 @@ function PendingCard({ approval, onAction }: { approval: Approval; onAction: (id
           <pre className="text-xs text-muted-foreground bg-muted p-2.5 rounded overflow-auto max-h-24 font-mono">
             {JSON.stringify(approval.tool_input, null, 2)}
           </pre>
+          <AttachmentChips attachments={approval.attachments} />
         </div>
       )}
     </div>
@@ -227,6 +267,7 @@ function HistoryRow({ approval }: { approval: Approval }) {
           <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border-t border-border pt-2">
             {String(emailData.body_text || emailData.body_html || "")}
           </div>
+          <AttachmentChips attachments={approval.attachments} />
         </div>
       )}
 
@@ -235,6 +276,7 @@ function HistoryRow({ approval }: { approval: Approval }) {
           <pre className="text-xs text-muted-foreground bg-muted p-2.5 rounded overflow-auto max-h-24 font-mono">
             {JSON.stringify(approval.tool_input, null, 2)}
           </pre>
+          <AttachmentChips attachments={approval.attachments} />
         </div>
       )}
     </div>

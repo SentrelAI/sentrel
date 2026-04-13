@@ -1,3 +1,6 @@
+require "mini_mime"
+require "net/http"
+
 class WebhooksController < ApplicationController
   skip_before_action :verify_authenticity_token
   skip_before_action :set_tenant
@@ -73,9 +76,13 @@ class WebhooksController < ApplicationController
     agent = find_agent_by_channel("whatsapp", "phone_number", params[:To]&.gsub("whatsapp:", ""))
     return head :not_found unless agent
 
+    # Sprint 1b — fetch any media from Twilio (basic auth) and store as ActiveStorage blobs
+    attachment_signed_ids = fetch_twilio_media(params)
+
     enqueue(agent, "whatsapp", {
       from: from,
       body: params[:Body],
+      attachment_ids: attachment_signed_ids,
       metadata: { message_sid: params[:MessageSid], num_media: params[:NumMedia] },
     })
     head :ok
@@ -132,17 +139,33 @@ class WebhooksController < ApplicationController
       c.status = "active"
     end
 
-    conversation.messages.create!(
+    # Sprint 1c (direct upload) — files were already uploaded by the browser
+    # via @rails/activestorage DirectUpload. We just receive the signed_ids
+    # and attach the resulting blobs to the new Message.
+    attachment_signed_ids = Array(params[:attachment_signed_ids]).select(&:present?)
+
+    message = conversation.messages.create!(
       role: "user",
-      content: params[:body],
+      content: params[:body].to_s,
       direction: "inbound",
       channel: "web",
+      metadata: attachment_signed_ids.any? ? { attachment_ids: attachment_signed_ids } : {},
     )
+
+    # Attach via ActiveStorage so the conversation UI can render them naturally
+    if attachment_signed_ids.any?
+      attachment_signed_ids.each do |sid|
+        message.attachments.attach(sid)
+      rescue => e
+        Rails.logger.warn "webhooks/web: failed to attach signed_id #{sid}: #{e.message}"
+      end
+    end
 
     enqueue(agent, "web", {
       from: current_user.email,
       from_name: current_user.name,
-      body: params[:body],
+      body: params[:body].to_s,
+      attachment_ids: attachment_signed_ids,
       conversationId: conversation.id,
     })
     head :ok
@@ -232,10 +255,86 @@ class WebhooksController < ApplicationController
   end
 
   def valid_twilio_request?
+    # Skip validation in development — ngrok terminates SSL which breaks
+    # Twilio's signature (they sign against HTTPS, Rails sees HTTP).
+    # Production should always validate.
+    return true if Rails.env.development?
     return true unless ENV["TWILIO_AUTH_TOKEN"].present?
 
     validator = Twilio::Security::RequestValidator.new(ENV["TWILIO_AUTH_TOKEN"])
     validator.validate(request.original_url, request.POST, request.headers["X-Twilio-Signature"] || "")
+  end
+
+  # Sprint 1b — pull each MediaUrl{i} from Twilio webhook params, fetch with
+  # basic auth, store as ActiveStorage::Blob, return signed_ids for the engine.
+  def fetch_twilio_media(params)
+    num = params[:NumMedia].to_i
+    return [] if num.zero?
+
+    sid = ENV["TWILIO_ACCOUNT_SID"]
+    token = ENV["TWILIO_AUTH_TOKEN"]
+    return [] unless sid.present? && token.present?
+
+    signed_ids = []
+    num.times do |i|
+      url = params["MediaUrl#{i}"]
+      content_type = params["MediaContentType#{i}"] || "application/octet-stream"
+      next if url.blank?
+
+      begin
+        # Twilio MediaUrls return the file directly when authed, or 302 to
+        # a temporary S3 URL. Use open-uri with redirect following for simplicity.
+        uri = URI(url)
+        bytes = download_with_auth_and_redirects(uri, sid, token)
+
+        if bytes.nil? || bytes.length < 500
+          Rails.logger.warn "fetch_twilio_media: MediaUrl#{i} returned only #{bytes&.length || 0} bytes, skipping"
+          next
+        end
+
+        ext = MiniMime.lookup_by_content_type(content_type)&.extension || "bin"
+        blob = ActiveStorage::Blob.create_and_upload!(
+          io: StringIO.new(bytes),
+          filename: "whatsapp-#{params[:MessageSid]}-#{i}.#{ext}",
+          content_type: content_type,
+        )
+        signed_ids << blob.signed_id
+        Rails.logger.info "fetch_twilio_media: stored MediaUrl#{i} as #{blob.filename} (#{bytes.length} bytes)"
+      rescue => e
+        Rails.logger.error "fetch_twilio_media: failed to fetch MediaUrl#{i}: #{e.message}"
+      end
+    end
+    signed_ids
+  end
+
+  # Download a URL with basic auth, following up to 3 redirects. Redirects
+  # (like Twilio's 302 to S3) don't need auth — only the initial request does.
+  def download_with_auth_and_redirects(uri, username, password, max_redirects = 3)
+    max_redirects.times do
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = (uri.scheme == "https")
+      http.open_timeout = 10
+      http.read_timeout = 30
+
+      req = Net::HTTP::Get.new(uri)
+      req.basic_auth(username, password) if username
+
+      response = http.request(req)
+
+      case response
+      when Net::HTTPSuccess
+        return response.body
+      when Net::HTTPRedirection
+        uri = URI(response["location"])
+        username = nil # Don't send auth to the redirect target (S3)
+        password = nil
+      else
+        Rails.logger.error "download_with_auth_and_redirects: #{uri} returned #{response.code}"
+        return nil
+      end
+    end
+    Rails.logger.error "download_with_auth_and_redirects: too many redirects for #{uri}"
+    nil
   end
 
   # ── Generic enqueue (non-email channels) ───────────────────────

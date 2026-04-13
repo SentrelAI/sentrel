@@ -142,6 +142,16 @@ const AttachmentUI: FC = () => {
     }
   });
 
+  // Sprint 1c (direct upload) — surface upload progress / error states
+  const status = useAuiState(
+    useShallow((s) => s.attachment.status),
+  );
+  const isUploading = status?.type === "running";
+  const uploadProgress = isUploading && "progress" in status
+    ? Math.min(1, Math.max(0, status.progress))
+    : 0;
+  const isError = status?.type === "incomplete" && (status as { reason?: string }).reason === "error";
+
   return (
     <Tooltip>
       <AttachmentPrimitive.Root
@@ -153,18 +163,62 @@ const AttachmentUI: FC = () => {
         <AttachmentPreviewDialog>
           <TooltipTrigger asChild>
             <div
-              className="aui-attachment-tile size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75"
+              className={cn(
+                "aui-attachment-tile relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border bg-muted transition-opacity hover:opacity-75",
+                isError && "border-destructive",
+              )}
               role="button"
               aria-label={`${typeLabel} attachment`}
             >
               <AttachmentThumb />
+
+              {/* Uploading overlay — semi-transparent dim with circular progress */}
+              {isUploading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+                  <div className="relative size-7">
+                    <svg className="size-7 -rotate-90" viewBox="0 0 32 32">
+                      <circle
+                        cx="16"
+                        cy="16"
+                        r="13"
+                        fill="none"
+                        strokeWidth="3"
+                        className="stroke-muted-foreground/25"
+                      />
+                      <circle
+                        cx="16"
+                        cy="16"
+                        r="13"
+                        fill="none"
+                        strokeWidth="3"
+                        strokeDasharray={`${2 * Math.PI * 13}`}
+                        strokeDashoffset={`${2 * Math.PI * 13 * (1 - uploadProgress)}`}
+                        strokeLinecap="round"
+                        className="stroke-foreground transition-all duration-150"
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-medium tabular-nums">
+                      {Math.round(uploadProgress * 100)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Error overlay */}
+              {isError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-destructive/15">
+                  <XIcon className="size-4 text-destructive" />
+                </div>
+              )}
             </div>
           </TooltipTrigger>
         </AttachmentPreviewDialog>
-        {isComposer && <AttachmentRemove />}
+        {isComposer && !isUploading && <AttachmentRemove />}
       </AttachmentPrimitive.Root>
       <TooltipContent side="top">
         <AttachmentPrimitive.Name />
+        {isUploading && <div className="text-[10px] text-muted-foreground">Uploading {Math.round(uploadProgress * 100)}%</div>}
+        {isError && <div className="text-[10px] text-destructive">Upload failed</div>}
       </TooltipContent>
     </Tooltip>
   );

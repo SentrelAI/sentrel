@@ -14,6 +14,7 @@ Rails.application.routes.draw do
   # API for engine→Rails (blob uploads, etc.)
   namespace :api do
     resources :blobs, only: [:create]
+    resource :send_email, only: [:create]
   end
 
   # Webhook gateway (external services + dashboard chat)

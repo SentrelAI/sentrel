@@ -2,11 +2,175 @@ import { useRef } from "react"
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
+  type AttachmentAdapter,
   type ChatModelAdapter,
+  type PendingAttachment,
+  type CompleteAttachment,
 } from "@assistant-ui/react"
+// @ts-expect-error — @rails/activestorage ships JS without types
+import { DirectUpload } from "@rails/activestorage"
 import { Thread } from "@/components/assistant-ui/thread"
 
 const GATEWAY_URL = "ws://localhost:3300"
+const DIRECT_UPLOAD_URL = "/rails/active_storage/direct_uploads"
+
+// Stash signed_ids returned from direct upload, keyed by the original File
+// object. createAgentAdapter reads this on submit to get the blob references
+// without polluting the assistant-ui PendingAttachment type.
+// WeakMap auto-cleans when the File is garbage-collected.
+const signedIdByFile = new WeakMap<File, string>()
+
+interface DirectUploadBlob {
+  signed_id: string
+  key: string
+  filename: string
+  content_type: string
+  byte_size: number
+  checksum: string
+}
+
+// Direct-upload attachment adapter for assistant-ui composer.
+//
+// Flow:
+// 1. User drops/picks a file → add() is called
+// 2. We start a Rails DirectUpload to /rails/active_storage/direct_uploads
+// 3. We yield PendingAttachment objects with status: running, progress %
+// 4. Browser uploads bytes directly to storage (Disk in dev, S3 in prod)
+// 5. On complete: stash signed_id in WeakMap, yield final pending state
+// 6. assistant-ui marks the attachment as ready to send
+// 7. On submit: createAgentAdapter reads signed_id from WeakMap and POSTs JSON
+class DirectUploadAdapter implements AttachmentAdapter {
+  accept = "*"
+
+  async *add({ file }: { file: File }): AsyncGenerator<PendingAttachment, void> {
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `att-${Date.now()}-${Math.random()}`
+
+    const type: "image" | "document" | "file" = file.type.startsWith("image/")
+      ? "image"
+      : file.type === "application/pdf" ||
+          file.type.includes("officedocument") ||
+          file.type.includes("msword")
+        ? "document"
+        : "file"
+
+    const baseAtt = {
+      id,
+      type,
+      name: file.name,
+      contentType: file.type || "application/octet-stream",
+      file,
+    }
+
+    // Initial state
+    yield {
+      ...baseAtt,
+      status: { type: "running", reason: "uploading", progress: 0 },
+    }
+
+    // Bridge between DirectUpload's callback world and our async generator
+    const progressQueue: number[] = []
+    let resolveNext: (() => void) | null = null
+    let done = false
+    let error: Error | null = null
+    let signedId: string | null = null
+
+    function notifyNext() {
+      if (resolveNext) {
+        const r = resolveNext
+        resolveNext = null
+        r()
+      }
+    }
+
+    // CSRF: @rails/activestorage's BlobRecord constructor reads
+    // meta[name="csrf-token"] and sets X-CSRF-Token automatically — we don't
+    // need to set it ourselves. The /rails/active_storage/direct_uploads
+    // endpoint also has CSRF skipped via the active_storage_direct_uploads
+    // initializer (Devise auth replaces it).
+
+    const upload = new DirectUpload(file, DIRECT_UPLOAD_URL, {
+      directUploadWillStoreFileWithXHR(xhr: XMLHttpRequest) {
+        xhr.upload.addEventListener("progress", (e: ProgressEvent) => {
+          if (e.lengthComputable) {
+            progressQueue.push(e.loaded / e.total)
+            notifyNext()
+          }
+        })
+      },
+    })
+
+    upload.create((err: Error | null, blob: DirectUploadBlob | null) => {
+      if (err) {
+        error = err
+      } else if (blob) {
+        signedId = blob.signed_id
+        signedIdByFile.set(file, blob.signed_id)
+      }
+      done = true
+      notifyNext()
+    })
+
+    // Drain progress events + completion
+    while (true) {
+      if (progressQueue.length > 0) {
+        const progress = progressQueue.shift()!
+        yield {
+          ...baseAtt,
+          status: { type: "running", reason: "uploading", progress },
+        }
+        continue
+      }
+      if (done) break
+      await new Promise<void>((resolve) => {
+        resolveNext = resolve
+      })
+    }
+
+    if (error) {
+      yield {
+        ...baseAtt,
+        status: { type: "incomplete", reason: "error" },
+      }
+      throw error
+    }
+
+    // Upload complete — mark requires-action so assistant-ui treats it as ready
+    // to send when the user clicks the send button
+    yield {
+      ...baseAtt,
+      status: { type: "requires-action", reason: "composer-send" },
+    }
+  }
+
+  async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
+    const signedId = attachment.file ? signedIdByFile.get(attachment.file) : undefined
+    return {
+      ...attachment,
+      status: { type: "complete" },
+      content: [
+        {
+          type: "text" as const,
+          text: signedId ? `[Attached: ${attachment.name}]` : `[Attached: ${attachment.name} (upload incomplete)]`,
+        },
+      ],
+    }
+  }
+
+  async remove(): Promise<void> {
+    // The blob exists in storage but isn't attached to anything yet.
+    // Rails will GC unattached blobs after a period via ActiveStorage::PurgeJob.
+  }
+}
+
+// Read the signed_id stashed by DirectUploadAdapter for a given attachment file.
+// Used by createAgentAdapter at submit time.
+function getSignedIdForFile(file: File | undefined): string | undefined {
+  if (!file) return undefined
+  return signedIdByFile.get(file)
+}
 
 interface PendingEmail {
   approvalId: number
@@ -32,6 +196,18 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
         ?.filter((c) => c.type === "text")
         .map((c) => c.text)
         .join("\n") || ""
+
+      // Sprint 1c — collect signed_ids from any attachments the user added.
+      // Files were already uploaded via DirectUploadAdapter, we just need
+      // to read the signed_ids stashed in the WeakMap.
+      const attachmentSignedIds: string[] = []
+      const lastAttachments = (lastMessage as { attachments?: Array<{ file?: File }> })?.attachments
+      if (Array.isArray(lastAttachments)) {
+        for (const att of lastAttachments) {
+          const signedId = getSignedIdForFile(att.file)
+          if (signedId) attachmentSignedIds.push(signedId)
+        }
+      }
 
       const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 
@@ -85,10 +261,16 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
         setTimeout(resolve, 3000)
       })
 
+      // Sprint 1c — always JSON. Files were uploaded directly to storage by
+      // DirectUploadAdapter; we just send the signed_ids.
       await fetch("/webhooks/web", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-        body: JSON.stringify({ agent_id: agentId, body: userText }),
+        body: JSON.stringify({
+          agent_id: agentId,
+          body: userText,
+          attachment_signed_ids: attachmentSignedIds,
+        }),
         signal: abortSignal,
       })
 
@@ -141,7 +323,12 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
     return m
   })
 
+  const attachmentAdapter = useRef(new DirectUploadAdapter()).current
+
   const runtime = useLocalRuntime(adapter, {
+    adapters: {
+      attachments: attachmentAdapter,
+    },
     initialMessages: messagesWithApprovals.length > 0
       ? messagesWithApprovals.map((m) => ({
           role: m.role as "user" | "assistant",

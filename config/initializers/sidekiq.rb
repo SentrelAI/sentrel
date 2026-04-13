@@ -13,16 +13,8 @@ Sidekiq.configure_server do |config|
       end
     end
 
-    # Poll outbound email queue every 10 seconds
-    Sidekiq.logger.info "Starting outbound email poller..."
-    Thread.new do
-      loop do
-        sleep 10
-        OutboundEmailPollerJob.perform_later
-      rescue => e
-        Sidekiq.logger.error "Email poller error: #{e.message}"
-      end
-    end
+    # OutboundEmailPollerJob removed — engine now calls POST /api/send_email
+    # directly, which enqueues SendEmailJob instantly. No more polling delay.
   end
 end
 

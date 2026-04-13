@@ -19,29 +19,47 @@ class ConversationsController < ApplicationController
 
   def show
     conversation = @agent.conversations.find(params[:id])
+    messages = conversation.messages
+                           .with_attached_attachments
+                           .order(created_at: :asc)
+
+    payload_messages = messages.map { |m| serialize_message(m) }
 
     respond_to do |format|
       format.json do
         render json: {
           conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
-          messages: conversation.messages.order(created_at: :asc).as_json(
-            only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at]
-          )
+          messages: payload_messages,
         }
       end
       format.html do
         render inertia: "conversations/show", props: {
           agent: @agent.as_json(only: [:id, :name, :slug, :role]),
           conversation: conversation.as_json(only: [:id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status]),
-          messages: conversation.messages.order(created_at: :asc).as_json(
-            only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at]
-          )
+          messages: payload_messages,
         }
       end
     end
   end
 
   private
+
+  # Sprint 1d — include attachments (filename, size, content_type, download URL)
+  # so the conversation UI can render download chips on inbound messages.
+  def serialize_message(m)
+    base = m.as_json(only: [:id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at])
+    base.merge(
+      attachments: m.attachments.map do |att|
+        {
+          id: att.id,
+          filename: att.filename.to_s,
+          content_type: att.content_type,
+          byte_size: att.byte_size,
+          url: Rails.application.routes.url_helpers.rails_blob_path(att, only_path: true),
+        }
+      end
+    )
+  end
 
   def set_agent
     @agent = current_tenant.agents.find(params[:agent_id])
