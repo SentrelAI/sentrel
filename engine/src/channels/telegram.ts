@@ -180,7 +180,8 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   }));
 
   // Wait for response from gateway WebSocket broadcast
-  const response = await waitForResponse(120_000);
+  // 10 min timeout — complex tasks (building code, researching leads) can take 5-6 min
+  const response = await waitForResponse(600_000);
 
   clearInterval(typingInterval);
 
