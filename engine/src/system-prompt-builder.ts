@@ -1,9 +1,10 @@
 import type { Agent } from "./types.js";
+import type { AgentSkill } from "./host/host.js";
 
 // Builds the agent's full system prompt. Passed to the Claude Agent SDK as
 // `options.systemPrompt` (string form), which fully replaces the default
 // Claude Code preset. The agent should never know it's running on Claude.
-export function buildSystemPrompt(agent: Agent): string {
+export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
   const orgName = agent.organization?.name || "the company";
   const orgContext = agent.organization?.context_md?.trim();
   const today = new Date().toISOString().split("T")[0];
@@ -86,6 +87,15 @@ export function buildSystemPrompt(agent: Agent): string {
     `- For full-page screenshots, scroll down and capture multiple sections\n` +
     `- Save screenshots to workspace/screenshots/ with descriptive names`
   );
+
+  // Skills — progressive disclosure: list names here, agent reads SKILL.md on demand
+  if (skills && skills.length > 0) {
+    const skillList = skills.map((s) => `- ${s.name} (skills/${s.slug}/SKILL.md): ${s.description}`).join("\n");
+    parts.push(
+      `# Your skills\n` +
+      `You have these skills installed. Read the SKILL.md file for detailed instructions when you need them:\n${skillList}`
+    );
+  }
 
   parts.push(`Current date: ${today}`);
 

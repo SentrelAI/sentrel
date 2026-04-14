@@ -28,6 +28,17 @@ export interface PendingApproval {
   message_id?: number | null;
 }
 
+// Sprint 6 — skills
+export interface AgentSkill {
+  slug: string;
+  name: string;
+  description: string;
+  skill_md: string;
+  category: string;
+  requires_connections: string[];
+  enabled: boolean;
+}
+
 // Sprint 1 — blob storage
 export interface BlobUploadResult {
   signed_id: string;          // Rails ActiveStorage signed_id, opaque
@@ -119,6 +130,9 @@ export interface Host {
   ): Promise<void>;
   updateAgentMemory(agentId: number, memoryMd: string): Promise<void>;
   updateAgentStatus(agentId: number, status: string): Promise<void>;
+
+  // ── Skills ──
+  getAgentSkills(agentId: number): Promise<AgentSkill[]>;
 
   // ── Scheduling ──
   getScheduledTasks(agentId: number): Promise<ScheduledTask[]>;

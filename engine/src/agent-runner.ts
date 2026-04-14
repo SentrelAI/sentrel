@@ -7,8 +7,10 @@ import { buildPrompt } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
 import { processAttachments } from "./media/pipeline.js";
+import { syncSkillsFromDb } from "./skills.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
 import { buildSendMediaMcpServer } from "./tools/send-media.js";
+import { getComposioMcpServer } from "./integrations/composio.js";
 import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
@@ -136,6 +138,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     conversation = await host.getConversation(conversation.id);
   }
 
+  // ── Sprint 6: sync skills from DB to workspace ──
+  const skills = await syncSkillsFromDb(agent.id);
+
   // ── Sprint 2: process media attachments (transcribe audio, save files) ──
   const attachmentIds = job.payload?.attachment_ids || [];
   const processedMedia = attachmentIds.length > 0
@@ -148,7 +153,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const built = buildPrompt(agent, job, history, conversation, processedMedia);
 
   const options = await buildQueryOptions(agent, job);
-  options.systemPrompt = buildSystemPrompt(agent);
+  options.systemPrompt = buildSystemPrompt(agent, skills);
   if (resumeSessionId) {
     options.resume = resumeSessionId;
   }
@@ -356,6 +361,17 @@ async function buildQueryOptions(
   };
   const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
 
+  // Sprint 6 — Composio integration (1000+ app tools)
+  const composioServer = await getComposioMcpServer(agent.organization_id);
+
+  const mcpServers: Record<string, unknown> = {
+    recall: recallServer,
+    "send-media": sendMediaServer,
+  };
+  if (composioServer) {
+    mcpServers.composio = composioServer;
+  }
+
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
     allowedTools: [
@@ -369,18 +385,17 @@ async function buildQueryOptions(
       "WebSearch",
       "WebFetch",
       "Browser",
-      // MCP tools exposed via mcpServers below
+      // Custom MCP tools
       "mcp__recall__search_messages",
       "mcp__send-media__send_voice",
       "mcp__send-media__send_image",
       "mcp__send-media__send_file",
+      // Composio tools: allow all (wildcard)
+      ...(composioServer ? ["mcp__composio__*"] : []),
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
-    mcpServers: {
-      recall: recallServer,
-      "send-media": sendMediaServer,
-    },
+    mcpServers,
   };
 
   if (agent.ai_config?.model_id) {

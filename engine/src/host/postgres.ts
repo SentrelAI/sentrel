@@ -17,6 +17,7 @@ import type {
   SubAgent,
 } from "../types.js";
 import type {
+  AgentSkill,
   BlobUploadResult,
   ChannelConfig,
   Host,
@@ -283,6 +284,29 @@ export class PostgresHost implements Host {
       `UPDATE agents SET status = $1, updated_at = NOW() WHERE id = $2`,
       [status, agentId],
     );
+  }
+
+  // ── Skills ──
+
+  async getAgentSkills(agentId: number): Promise<AgentSkill[]> {
+    const { rows } = await this.pool.query(
+      `SELECT sd.slug, sd.name, sd.description, sd.skill_md, sd.category,
+              sd.requires_connections, ags.enabled
+       FROM agent_skills ags
+       JOIN skill_definitions sd ON sd.id = ags.skill_definition_id
+       WHERE ags.agent_id = $1 AND ags.enabled = true
+       ORDER BY sd.category, sd.name`,
+      [agentId],
+    );
+    return rows.map((r): AgentSkill => ({
+      slug: r.slug,
+      name: r.name,
+      description: r.description,
+      skill_md: r.skill_md,
+      category: r.category,
+      requires_connections: r.requires_connections || [],
+      enabled: r.enabled,
+    }));
   }
 
   // ── Scheduling ──
