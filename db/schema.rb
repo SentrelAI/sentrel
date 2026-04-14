@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_10_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_14_175614) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -41,6 +41,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_10_210000) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "agent_skills", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.jsonb "config", default: {}
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: true
+    t.bigint "skill_definition_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "skill_definition_id"], name: "idx_agent_skills_unique", unique: true
+    t.index ["agent_id"], name: "index_agent_skills_on_agent_id"
+    t.index ["skill_definition_id"], name: "index_agent_skills_on_skill_definition_id"
   end
 
   create_table "agents", force: :cascade do |t|
@@ -251,6 +263,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_10_210000) do
     t.index ["organization_id"], name: "index_scheduled_tasks_on_organization_id"
   end
 
+  create_table "skill_definitions", force: :cascade do |t|
+    t.string "category"
+    t.datetime "created_at", null: false
+    t.string "description"
+    t.string "icon"
+    t.string "name"
+    t.jsonb "requires_connections", default: []
+    t.text "skill_md"
+    t.string "slug"
+    t.string "source", default: "built_in"
+    t.datetime "updated_at", null: false
+    t.index ["slug"], name: "index_skill_definitions_on_slug", unique: true
+  end
+
   create_table "tasks", force: :cascade do |t|
     t.bigint "agent_id", null: false
     t.bigint "assigned_by_agent_id"
@@ -292,6 +318,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_10_210000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "agent_skills", "agents"
+  add_foreign_key "agent_skills", "skill_definitions"
   add_foreign_key "agents", "agents", column: "manager_id"
   add_foreign_key "agents", "organizations"
   add_foreign_key "ai_configs", "agents"

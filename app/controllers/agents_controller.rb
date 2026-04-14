@@ -60,6 +60,16 @@ class AgentsController < ApplicationController
       channel_configs: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :status]),
       scheduled_tasks: @agent.scheduled_tasks.as_json(
         only: [:id, :name, :cron_expression, :active, :last_run_at]
+      ),
+      # Sprint 6 — skills
+      installed_skills: @agent.agent_skills.includes(:skill_definition).map { |as|
+        as.skill_definition.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
+          .merge(enabled: as.enabled, agent_skill_id: as.id)
+      },
+      available_skills: SkillDefinition.where.not(
+        id: @agent.agent_skills.select(:skill_definition_id)
+      ).order(:category, :name).as_json(
+        only: [:id, :slug, :name, :description, :category, :icon, :requires_connections]
       )
     }
   end

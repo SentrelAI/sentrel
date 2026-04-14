@@ -94,6 +94,18 @@ interface EmailItem {
   contact: string | null
 }
 
+interface SkillItem {
+  id: number
+  slug: string
+  name: string
+  description: string
+  category: string
+  icon: string
+  requires_connections: string[]
+  enabled?: boolean
+  agent_skill_id?: number
+}
+
 interface Props {
   agent: Agent
   conversations: ConversationItem[]
@@ -103,9 +115,11 @@ interface Props {
   channel_configs: ChannelConfig[]
   scheduled_tasks: ScheduledTask[]
   approvals_by_message: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string; created_at: string }[]>
+  installed_skills: SkillItem[]
+  available_skills: SkillItem[]
 }
 
-type Section = "chat" | "inbox" | "tasks" | "schedule" | "identity"
+type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "identity"
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -356,7 +370,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message }: Props) {
+export default function AgentShow({ agent, conversations, emails, chat_messages, tasks, scheduled_tasks, approvals_by_message, installed_skills = [], available_skills = [] }: Props) {
   const [section, setSection] = useState<Section>("chat")
   const [selectedConvId, setSelectedConvId] = useState<number | null>(null)
   const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null)
@@ -390,6 +404,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
     { key: "inbox", label: "Inbox", icon: MessageSquare, count: conversations.length },
     { key: "tasks", label: "Tasks", icon: CheckSquare, count: tasks.length },
     { key: "schedule", label: "Schedule", icon: Clock, count: scheduled_tasks.length },
+    { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
     { key: "identity", label: "Identity", icon: User },
   ]
 
@@ -719,6 +734,93 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
         )}
 
         {/* Identity — file explorer + editor */}
+        {/* Skills */}
+        {section === "skills" && (
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {/* Installed skills */}
+            <div className="mb-6">
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                Installed ({installed_skills.length})
+              </h3>
+              {installed_skills.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-4">No skills installed. Browse available skills below.</div>
+              ) : (
+                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                  {installed_skills.map((skill) => (
+                    <div key={skill.slug} className="rounded-lg border border-border p-3 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{skill.name}</span>
+                          <Badge variant="secondary" className="text-[9px]">{skill.category}</Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              if (skill.agent_skill_id) {
+                                router.delete(`/agents/${agent.id}/agent_skills/${skill.agent_skill_id}`, { preserveScroll: true })
+                              }
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{skill.description}</p>
+                      {skill.requires_connections.length > 0 && (
+                        <div className="flex gap-1">
+                          {skill.requires_connections.map((c) => (
+                            <Badge key={c} variant="outline" className="text-[9px]">{c}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Available skills */}
+            <div>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                Available ({available_skills.length})
+              </h3>
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {available_skills.map((skill) => (
+                  <div key={skill.slug} className="rounded-lg border border-dashed border-border p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-muted-foreground">{skill.name}</span>
+                        <Badge variant="secondary" className="text-[9px]">{skill.category}</Badge>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="h-6 text-[10px] px-3"
+                        onClick={() => {
+                          router.post(`/agents/${agent.id}/agent_skills`, { skill_definition_id: skill.id }, { preserveScroll: true })
+                        }}
+                      >
+                        Install
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{skill.description}</p>
+                    {skill.requires_connections.length > 0 && (
+                      <div className="flex gap-1">
+                        {skill.requires_connections.map((c) => (
+                          <Badge key={c} variant="outline" className="text-[9px]">{c}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Identity */}
         {section === "identity" && (
           <IdentityEditor agent={agent} />
         )}

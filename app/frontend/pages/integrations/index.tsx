@@ -8,16 +8,25 @@ import { Button } from "@/components/ui/button"
 const AVAILABLE_INTEGRATIONS = [
   { name: "apollo", label: "Apollo", description: "CRM and lead generation", category: "Sales" },
   { name: "hubspot", label: "HubSpot", description: "CRM, marketing, and sales", category: "Sales" },
-  { name: "salesforce", label: "Salesforce", description: "Enterprise CRM", category: "Sales" },
-  { name: "gmail", label: "Gmail", description: "Email", category: "Communication" },
+  { name: "linkedin", label: "LinkedIn", description: "Professional network and outreach", category: "Sales" },
+  { name: "gmail", label: "Gmail", description: "Email via Google", category: "Communication" },
   { name: "slack", label: "Slack", description: "Team messaging", category: "Communication" },
-  { name: "google_calendar", label: "Google Calendar", description: "Scheduling", category: "Productivity" },
-  { name: "google_sheets", label: "Google Sheets", description: "Spreadsheets", category: "Productivity" },
-  { name: "stripe", label: "Stripe", description: "Payments and billing", category: "Finance" },
+  { name: "intercom", label: "Intercom", description: "Customer support", category: "Communication" },
+  { name: "googlecalendar", label: "Google Calendar", description: "Scheduling", category: "Productivity" },
+  { name: "googlesheets", label: "Google Sheets", description: "Spreadsheets", category: "Productivity" },
+  { name: "googledrive", label: "Google Drive", description: "Documents and files", category: "Productivity" },
+  { name: "notion", label: "Notion", description: "Docs and wiki", category: "Productivity" },
+  { name: "airtable", label: "Airtable", description: "Flexible database", category: "Productivity" },
+  { name: "calendly", label: "Calendly", description: "Booking and scheduling", category: "Productivity" },
   { name: "github", label: "GitHub", description: "Code and PRs", category: "Engineering" },
   { name: "linear", label: "Linear", description: "Issue tracking", category: "Engineering" },
-  { name: "notion", label: "Notion", description: "Docs and wiki", category: "Productivity" },
-  { name: "wordpress", label: "WordPress", description: "Content publishing", category: "Content" },
+  { name: "vercel", label: "Vercel", description: "Frontend deployment", category: "Engineering" },
+  { name: "stripe", label: "Stripe", description: "Payments and billing", category: "Finance" },
+  { name: "twitter", label: "Twitter / X", description: "Social media", category: "Content" },
+  { name: "figma", label: "Figma", description: "Design collaboration", category: "Content" },
+  { name: "mailchimp", label: "Mailchimp", description: "Email marketing", category: "Content" },
+  { name: "typeform", label: "Typeform", description: "Forms and surveys", category: "Content" },
+  { name: "digital_ocean", label: "DigitalOcean", description: "Cloud infrastructure", category: "Engineering" },
 ]
 
 interface Integration {
@@ -29,8 +38,26 @@ interface Integration {
 }
 
 export default function IntegrationsIndex({ integrations }: { integrations: Integration[] }) {
-  function connect(serviceName: string) {
-    router.post("/integrations", { integration: { service_name: serviceName, status: "connected" } })
+  async function connect(serviceName: string) {
+    // Get the Composio OAuth URL from Rails, then open in a popup
+    const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    const res = await fetch(`/integrations/${serviceName}/connect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrfToken },
+    })
+    const data = await res.json()
+    if (data.redirect_url) {
+      const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100")
+      // Poll for popup close, then refresh
+      const timer = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(timer)
+          router.reload()
+        }
+      }, 500)
+    } else if (data.error) {
+      alert(data.error)
+    }
   }
 
   function disconnect(id: number) {

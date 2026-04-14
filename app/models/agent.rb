@@ -12,6 +12,8 @@ class Agent < ApplicationRecord
   has_many :scheduled_tasks, dependent: :destroy
   has_many :pending_approvals, dependent: :destroy
   has_many :audit_logs, dependent: :destroy
+  has_many :agent_skills, dependent: :destroy
+  has_many :skill_definitions, through: :agent_skills
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: { scope: :organization_id }

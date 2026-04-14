@@ -42,13 +42,19 @@ Rails.application.routes.draw do
           post :buy_number
         end
       end
+      resources :agent_skills, only: [:create, :update, :destroy]
       resources :scheduled_tasks, only: [:index, :create, :update, :destroy]
       get "chat/stream", to: "chat_streams#show"
       get "chat/poll", to: "chat_polls#show"
     end
 
     resources :tasks
-    resources :integrations, only: [:index, :create, :destroy]
+    resources :integrations, only: [:index, :destroy] do
+      collection do
+        post ":service_name/connect", action: :connect, as: :connect
+        get :callback
+      end
+    end
     resources :pending_approvals, only: [:index, :update]
     resources :audit_logs, only: [:index]
 
