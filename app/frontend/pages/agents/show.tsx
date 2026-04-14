@@ -1,4 +1,4 @@
-import { Head, Link } from "@inertiajs/react"
+import { Head, Link, router } from "@inertiajs/react"
 import {
   ArrowLeft,
   MessageSquare,
@@ -14,8 +14,15 @@ import {
   Settings,
   Radio,
   Paperclip,
+  FileText,
+  Brain,
+  Sparkles,
+  BookOpen,
+  PenLine,
+  Save,
+  Check,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useCallback } from "react"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -159,6 +166,191 @@ function AgentHeader({ agent }: { agent: Agent }) {
             Edit
           </Link>
         </Button>
+      </div>
+    </div>
+  )
+}
+
+// ── Identity editor: file tree on left, markdown editor on right ──
+
+interface IdentityFile {
+  key: string
+  label: string
+  icon: typeof FileText
+  field: "identity_md" | "personality_md" | "instructions_md" | "memory_md" | "email_signature_md"
+  description: string
+  placeholder: string
+  readonly?: boolean
+  charLimit?: number
+}
+
+const IDENTITY_FILES: IdentityFile[] = [
+  {
+    key: "soul",
+    label: "SOUL.md",
+    icon: FileText,
+    field: "identity_md",
+    description: "The agent's core identity — who they are, their role, background, and purpose.",
+    placeholder: "I am Alex, an SDR (Sales Development Representative) at ScribeMD. My email is alex@alchemy.scribemd.ai. I help with outreach, lead qualification, and scheduling meetings.",
+  },
+  {
+    key: "personality",
+    label: "PERSONALITY.md",
+    icon: Sparkles,
+    field: "personality_md",
+    description: "How the agent communicates — tone, style, mannerisms, voice.",
+    placeholder: "Professional but friendly. I keep emails concise and personalized. I always research the prospect before reaching out. I never say I am an AI or Claude — I am Alex.",
+  },
+  {
+    key: "instructions",
+    label: "INSTRUCTIONS.md",
+    icon: BookOpen,
+    field: "instructions_md",
+    description: "What the agent should do — workflows, rules, constraints, priorities.",
+    placeholder: "Search for leads, draft outreach emails, follow up on conversations. Always check MEMORY.md before contacting someone.",
+  },
+  {
+    key: "memory",
+    label: "MEMORY.md",
+    icon: Brain,
+    field: "memory_md",
+    description: "Agent's accumulated knowledge. Updated by the agent automatically. Curate to stay under the limit.",
+    placeholder: "# Memory\n\nNo memories yet.",
+    charLimit: 2200,
+  },
+  {
+    key: "signature",
+    label: "SIGNATURE.md",
+    icon: PenLine,
+    field: "email_signature_md",
+    description: "Email signature appended to all outbound emails.",
+    placeholder: "--\nAlex\nSDR @ ScribeMD",
+  },
+]
+
+function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: string | null } }) {
+  const [activeFile, setActiveFile] = useState<string>("soul")
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const file = IDENTITY_FILES.find((f) => f.key === activeFile)!
+  const currentValue = drafts[activeFile] ?? (agent as Record<string, unknown>)[file.field] as string ?? ""
+  const isDirty = drafts[activeFile] !== undefined && drafts[activeFile] !== ((agent as Record<string, unknown>)[file.field] as string ?? "")
+
+  const handleChange = useCallback((value: string) => {
+    setDrafts((prev) => ({ ...prev, [activeFile]: value }))
+    setSaved(false)
+  }, [activeFile])
+
+  const handleSave = useCallback(async () => {
+    if (!isDirty) return
+    setSaving(true)
+    router.patch(`/agents/${agent.id}`, { [file.field]: drafts[activeFile] }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setSaving(false)
+        setSaved(true)
+        setDrafts((prev) => {
+          const next = { ...prev }
+          delete next[activeFile]
+          return next
+        })
+        setTimeout(() => setSaved(false), 2000)
+      },
+      onError: () => setSaving(false),
+    })
+  }, [agent.id, activeFile, file.field, drafts, isDirty])
+
+  const charUsage = file.charLimit ? `${currentValue.length}/${file.charLimit}` : null
+  const charPct = file.charLimit ? Math.round((currentValue.length / file.charLimit) * 100) : null
+
+  return (
+    <div className="flex flex-1 overflow-hidden">
+      {/* Left: file tree */}
+      <div className="w-52 shrink-0 border-r border-border overflow-y-auto bg-muted/20">
+        <div className="px-3 py-2.5">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Agent Files</span>
+        </div>
+        {IDENTITY_FILES.map((f) => {
+          const Icon = f.icon
+          const isActive = f.key === activeFile
+          const hasDraft = drafts[f.key] !== undefined
+          const value = (agent as Record<string, unknown>)[f.field] as string
+          const isEmpty = !value || value.trim() === ""
+          return (
+            <button
+              key={f.key}
+              onClick={() => setActiveFile(f.key)}
+              className={`flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                isActive
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              }`}
+            >
+              <Icon className="size-3.5 shrink-0" />
+              <span className="truncate text-xs">{f.label}</span>
+              {hasDraft && <span className="ml-auto size-1.5 rounded-full bg-amber-500 shrink-0" title="Unsaved changes" />}
+              {isEmpty && !hasDraft && <span className="ml-auto text-[9px] text-muted-foreground/50">empty</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Right: editor */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Editor header */}
+        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/10">
+          <div className="flex items-center gap-2">
+            <file.icon className="size-3.5 text-muted-foreground" />
+            <span className="text-sm font-medium">{file.label}</span>
+            {isDirty && <span className="text-[10px] text-amber-500 font-medium">modified</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {charUsage && (
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <div className="w-16 h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      (charPct ?? 0) > 90 ? "bg-red-500" : (charPct ?? 0) > 70 ? "bg-amber-500" : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${Math.min(100, charPct ?? 0)}%` }}
+                  />
+                </div>
+                <span>{charUsage}</span>
+              </div>
+            )}
+            <Button
+              size="sm"
+              className="h-7 text-xs px-3"
+              onClick={handleSave}
+              disabled={!isDirty || saving}
+            >
+              {saving ? (
+                <span className="flex items-center gap-1"><Save className="size-3 animate-pulse" /> Saving...</span>
+              ) : saved ? (
+                <span className="flex items-center gap-1"><Check className="size-3" /> Saved</span>
+              ) : (
+                <span className="flex items-center gap-1"><Save className="size-3" /> Save</span>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="px-4 py-1.5 border-b border-border/50">
+          <span className="text-[11px] text-muted-foreground">{file.description}</span>
+        </div>
+
+        {/* Textarea editor */}
+        <textarea
+          value={currentValue}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder={file.placeholder}
+          maxLength={file.charLimit}
+          className="flex-1 w-full resize-none bg-transparent px-4 py-3 text-sm font-mono leading-relaxed outline-none placeholder:text-muted-foreground/40"
+          spellCheck={false}
+        />
       </div>
     </div>
   )
@@ -526,30 +718,9 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
           </div>
         )}
 
-        {/* Identity */}
+        {/* Identity — file explorer + editor */}
         {section === "identity" && (
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            <div className="grid gap-3 md:grid-cols-2 max-w-4xl">
-              <div className="rounded-lg border border-border p-4">
-                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Identity</h3>
-                <pre className="text-sm whitespace-pre-wrap text-foreground/80 leading-relaxed font-sans">{agent.identity_md || "Not set"}</pre>
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Personality</h3>
-                <pre className="text-sm whitespace-pre-wrap text-foreground/80 leading-relaxed font-sans">{agent.personality_md || "Not set"}</pre>
-              </div>
-              <div className="rounded-lg border border-border p-4 md:col-span-2">
-                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Instructions</h3>
-                <pre className="text-sm whitespace-pre-wrap text-foreground/80 leading-relaxed font-sans">{agent.instructions_md || "Not set"}</pre>
-              </div>
-              {agent.memory_md && (
-                <div className="rounded-lg border border-border p-4 md:col-span-2">
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Memory</h3>
-                  <pre className="text-sm whitespace-pre-wrap text-foreground/80 leading-relaxed font-sans max-h-64 overflow-y-auto">{agent.memory_md}</pre>
-                </div>
-              )}
-            </div>
-          </div>
+          <IdentityEditor agent={agent} />
         )}
       </div>
     </AppLayout>
