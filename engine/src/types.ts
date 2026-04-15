@@ -105,6 +105,7 @@ export interface JobData {
     body?: string;
     instruction?: string;
     taskId?: number;
+    isReminder?: boolean;
     // Sprint 1 — inbound media
     attachment_ids?: string[];
     // Channel-specific metadata (chat_id, bot_token, message_sid, etc.)

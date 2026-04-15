@@ -244,6 +244,23 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     emitDone(finalResponse);
 
+    // Deliver reminder responses to the original channel
+    if (job.payload?.isReminder && finalResponse && job.channel) {
+      try {
+        const meta = job.payload.metadata || {};
+        if (job.channel === "telegram" && meta.bot_token && meta.chat_id) {
+          await fetch(`https://api.telegram.org/bot${meta.bot_token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: meta.chat_id, text: finalResponse, parse_mode: "Markdown" }),
+          });
+          logger.info(`Reminder delivered via Telegram to chat ${meta.chat_id}`);
+        }
+      } catch (err) {
+        logger.error("Failed to deliver reminder", { error: (err as Error).message });
+      }
+    }
+
     await host.saveAuditLog(
       agent.organization_id,
       agent.id,
@@ -371,7 +388,7 @@ async function buildQueryOptions(
   const composioServer = await getComposioMcpServer(agent.organization_id);
 
   // Post-V1 #2 — scheduling + task management tools
-  const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id);
+  const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
   const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
 
   const mcpServers: Record<string, unknown> = {

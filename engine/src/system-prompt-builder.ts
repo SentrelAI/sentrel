@@ -131,7 +131,10 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
     );
   }
 
-  parts.push(`Current date: ${today}`);
+  const now = new Date();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const localTime = now.toLocaleString("en-US", { timeZone: tz, dateStyle: "full", timeStyle: "long" });
+  parts.push(`Current time: ${localTime} (${tz})\nISO: ${now.toISOString()}\nIMPORTANT: When setting reminders, pass the ISO datetime to set_reminder. But when telling the user the time, ALWAYS say it in local time (${tz}), never UTC.`);
 
   return parts.join("\n\n");
 }
