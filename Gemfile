@@ -52,9 +52,11 @@ end
 
 gem "rspec-rails", "~> 8.0", groups: [:development, :test]
 
+# Observability (opt-in via env vars)
 gem "sentry-ruby", "~> 6.5"
 gem "sentry-rails", "~> 6.5"
-
 gem "sentry-sidekiq", "~> 6.5"
 
-gem "logtail-rails", "~> 0.2.12"
+group :production do
+  gem "logtail-rails", "~> 0.2.12"
+end

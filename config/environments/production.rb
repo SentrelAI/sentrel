@@ -40,7 +40,7 @@ Rails.application.configure do
   config.log_tags = [ :request_id ]
 
   # Better Stack logging via logtail-rails (opt-in via BETTERSTACK_SOURCE_TOKEN)
-  if ENV["BETTERSTACK_SOURCE_TOKEN"].present?
+  if ENV["BETTERSTACK_SOURCE_TOKEN"].present? && defined?(Logtail)
     config.logger = Logtail::Logger.create_default_logger(ENV["BETTERSTACK_SOURCE_TOKEN"])
   else
     config.logger = ActiveSupport::TaggedLogging.logger(STDOUT)
