@@ -61,9 +61,17 @@ async function poll(botToken: string, orgId: number): Promise<void> {
         for (const update of data.result) {
           lastUpdateId = update.update_id;
           if (update.callback_query) {
-            await handleCallbackQuery(update.callback_query, botToken);
+            // Process callbacks immediately — NEVER await (prevents deadlock
+            // when agent is paused waiting for a button tap)
+            handleCallbackQuery(update.callback_query, botToken).catch((err) =>
+              logger.error("Telegram callback error", { error: (err as Error).message })
+            );
           } else {
-            await handleUpdate(update, botToken, orgId);
+            // Fire message handling without blocking the poll loop — allows
+            // callbacks to come through while the agent is running
+            handleUpdate(update, botToken, orgId).catch((err) =>
+              logger.error("Telegram update error", { error: (err as Error).message })
+            );
           }
         }
       }
@@ -339,6 +347,7 @@ async function handleCallbackQuery(
   });
 
   // ── Command approval buttons (Phase S) ──
+  logger.info(`Telegram callback received: ${data}`);
   const cmdMatch = data.match(/^cmd_(once|session|always|deny)_(cmd_\d+)$/);
   if (cmdMatch) {
     const level = cmdMatch[1] as "once" | "session" | "always" | "deny";
