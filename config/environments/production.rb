@@ -38,7 +38,17 @@ Rails.application.configure do
 
   # Log to STDOUT with the current request id as a default log tag.
   config.log_tags = [ :request_id ]
-  config.logger   = ActiveSupport::TaggedLogging.logger(STDOUT)
+
+  # Structured JSON logs for Better Stack (opt-in via LOG_FORMAT=json)
+  if ENV["LOG_FORMAT"] == "json"
+    config.logger = ActiveSupport::TaggedLogging.new(
+      ActiveSupport::Logger.new(STDOUT, formatter: ->(severity, time, _progname, msg) {
+        { level: severity, time: time.iso8601, msg: msg }.to_json + "\n"
+      })
+    )
+  else
+    config.logger = ActiveSupport::TaggedLogging.logger(STDOUT)
+  end
 
   # Change to "debug" to log everything (including potentially personally-identifiable information!).
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")

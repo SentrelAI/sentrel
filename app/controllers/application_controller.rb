@@ -27,7 +27,15 @@ class ApplicationController < ActionController::Base
   def set_tenant
     if current_user
       set_current_tenant(current_user.organization)
+      set_sentry_context
     end
+  end
+
+  def set_sentry_context
+    return unless defined?(Sentry) && Sentry.initialized?
+
+    Sentry.set_user(id: current_user.id, email: current_user.email)
+    Sentry.set_tags(org_id: current_tenant&.id, org_slug: current_tenant&.slug)
   end
 
   def configure_permitted_parameters

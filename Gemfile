@@ -51,3 +51,8 @@ group :development do
 end
 
 gem "rspec-rails", "~> 8.0", groups: [:development, :test]
+
+gem "sentry-ruby", "~> 6.5"
+gem "sentry-rails", "~> 6.5"
+
+gem "sentry-sidekiq", "~> 6.5"
