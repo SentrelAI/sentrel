@@ -11,10 +11,14 @@ import { startInboxPoller } from "./inbox.js";
 import { startGateway, setSyncHandler } from "./gateway.js";
 import { startTelegramPolling } from "./channels/telegram.js";
 import { initWhatsApp } from "./channels/whatsapp.js";
+import { initSentry, setAgentContext, captureException, flush as flushSentry } from "./sentry.js";
 import { logger } from "./logger.js";
 import type { JobData } from "./types.js";
 
 async function main() {
+  // Init Sentry before anything else (opt-in via SENTRY_DSN env var)
+  initSentry();
+
   logger.info("═══════════════════════════════════════");
   logger.info("  ALCHEMY ENGINE starting...");
   logger.info("═══════════════════════════════════════");
@@ -25,6 +29,7 @@ async function main() {
   logger.info(`Agent: ${agent.name} (${agent.role})`);
   logger.info(`Model: ${agent.ai_config?.provider}/${agent.ai_config?.model_id}`);
   logger.info(`Organization: ${agent.organization?.name}`);
+  setAgentContext(agent);
 
   // 2. Sync workspace (directories + MEMORY.md). Identity comes from
   // buildSystemPrompt() at query time, not from a CLAUDE.md file.
@@ -39,10 +44,14 @@ async function main() {
 
   // 5. Start worker
   const worker = createWorker(async (job) => {
-    // Reload agent for latest config
-    const currentAgent = await host.getAgent(config.employeeId);
-    await runAgent(currentAgent, job.data);
-    incrementJobCount();
+    try {
+      const currentAgent = await host.getAgent(config.employeeId);
+      await runAgent(currentAgent, job.data);
+      incrementJobCount();
+    } catch (err) {
+      captureException(err, { jobType: job.data?.type, channel: job.data?.channel });
+      throw err;
+    }
   });
   logger.info(`Worker listening on queue: employee-${config.employeeId}`);
 
@@ -80,6 +89,7 @@ async function main() {
     logger.info("Shutting down...");
     await host.updateAgentStatus(agent.id, "stopped");
     await worker.close();
+    await flushSentry();
     process.exit(0);
   };
 
@@ -87,7 +97,9 @@ async function main() {
   process.on("SIGTERM", shutdown);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
+  captureException(err, { fatal: true });
+  await flushSentry();
   logger.error("Fatal error", { error: err.message, stack: err.stack });
   process.exit(1);
 });
