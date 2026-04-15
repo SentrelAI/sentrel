@@ -90,7 +90,9 @@ export interface ChannelConfig {
 export interface ScheduledTask {
   id: number
   name: string
+  instruction?: string
   cron_expression: string
+  timezone?: string
   active: boolean
   last_run_at: string | null
 }

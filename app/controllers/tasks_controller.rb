@@ -11,7 +11,20 @@ class TasksController < ApplicationController
   end
 
   def show
-    render inertia: "tasks/show", props: { task: task_json(@task) }
+    comments = @task.comments.includes(:agent, :user).order(created_at: :asc).map do |c|
+      {
+        id: c.id,
+        content: c.content,
+        created_at: c.created_at,
+        author: c.user&.as_json(only: [:id, :name]) || c.agent&.as_json(only: [:id, :name]),
+        author_type: c.user_id ? "user" : "agent",
+      }
+    end
+
+    render inertia: "tasks/show", props: {
+      task: task_json(@task),
+      comments: comments,
+    }
   end
 
   def create
@@ -27,7 +40,11 @@ class TasksController < ApplicationController
 
   def update
     if @task.update(task_params)
-      redirect_to tasks_path, notice: "Task updated"
+      if request.format.json? || request.content_type&.include?("json")
+        render json: task_json(@task)
+      else
+        redirect_to tasks_path, notice: "Task updated"
+      end
     else
       redirect_back fallback_location: tasks_path, alert: @task.errors.full_messages.join(", ")
     end
@@ -51,7 +68,8 @@ class TasksController < ApplicationController
   def task_json(task)
     task.as_json(only: [:id, :title, :description, :instruction, :status, :priority, :due_at, :started_at, :completed_at, :created_at]).merge(
       agent: task.agent.as_json(only: [:id, :name, :slug]),
-      assigned_by: task.assigned_by_user&.as_json(only: [:id, :name]) || task.assigned_by_agent&.as_json(only: [:id, :name])
+      assigned_by: task.assigned_by_user&.as_json(only: [:id, :name]) || task.assigned_by_agent&.as_json(only: [:id, :name]),
+      comments_count: task.comments.count,
     )
   end
 end

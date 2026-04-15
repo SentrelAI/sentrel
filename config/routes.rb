@@ -48,7 +48,9 @@ Rails.application.routes.draw do
       get "chat/poll", to: "chat_polls#show"
     end
 
-    resources :tasks
+    resources :tasks do
+      resources :comments, controller: "task_comments", only: [:create, :destroy]
+    end
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do

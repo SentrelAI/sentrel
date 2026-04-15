@@ -22,7 +22,8 @@ import {
   Save,
   Check,
 } from "lucide-react"
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
+import { Plus, Trash2, Pause, Play, X as XIcon } from "lucide-react"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -701,36 +702,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
 
         {/* Schedule */}
         {section === "schedule" && (
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            {scheduled_tasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                <Clock className="size-8 mb-2 opacity-20" />
-                <span className="text-sm">No scheduled tasks</span>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {scheduled_tasks.map((st) => (
-                  <div key={st.id} className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border hover:bg-muted/30 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`size-2 rounded-full ${st.active ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                      <span className="font-medium text-sm">{st.name}</span>
-                      <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">{st.cron_expression}</code>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={st.active ? "default" : "secondary"} className="text-[10px]">
-                        {st.active ? "Active" : "Paused"}
-                      </Badge>
-                      {st.last_run_at && (
-                        <span className="text-[10px] text-muted-foreground">
-                          Last: {new Date(st.last_run_at).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ScheduleSection agentId={agent.id} initialTasks={scheduled_tasks} />
         )}
 
         {/* Identity — file explorer + editor */}
@@ -826,5 +798,138 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
         )}
       </div>
     </AppLayout>
+  )
+}
+
+function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTasks: ScheduledTask[] }) {
+  const [tasks, setTasks] = useState(initialTasks)
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const cronRef = useRef<HTMLInputElement>(null)
+  const instructionRef = useRef<HTMLTextAreaElement>(null)
+  const timezoneRef = useRef<HTMLInputElement>(null)
+
+  const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+  const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrfToken }
+
+  async function handleCreate() {
+    const body = {
+      scheduled_task: {
+        name: nameRef.current?.value || "",
+        cron_expression: cronRef.current?.value || "",
+        instruction: instructionRef.current?.value || "",
+        timezone: timezoneRef.current?.value || "UTC",
+        active: true,
+      },
+    }
+    const res = await fetch(`/agents/${agentId}/scheduled_tasks`, { method: "POST", headers, body: JSON.stringify(body) })
+    if (res.ok) {
+      const created = await res.json()
+      setTasks((prev) => [created, ...prev])
+      setShowForm(false)
+    }
+  }
+
+  async function handleUpdate(id: number) {
+    const body = {
+      scheduled_task: {
+        name: nameRef.current?.value,
+        cron_expression: cronRef.current?.value,
+        instruction: instructionRef.current?.value,
+        timezone: timezoneRef.current?.value,
+      },
+    }
+    const res = await fetch(`/agents/${agentId}/scheduled_tasks/${id}`, { method: "PATCH", headers, body: JSON.stringify(body) })
+    if (res.ok) {
+      const updated = await res.json()
+      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)))
+      setEditId(null)
+    }
+  }
+
+  async function handleToggle(id: number, active: boolean) {
+    const res = await fetch(`/agents/${agentId}/scheduled_tasks/${id}`, {
+      method: "PATCH", headers,
+      body: JSON.stringify({ scheduled_task: { active: !active } }),
+    })
+    if (res.ok) {
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, active: !active } : t)))
+    }
+  }
+
+  async function handleDelete(id: number) {
+    await fetch(`/agents/${agentId}/scheduled_tasks/${id}`, { method: "DELETE", headers })
+    setTasks((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium">Scheduled Tasks</h3>
+        <Button size="sm" variant="secondary" className="h-7 text-xs gap-1" onClick={() => { setShowForm(!showForm); setEditId(null) }}>
+          <Plus className="size-3" /> Add Schedule
+        </Button>
+      </div>
+
+      {(showForm || editId) && (
+        <div className="rounded-lg border bg-card p-4 mb-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <input ref={nameRef} placeholder="Name (e.g. Weekly Report)" defaultValue={editId ? tasks.find(t => t.id === editId)?.name : ""} className="rounded-md border bg-background px-3 py-1.5 text-sm" />
+            <input ref={cronRef} placeholder="Cron (e.g. 0 9 * * 1)" defaultValue={editId ? tasks.find(t => t.id === editId)?.cron_expression : ""} className="rounded-md border bg-background px-3 py-1.5 text-sm font-mono" />
+          </div>
+          <textarea ref={instructionRef} placeholder="Instruction — what to do when this fires..." defaultValue="" rows={2} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm resize-none" />
+          <div className="flex items-center gap-2">
+            <input ref={timezoneRef} placeholder="Timezone (UTC)" defaultValue="UTC" className="rounded-md border bg-background px-3 py-1.5 text-sm w-48" />
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowForm(false); setEditId(null) }}>Cancel</Button>
+            <Button size="sm" className="h-7 text-xs" onClick={() => editId ? handleUpdate(editId) : handleCreate()}>
+              {editId ? "Update" : "Create"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {tasks.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <Clock className="size-8 mb-2 opacity-20" />
+          <span className="text-sm">No scheduled tasks</span>
+          <span className="text-xs mt-1">Create one above or ask the agent to schedule something</span>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {tasks.map((st) => (
+            <div key={st.id} className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border hover:bg-muted/30 transition-colors group">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className={`size-2 rounded-full shrink-0 ${st.active ? "bg-emerald-500" : "bg-zinc-400"}`} />
+                <span className="font-medium text-sm truncate">{st.name}</span>
+                <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">{st.cron_expression}</code>
+              </div>
+              <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => handleToggle(st.id, st.active)} className="p-1 rounded hover:bg-muted" title={st.active ? "Pause" : "Resume"}>
+                  {st.active ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                </button>
+                <button onClick={() => setEditId(st.id)} className="p-1 rounded hover:bg-muted" title="Edit">
+                  <PenLine className="size-3.5" />
+                </button>
+                <button onClick={() => handleDelete(st.id)} className="p-1 rounded hover:bg-muted text-red-500" title="Delete">
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 ml-2">
+                <Badge variant={st.active ? "default" : "secondary"} className="text-[10px]">
+                  {st.active ? "Active" : "Paused"}
+                </Badge>
+                {st.last_run_at && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Last: {new Date(st.last_run_at).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

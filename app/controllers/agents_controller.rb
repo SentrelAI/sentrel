@@ -59,7 +59,7 @@ class AgentsController < ApplicationController
       ),
       channel_configs: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :status]),
       scheduled_tasks: @agent.scheduled_tasks.as_json(
-        only: [:id, :name, :cron_expression, :active, :last_run_at]
+        only: [:id, :name, :instruction, :cron_expression, :timezone, :active, :last_run_at]
       ),
       # Sprint 6 — skills
       installed_skills: @agent.agent_skills.includes(:skill_definition).map { |as|
