@@ -37,14 +37,14 @@ export function createCommandApproval(
       createdAt: Date.now(),
     });
 
-    // Auto-deny after 5 minutes if no response
+    // Auto-deny after 60 seconds if no response
     setTimeout(() => {
       if (pendingApprovals.has(id)) {
         pendingApprovals.delete(id);
         resolve("deny");
-        logger.warn(`Command approval ${id} timed out, auto-denied`);
+        logger.warn(`Command approval ${id} timed out (60s), auto-denied`);
       }
-    }, 300_000);
+    }, 60_000);
   });
 
   return { id, promise };
@@ -65,4 +65,13 @@ export function resolveCommandApproval(id: string, level: ApprovalLevel): boolea
 // Check if there's a pending approval (for debugging)
 export function hasPendingApproval(id: string): boolean {
   return pendingApprovals.has(id);
+}
+
+// Get all pending approvals — used by gateway to re-broadcast to new clients
+export function getPendingApprovals(): Array<{ id: string; command: string; category: string }> {
+  return Array.from(pendingApprovals.entries()).map(([id, p]) => ({
+    id,
+    command: p.command,
+    category: p.category,
+  }));
 }

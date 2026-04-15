@@ -69,6 +69,28 @@ export interface SearchMessageResult {
   agent_id: number;
 }
 
+// Post-V1 #1 — full activity recall
+export interface SearchActivityFilters {
+  organizationId: number;
+  query?: string;
+  agentId?: number;
+  type?: "email" | "approval" | "task" | "error" | "tool_call";
+  contact?: string;
+  daysBack?: number;          // default 90
+  limit?: number;             // default 20, max 100
+}
+
+export interface ActivityResult {
+  type: "email_sent" | "email_received" | "approval" | "task" | "error" | "tool_call";
+  action: string;
+  agent_id: number;
+  agent_name?: string;
+  status: string;
+  summary: string;            // human-readable one-liner
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface Host {
   // ── Identity & config ──
   getAgent(id: string): Promise<Agent>;
@@ -143,6 +165,9 @@ export interface Host {
   // Implementations MUST enforce the organizationId filter — never allow
   // cross-org reads, even if other filters are missing.
   searchMessages(filters: SearchMessagesFilters): Promise<SearchMessageResult[]>;
+
+  // Post-V1 #1 — full activity recall (audit logs, emails, approvals, tasks)
+  searchActivity(filters: SearchActivityFilters): Promise<ActivityResult[]>;
 
   // ── Blob storage (Sprint 1+2) ──
   uploadBlob(bytes: Buffer, filename: string, contentType: string): Promise<BlobUploadResult>;

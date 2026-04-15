@@ -71,8 +71,17 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
     `Your identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.\n` +
     `\n` +
     `# Tool: search_messages\n` +
-    `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older context.\n` +
-    `Don't call it if the answer is already in your current conversation — only for older information.`
+    `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older conversation content.\n` +
+    `Don't call it if the answer is already in your current conversation — only for older information.\n\n` +
+    `# Tool: search_activity\n` +
+    `Use search_activity({ query?, type?, contact?, days_back? }) to recall your past actions:\n` +
+    `- type: "email" — emails you sent, failed, or were suppressed\n` +
+    `- type: "approval" — approvals you requested (pending/approved/rejected)\n` +
+    `- type: "task" — tasks you worked on or completed\n` +
+    `- type: "error" — errors and failures\n` +
+    `- type: "tool_call" — any tool you used\n` +
+    `- Omit type to search everything\n` +
+    `Use this when asked "what did I send Bob?", "any errors this week?", "what tasks did I complete?", etc.`
   );
 
   parts.push(

@@ -17,11 +17,13 @@ import type {
   SubAgent,
 } from "../types.js";
 import type {
+  ActivityResult,
   AgentSkill,
   BlobUploadResult,
   ChannelConfig,
   Host,
   PendingApproval,
+  SearchActivityFilters,
   SearchMessageResult,
   SearchMessagesFilters,
 } from "./host.js";
@@ -490,5 +492,183 @@ export class PostgresHost implements Host {
       created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
       agent_id: r.agent_id,
     }));
+  }
+
+  async searchActivity(filters: SearchActivityFilters): Promise<ActivityResult[]> {
+    if (!filters.organizationId) {
+      throw new Error("searchActivity: organizationId is required (tenant isolation)");
+    }
+
+    const limit = Math.min(filters.limit ?? 20, 100);
+    const daysBack = filters.daysBack ?? 90;
+
+    // Build a UNION ALL across audit_logs, pending_approvals, and tasks
+    // Each subquery normalizes to the same shape.
+
+    const params: unknown[] = [filters.organizationId, String(daysBack), limit];
+    const typeClauses: string[] = [];
+
+    // Map filter type to which subqueries to include
+    const includeAudit = !filters.type || ["email", "error", "tool_call"].includes(filters.type);
+    const includeApprovals = !filters.type || filters.type === "approval";
+    const includeTasks = !filters.type || filters.type === "task";
+
+    const subqueries: string[] = [];
+
+    if (includeAudit) {
+      const auditWheres = [
+        "a.organization_id = $1",
+        "a.created_at > NOW() - ($2 || ' days')::interval",
+      ];
+
+      if (filters.agentId) {
+        params.push(filters.agentId);
+        auditWheres.push(`a.agent_id = $${params.length}`);
+      }
+
+      if (filters.type === "email") {
+        auditWheres.push("a.action IN ('email_sent', 'email_failed', 'email_suppressed')");
+      } else if (filters.type === "error") {
+        auditWheres.push("a.status = 'failed'");
+      } else if (filters.type === "tool_call") {
+        auditWheres.push("a.tool_name IS NOT NULL");
+      }
+
+      if (filters.query) {
+        params.push(`%${filters.query}%`);
+        auditWheres.push(`(a.action ILIKE $${params.length} OR COALESCE(a.tool_name, '') ILIKE $${params.length} OR COALESCE(a.input::text, '') ILIKE $${params.length})`);
+      }
+
+      if (filters.contact) {
+        params.push(`%${filters.contact}%`);
+        auditWheres.push(`COALESCE(a.input::text, '') ILIKE $${params.length}`);
+      }
+
+      subqueries.push(`
+        SELECT
+          CASE
+            WHEN a.action LIKE 'email%' THEN 'email_sent'
+            WHEN a.status = 'failed' THEN 'error'
+            ELSE 'tool_call'
+          END AS type,
+          a.action,
+          a.agent_id,
+          ag.name AS agent_name,
+          COALESCE(a.status, 'unknown') AS status,
+          CONCAT(a.action, CASE WHEN a.tool_name IS NOT NULL THEN ' (' || a.tool_name || ')' ELSE '' END) AS summary,
+          COALESCE(a.input, '{}')::text AS details_json,
+          a.created_at
+        FROM audit_logs a
+        LEFT JOIN agents ag ON ag.id = a.agent_id
+        WHERE ${auditWheres.join(" AND ")}
+      `);
+    }
+
+    if (includeApprovals) {
+      const apprWheres = [
+        "pa.organization_id = $1",
+        "pa.created_at > NOW() - ($2 || ' days')::interval",
+      ];
+
+      if (filters.agentId) {
+        // Reuse existing param or add new
+        const agentParamIdx = params.indexOf(filters.agentId);
+        if (agentParamIdx === -1) {
+          params.push(filters.agentId);
+          apprWheres.push(`pa.agent_id = $${params.length}`);
+        } else {
+          apprWheres.push(`pa.agent_id = $${agentParamIdx + 1}`);
+        }
+      }
+
+      if (filters.query) {
+        const queryParamIdx = params.findIndex((p, i) => i > 2 && typeof p === "string" && p.startsWith("%") && p.endsWith("%") && p.includes(filters.query!));
+        if (queryParamIdx !== -1) {
+          apprWheres.push(`(pa.tool_name ILIKE $${queryParamIdx + 1} OR COALESCE(pa.tool_input::text, '') ILIKE $${queryParamIdx + 1})`);
+        }
+      }
+
+      subqueries.push(`
+        SELECT
+          'approval' AS type,
+          CONCAT('approval_', pa.status) AS action,
+          pa.agent_id,
+          ag.name AS agent_name,
+          pa.status,
+          CONCAT(pa.tool_name, ' → ', pa.status) AS summary,
+          COALESCE(pa.tool_input, '{}')::text AS details_json,
+          pa.created_at
+        FROM pending_approvals pa
+        LEFT JOIN agents ag ON ag.id = pa.agent_id
+        WHERE ${apprWheres.join(" AND ")}
+      `);
+    }
+
+    if (includeTasks) {
+      const taskWheres = [
+        "t.organization_id = $1",
+        "t.created_at > NOW() - ($2 || ' days')::interval",
+      ];
+
+      if (filters.agentId) {
+        const agentParamIdx = params.findIndex((p, i) => i > 2 && p === filters.agentId);
+        if (agentParamIdx !== -1) {
+          taskWheres.push(`t.agent_id = $${agentParamIdx + 1}`);
+        } else {
+          params.push(filters.agentId);
+          taskWheres.push(`t.agent_id = $${params.length}`);
+        }
+      }
+
+      if (filters.query) {
+        const queryParamIdx = params.findIndex((p, i) => i > 2 && typeof p === "string" && p.startsWith("%") && p.endsWith("%") && p.includes(filters.query!));
+        if (queryParamIdx !== -1) {
+          taskWheres.push(`(t.title ILIKE $${queryParamIdx + 1} OR COALESCE(t.description, '') ILIKE $${queryParamIdx + 1})`);
+        }
+      }
+
+      subqueries.push(`
+        SELECT
+          'task' AS type,
+          CONCAT('task_', t.status) AS action,
+          t.agent_id,
+          ag.name AS agent_name,
+          t.status,
+          CONCAT(t.title, ' → ', t.status) AS summary,
+          json_build_object('title', t.title, 'description', t.description, 'priority', t.priority, 'due_at', t.due_at)::text AS details_json,
+          t.created_at
+        FROM tasks t
+        LEFT JOIN agents ag ON ag.id = t.agent_id
+        WHERE ${taskWheres.join(" AND ")}
+      `);
+    }
+
+    if (subqueries.length === 0) return [];
+
+    const sql = `
+      SELECT * FROM (
+        ${subqueries.join("\nUNION ALL\n")}
+      ) combined
+      ORDER BY created_at DESC
+      LIMIT $3
+    `;
+
+    const { rows } = await this.pool.query(sql, params);
+
+    return rows.map((r): ActivityResult => {
+      let details: Record<string, unknown> = {};
+      try { details = JSON.parse(r.details_json || "{}"); } catch { /* ignore */ }
+
+      return {
+        type: r.type,
+        action: r.action,
+        agent_id: r.agent_id,
+        agent_name: r.agent_name,
+        status: r.status,
+        summary: r.summary,
+        details,
+        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+      };
+    });
   }
 }

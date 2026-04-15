@@ -77,6 +77,37 @@ export function startGateway(): void {
 
     ws.send(JSON.stringify({ type: "connected", agentId: config.employeeId }));
 
+    // Re-broadcast any pending command approvals to new clients
+    import("./security/command-approval.js").then(({ getPendingApprovals }) => {
+      for (const p of getPendingApprovals()) {
+        ws.send(JSON.stringify({
+          type: "command_approval",
+          approvalId: p.id,
+          command: p.command,
+          category: p.category,
+          level: "HIGH",
+          explanation: `Dangerous command detected: ${p.category}`,
+        }));
+      }
+    });
+
+    ws.on("message", async (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === "command_approval_response") {
+          const { resolveCommandApproval } = await import("./security/command-approval.js");
+          const { recordApproval } = await import("./security/approval-interceptor.js");
+          const resolved = resolveCommandApproval(msg.approvalId, msg.level);
+          if (resolved && msg.level !== "deny") {
+            await recordApproval(msg.command || "", msg.level, null as any);
+          }
+          logger.info(`Gateway: command approval ${msg.approvalId} → ${msg.level}`);
+        }
+      } catch (err) {
+        logger.warn("Gateway: invalid WebSocket message", { error: (err as Error).message });
+      }
+    });
+
     ws.on("close", () => {
       clients.delete(ws);
       logger.info(`Gateway: client disconnected (${clients.size} total)`);

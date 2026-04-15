@@ -116,9 +116,94 @@ export function buildRecallMcpServer(organizationId: number) {
     },
   );
 
+  const searchActivityTool = tool(
+    "search_activity",
+    "Search your past activity — emails sent/failed, approvals processed, tasks completed, " +
+      "tool calls, and errors. Use when asked about what you've done, what emails were sent, " +
+      "what tasks are pending, or to recall past actions. Complements search_messages which " +
+      "searches conversation content.",
+    {
+      query: z
+        .string()
+        .optional()
+        .describe("Text to search for in action names, tool names, task titles, or input data."),
+      type: z
+        .enum(["email", "approval", "task", "error", "tool_call"])
+        .optional()
+        .describe("Filter to a specific activity type."),
+      contact: z
+        .string()
+        .optional()
+        .describe("Filter to activity involving a specific contact (email, phone, name)."),
+      agent_id: z
+        .number()
+        .optional()
+        .describe("Filter to a specific agent's activity. Omit to search all agents in the org."),
+      days_back: z
+        .number()
+        .int()
+        .min(1)
+        .max(3650)
+        .optional()
+        .describe("How far back to search, in days. Default 90."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("Max results to return. Default 20, max 100."),
+    },
+    async (args) => {
+      try {
+        const results = await host.searchActivity({
+          organizationId,
+          query: args.query,
+          type: args.type,
+          contact: args.contact,
+          agentId: args.agent_id,
+          daysBack: args.days_back,
+          limit: args.limit,
+        });
+
+        if (results.length === 0) {
+          return {
+            content: [{ type: "text", text: "No matching activity found." }],
+          };
+        }
+
+        const formatted = results
+          .map((r, i) => {
+            const when = new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ");
+            const agent = r.agent_name || `agent#${r.agent_id}`;
+            const detailStr = Object.keys(r.details).length > 0
+              ? `\n   ${JSON.stringify(r.details).slice(0, 300)}`
+              : "";
+            return `${i + 1}. ${when} [${r.type}] ${agent}: ${r.summary} (${r.status})${detailStr}`;
+          })
+          .join("\n\n");
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Found ${results.length} activit${results.length === 1 ? "y" : "ies"}:\n\n${formatted}`,
+            },
+          ],
+        };
+      } catch (err) {
+        logger.error("recall.search_activity failed", { error: (err as Error).message });
+        return {
+          content: [{ type: "text", text: `Search failed: ${(err as Error).message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
   return createSdkMcpServer({
     name: "recall",
-    version: "0.1.0",
-    tools: [searchMessagesTool],
+    version: "0.2.0",
+    tools: [searchMessagesTool, searchActivityTool],
   });
 }
