@@ -49,3 +49,5 @@ end
 group :development do
   gem "web-console"
 end
+
+gem "rspec-rails", "~> 8.0", groups: [:development, :test]
