@@ -242,7 +242,11 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       }
     }
 
-    emitDone(finalResponse);
+    // Only emit done for inbound messages — heartbeats and scheduled tasks
+    // are background jobs that shouldn't trigger Telegram/channel responses
+    if (isInbound) {
+      emitDone(finalResponse);
+    }
 
     // Update last_run_at for scheduled tasks
     if (job.type === "scheduled_task" && job.payload?.taskId) {
