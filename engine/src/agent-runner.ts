@@ -244,6 +244,11 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     emitDone(finalResponse);
 
+    // Update last_run_at for scheduled tasks
+    if (job.type === "scheduled_task" && job.payload?.taskId) {
+      await host.updateScheduledTaskLastRun(job.payload.taskId).catch(() => {});
+    }
+
     // Deliver reminder responses to the original channel
     if (job.payload?.isReminder && finalResponse && job.channel) {
       try {

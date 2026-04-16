@@ -162,6 +162,7 @@ export interface Host {
   createScheduledTask(orgId: number, agentId: number, name: string, instruction: string, cronExpression: string, timezone?: string): Promise<number>;
   updateScheduledTask(id: number, updates: { name?: string; instruction?: string; cron_expression?: string; timezone?: string; active?: boolean }): Promise<void>;
   deleteScheduledTask(id: number): Promise<void>;
+  updateScheduledTaskLastRun(id: number): Promise<void>;
 
   // ── Tasks ──
   createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number>;

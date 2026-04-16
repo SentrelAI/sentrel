@@ -354,6 +354,10 @@ export class PostgresHost implements Host {
     await this.pool.query(`DELETE FROM scheduled_tasks WHERE id = $1`, [id]);
   }
 
+  async updateScheduledTaskLastRun(id: number): Promise<void> {
+    await this.pool.query(`UPDATE scheduled_tasks SET last_run_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
+  }
+
   // ── Tasks ──
 
   async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number> {
