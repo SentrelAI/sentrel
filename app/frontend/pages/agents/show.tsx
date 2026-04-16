@@ -883,6 +883,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
             <label className="text-xs text-muted-foreground mb-1.5 block">Schedule</label>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {[
+                { label: "Every minute", cron: "* * * * *" },
                 { label: "Every hour", cron: "0 * * * *" },
                 { label: "Daily 9am", cron: "0 9 * * *" },
                 { label: "Weekdays 9am", cron: "0 9 * * 1-5" },
@@ -953,33 +954,47 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
       ) : (
         <div className="space-y-1.5">
           {tasks.map((st) => (
-            <div key={st.id} className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border hover:bg-muted/30 transition-colors group">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className={`size-2 rounded-full shrink-0 ${st.active ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                <span className="font-medium text-sm truncate">{st.name}</span>
-                <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">{st.cron_expression}</code>
+            <div key={st.id} className="rounded-md border border-border hover:bg-muted/30 transition-colors group">
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className={`size-2 rounded-full shrink-0 ${st.active ? "bg-emerald-500" : "bg-zinc-400"}`} />
+                  <span className="font-medium text-sm truncate">{st.name}</span>
+                  <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">{st.cron_expression}</code>
+                </div>
+                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => handleToggle(st.id, st.active)} className="p-1 rounded hover:bg-muted" title={st.active ? "Pause" : "Resume"}>
+                    {st.active ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                  </button>
+                  <button onClick={() => setEditId(st.id)} className="p-1 rounded hover:bg-muted" title="Edit">
+                    <PenLine className="size-3.5" />
+                  </button>
+                  <button onClick={() => handleDelete(st.id)} className="p-1 rounded hover:bg-muted text-red-500" title="Delete">
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 ml-2">
+                  <Badge variant={st.active ? "default" : "secondary"} className="text-[10px]">
+                    {st.active ? "Active" : "Paused"}
+                  </Badge>
+                  {st.last_run_at && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Last: {new Date(st.last_run_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleToggle(st.id, st.active)} className="p-1 rounded hover:bg-muted" title={st.active ? "Pause" : "Resume"}>
-                  {st.active ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-                </button>
-                <button onClick={() => setEditId(st.id)} className="p-1 rounded hover:bg-muted" title="Edit">
-                  <PenLine className="size-3.5" />
-                </button>
-                <button onClick={() => handleDelete(st.id)} className="p-1 rounded hover:bg-muted text-red-500" title="Delete">
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-              <div className="flex items-center gap-2 ml-2">
-                <Badge variant={st.active ? "default" : "secondary"} className="text-[10px]">
-                  {st.active ? "Active" : "Paused"}
-                </Badge>
-                {st.last_run_at && (
-                  <span className="text-[10px] text-muted-foreground">
-                    Last: {new Date(st.last_run_at).toLocaleString()}
-                  </span>
-                )}
-              </div>
+              {(st as any).recent_runs?.length > 0 && (
+                <div className="px-3 pb-2 border-t border-border/50">
+                  <p className="text-[10px] text-muted-foreground mt-1.5 mb-1">Recent runs</p>
+                  {(st as any).recent_runs.map((run: any) => (
+                    <div key={run.id} className="flex items-start gap-2 py-1">
+                      <div className={`size-1.5 rounded-full mt-1.5 shrink-0 ${run.status === "success" ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span className="text-[11px] text-muted-foreground flex-1 truncate">{run.output || "No output"}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{new Date(run.created_at).toLocaleTimeString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

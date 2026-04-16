@@ -171,12 +171,13 @@ function TaskCard({ task, overlay, setEditingTask, onOpen }: { task: TaskItem; o
 }
 
 // ── Droppable Column ──
-function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask }: {
+function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask, onOpenTask }: {
   columnKey: string
   label: string
   dot: string
   tasks: TaskItem[]
   setEditingTask: (t: TaskItem) => void
+  onOpenTask: (t: TaskItem) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnKey })
 
@@ -200,7 +201,7 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask }: {
       >
         <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {columnTasks.map((task) => (
-            <TaskCard key={task.id} task={task} setEditingTask={setEditingTask} onOpen={openTaskDetail} />
+            <TaskCard key={task.id} task={task} setEditingTask={setEditingTask} onOpen={onOpenTask} />
           ))}
         </SortableContext>
 
@@ -424,6 +425,7 @@ export default function TasksIndex({ tasks, agents }: Props) {
               dot={col.dot}
               tasks={tasks.filter((t) => t.status === col.key)}
               setEditingTask={setEditingTask}
+              onOpenTask={openTaskDetail}
             />
           ))}
         </div>

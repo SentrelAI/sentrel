@@ -58,9 +58,16 @@ class AgentsController < ApplicationController
         only: [:id, :title, :status, :priority, :due_at, :completed_at]
       ),
       channel_configs: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :status]),
-      scheduled_tasks: @agent.scheduled_tasks.as_json(
-        only: [:id, :name, :instruction, :cron_expression, :timezone, :active, :last_run_at]
-      ),
+      scheduled_tasks: @agent.scheduled_tasks.order(created_at: :desc).map { |st|
+        recent_logs = AuditLog.where(agent_id: @agent.id, action: "scheduled_task")
+          .where("input->>'taskId' = ?", st.id.to_s)
+          .order(created_at: :desc).limit(3)
+          .map { |l| { id: l.id, status: l.status, output: l.output&.dig("response")&.truncate(200), created_at: l.created_at } }
+
+        st.as_json(only: [:id, :name, :instruction, :cron_expression, :timezone, :active, :last_run_at]).merge(
+          recent_runs: recent_logs
+        )
+      },
       # Sprint 6 — skills
       installed_skills: @agent.agent_skills.includes(:skill_definition).map { |as|
         as.skill_definition.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
