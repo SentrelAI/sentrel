@@ -15,7 +15,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useDroppable } from "@dnd-kit/core"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 
 import AppLayout from "@/layouts/app-layout"
 import { PageHeader } from "@/components/page-header"
@@ -29,6 +29,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { tasksPath } from "@/routes"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+
+const mdComponents = {
+  a: (props: any) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline break-all" />,
+  code: ({ inline, ...props }: any) => inline
+    ? <code {...props} className="bg-muted px-1 rounded text-xs font-mono" />
+    : <code {...props} className="block bg-muted p-2 rounded text-xs font-mono overflow-x-auto" />,
+  h1: (props: any) => <h1 {...props} className="text-base font-bold mt-2 mb-1" />,
+  h2: (props: any) => <h2 {...props} className="text-sm font-semibold mt-2 mb-1" />,
+  h3: (props: any) => <h3 {...props} className="text-sm font-semibold mt-2 mb-1" />,
+  ul: (props: any) => <ul {...props} className="list-disc ml-5 my-1 space-y-0.5" />,
+  ol: (props: any) => <ol {...props} className="list-decimal ml-5 my-1 space-y-0.5" />,
+  p: (props: any) => <p {...props} className="my-1" />,
+}
 
 interface TaskItem {
   id: number
@@ -41,6 +56,7 @@ interface TaskItem {
   agent: { id: number; name: string; slug: string }
   assigned_by: { id: number; name: string } | null
   comments_count?: number
+  result?: string | null
 }
 
 interface Props {
@@ -292,12 +308,15 @@ export default function TasksIndex({ tasks, agents }: Props) {
 
   async function openTaskDetail(task: TaskItem) {
     setSelectedTask(task)
+    setComments([])
     setLoadingComments(true)
     try {
-      const res = await fetch(`/tasks/${task.id}`, { headers: { "Accept": "application/json", "X-Inertia": "true", "X-Inertia-Version": "" } })
+      const res = await fetch(`/tasks/${task.id}.json`, { headers: { "Accept": "application/json" } })
       if (res.ok) {
         const data = await res.json()
-        setComments(data.props?.comments || [])
+        setComments(data.comments || [])
+        // Update the selected task with fresh data (e.g. result, comments_count)
+        if (data.task) setSelectedTask({ ...task, ...data.task })
       }
     } catch {}
     setLoadingComments(false)
@@ -457,11 +476,29 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
   const [newComment, setNewComment] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [localComments, setLocalComments] = useState(comments)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 
   // Sync when comments prop changes
   if (comments !== localComments && comments.length > 0 && localComments.length === 0) {
     setLocalComments(comments)
+  }
+
+  // Auto-scroll to bottom when comments change
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight
+    }
+  }, [localComments.length])
+
+  async function refreshComments() {
+    try {
+      const res = await fetch(`/tasks/${task.id}.json`, { headers: { "Accept": "application/json" } })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.comments) setLocalComments(data.comments)
+      }
+    } catch {}
   }
 
   async function handleAddComment() {
@@ -478,13 +515,31 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
     }])
     setNewComment("")
     setSubmitting(false)
+
+    // Poll for agent's response (user comments trigger task_assignment)
+    setTimeout(refreshComments, 5000)
+    setTimeout(refreshComments, 15000)
+    setTimeout(refreshComments, 30000)
+    setTimeout(refreshComments, 60000)
+  }
+
+  async function handleCancel() {
+    if (!confirm("Cancel this task?")) return
+    await fetch(`/tasks/${task.id}/cancel`, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    })
+    onClose()
+    window.location.reload()
   }
 
   const statusColors: Record<string, string> = {
     todo: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
     in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    awaiting_input: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
     done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
     failed: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+    cancelled: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500",
   }
 
   const pb = priorityBadge[task.priority] || priorityBadge.normal
@@ -506,13 +561,18 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
               {task.due_at && <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="size-3" /> Due {new Date(task.due_at).toLocaleDateString()}</span>}
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-muted transition-colors">
-            <X className="size-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {!["done", "failed", "cancelled"].includes(task.status) && (
+              <button onClick={handleCancel} className="px-2 py-1 text-xs rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition-colors">Cancel</button>
+            )}
+            <button onClick={onClose} className="p-1 rounded-md hover:bg-muted transition-colors">
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div ref={bodyRef} className="flex-1 overflow-y-auto p-5 space-y-4">
           {task.description && (
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
           )}
@@ -520,6 +580,15 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
             <div className="rounded-md bg-muted p-3">
               <p className="text-[11px] font-medium text-muted-foreground mb-1">Instruction</p>
               <p className="text-sm whitespace-pre-wrap">{task.instruction}</p>
+            </div>
+          )}
+
+          {task.result && (
+            <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30 p-3">
+              <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 mb-1.5">Agent Result</p>
+              <div className="text-sm max-h-64 overflow-y-auto prose prose-sm dark:prose-invert max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{task.result}</ReactMarkdown>
+              </div>
             </div>
           )}
 
@@ -543,7 +612,9 @@ function TaskDetailModal({ task, comments, loading, onClose }: { task: TaskItem;
                         <span className="text-xs font-medium">{c.author?.name || "System"}</span>
                         <span className="text-[10px] text-muted-foreground">{new Date(c.created_at).toLocaleString()}</span>
                       </div>
-                      <p className="text-sm mt-0.5 whitespace-pre-wrap">{c.content}</p>
+                      <div className="text-sm mt-0.5 prose prose-sm dark:prose-invert max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{c.content}</ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 ))}

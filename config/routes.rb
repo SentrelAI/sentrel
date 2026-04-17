@@ -15,6 +15,7 @@ Rails.application.routes.draw do
   namespace :api do
     resources :blobs, only: [:create, :show], param: :signed_id
     resource :send_email, only: [:create]
+    resources :task_events, only: [:create]
   end
 
   # Webhook gateway (external services + dashboard chat)
@@ -50,6 +51,9 @@ Rails.application.routes.draw do
 
     resources :tasks do
       resources :comments, controller: "task_comments", only: [:create, :destroy]
+      member do
+        post :cancel
+      end
     end
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do

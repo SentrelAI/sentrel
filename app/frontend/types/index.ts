@@ -87,6 +87,15 @@ export interface ChannelConfig {
   status: string
 }
 
+export interface ScheduledTaskRun {
+  id: number
+  status: string
+  output: string | null
+  duration_ms: number | null
+  tool_calls: Array<{ name: string }>
+  created_at: string
+}
+
 export interface ScheduledTask {
   id: number
   name: string
@@ -95,6 +104,7 @@ export interface ScheduledTask {
   timezone?: string
   active: boolean
   last_run_at: string | null
+  recent_runs?: ScheduledTaskRun[]
 }
 
 export interface NavItem {

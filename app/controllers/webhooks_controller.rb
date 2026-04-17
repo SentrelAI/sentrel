@@ -341,14 +341,12 @@ class WebhooksController < ApplicationController
 
   def enqueue(agent, channel, payload)
     conversation_id = payload.delete(:conversationId)
-    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
-    redis.lpush("agent-inbox-#{agent.id}", {
+    AgentEventBus.publish(
       type: "inbound_message",
-      agentId: agent.id.to_s,
-      orgId: agent.organization_id,
+      agent: agent,
       channel: channel,
-      conversationId: conversation_id,
+      conversation_id: conversation_id,
       payload: payload,
-    }.to_json)
+    )
   end
 end

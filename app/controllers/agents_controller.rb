@@ -58,15 +58,32 @@ class AgentsController < ApplicationController
         only: [:id, :title, :status, :priority, :due_at, :completed_at]
       ),
       channel_configs: @agent.channel_configs.as_json(only: [:id, :channel_type, :enabled, :status]),
-      scheduled_tasks: @agent.scheduled_tasks.order(created_at: :desc).map { |st|
+      scheduled_tasks: @agent.scheduled_work.order(created_at: :desc).map { |sw|
         recent_logs = AuditLog.where(agent_id: @agent.id, action: "scheduled_task")
-          .where("input->>'taskId' = ?", st.id.to_s)
-          .order(created_at: :desc).limit(3)
-          .map { |l| { id: l.id, status: l.status, output: l.output&.dig("response")&.truncate(200), created_at: l.created_at } }
+          .where("input->>'taskId' = ?", sw.id.to_s)
+          .order(created_at: :desc).limit(20)
+          .map { |l| {
+            id: l.id,
+            status: l.status,
+            output: l.output&.dig("response"),
+            duration_ms: l.output&.dig("duration_ms"),
+            tool_calls: l.output&.dig("tool_calls") || [],
+            created_at: l.created_at,
+          } }
 
-        st.as_json(only: [:id, :name, :instruction, :cron_expression, :timezone, :active, :last_run_at]).merge(
-          recent_runs: recent_logs
-        )
+        {
+          id: sw.id,
+          name: sw.name,
+          instruction: sw.instruction,
+          cron_expression: sw.cron_expression,
+          timezone: sw.timezone,
+          active: sw.active,
+          last_run_at: sw.last_run_at,
+          mode: sw.mode,
+          fire_at: sw.fire_at,
+          interval_seconds: sw.interval_seconds,
+          recent_runs: recent_logs,
+        }
       },
       # Sprint 6 — skills
       installed_skills: @agent.agent_skills.includes(:skill_definition).map { |as|

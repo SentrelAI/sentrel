@@ -107,13 +107,20 @@ class IntegrationsController < ApplicationController
     integration = current_tenant.integrations.find(params[:id])
     name = integration.service_name
 
-    # Optionally disconnect from Composio too
-    if integration.composio_connection_id.present? && ENV["COMPOSIO_API_KEY"].present?
+    # Delete ALL Composio connections for this service (active + expired)
+    if ENV["COMPOSIO_API_KEY"].present?
       begin
-        uri = URI("https://backend.composio.dev/api/v1/connectedAccounts/#{integration.composio_connection_id}")
-        req = Net::HTTP::Delete.new(uri)
-        req["x-api-key"] = ENV["COMPOSIO_API_KEY"]
-        Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+        user_id = "org_#{current_tenant.id}"
+        res = composio_get("/api/v3/connected_accounts?user_ids=#{user_id}", ENV["COMPOSIO_API_KEY"])
+        items = (JSON.parse(res.body)["items"] rescue []) || []
+        items.each do |c|
+          next unless (c.dig("toolkit", "slug") || "").downcase == name.downcase
+          uri = URI("https://backend.composio.dev/api/v3/connected_accounts/#{c["id"]}")
+          req = Net::HTTP::Delete.new(uri)
+          req["x-api-key"] = ENV["COMPOSIO_API_KEY"]
+          dres = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+          Rails.logger.info "Composio disconnect #{name} (#{c["id"]}): #{dres.code}"
+        end
       rescue => e
         Rails.logger.warn "Composio disconnect error: #{e.message}"
       end

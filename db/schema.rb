@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_16_230405) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -114,17 +114,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.bigint "agent_id"
+    t.integer "cache_creation_input_tokens"
+    t.integer "cache_read_input_tokens"
     t.datetime "created_at", null: false
     t.jsonb "input", default: {}
     t.bigint "organization_id", null: false
     t.jsonb "output", default: {}
+    t.jsonb "routed_toolkits", default: []
     t.string "status"
+    t.bigint "task_id"
     t.string "tool_name"
     t.datetime "updated_at", null: false
+    t.boolean "was_resume", default: false, null: false
     t.index ["agent_id", "created_at"], name: "index_audit_logs_on_agent_id_and_created_at"
     t.index ["agent_id"], name: "index_audit_logs_on_agent_id"
     t.index ["organization_id", "created_at"], name: "index_audit_logs_on_organization_id_and_created_at"
     t.index ["organization_id"], name: "index_audit_logs_on_organization_id"
+    t.index ["routed_toolkits"], name: "index_audit_logs_on_routed_toolkits", using: :gin
+    t.index ["task_id"], name: "index_audit_logs_on_task_id"
+    t.index ["was_resume"], name: "index_audit_logs_on_was_resume"
   end
 
   create_table "channel_configs", force: :cascade do |t|
@@ -285,6 +293,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
     t.index ["organization_id"], name: "index_scheduled_tasks_on_organization_id"
   end
 
+  create_table "scheduled_work", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.bigint "agent_id", null: false
+    t.datetime "created_at", null: false
+    t.string "cron_expression"
+    t.datetime "fire_at"
+    t.text "instruction", null: false
+    t.integer "interval_seconds"
+    t.datetime "last_run_at"
+    t.string "mode", null: false
+    t.string "name", null: false
+    t.datetime "next_run_at"
+    t.bigint "organization_id", null: false
+    t.jsonb "payload_extra", default: {}
+    t.string "timezone", default: "UTC"
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "mode", "active"], name: "index_scheduled_work_on_agent_id_and_mode_and_active"
+    t.index ["agent_id"], name: "index_scheduled_work_on_agent_id"
+    t.index ["fire_at"], name: "index_scheduled_work_on_fire_at", where: "(((mode)::text = 'once'::text) AND (active = true))"
+    t.index ["organization_id"], name: "index_scheduled_work_on_organization_id"
+  end
+
   create_table "skill_definitions", force: :cascade do |t|
     t.string "category"
     t.datetime "created_at", null: false
@@ -315,13 +345,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
     t.bigint "agent_id", null: false
     t.bigint "assigned_by_agent_id"
     t.bigint "assigned_by_user_id"
+    t.jsonb "checkpoint", default: {}
     t.datetime "completed_at"
+    t.bigint "conversation_id"
     t.datetime "created_at", null: false
     t.text "description"
     t.datetime "due_at"
     t.text "instruction"
     t.bigint "organization_id", null: false
     t.string "priority", default: "normal", null: false
+    t.string "progress_summary"
     t.jsonb "result", default: {}
     t.datetime "started_at"
     t.string "status", default: "todo", null: false
@@ -331,6 +364,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
     t.index ["agent_id"], name: "index_tasks_on_agent_id"
     t.index ["assigned_by_agent_id"], name: "index_tasks_on_assigned_by_agent_id"
     t.index ["assigned_by_user_id"], name: "index_tasks_on_assigned_by_user_id"
+    t.index ["conversation_id"], name: "index_tasks_on_conversation_id"
     t.index ["organization_id"], name: "index_tasks_on_organization_id"
   end
 
@@ -361,6 +395,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
   add_foreign_key "ai_configs", "agents"
   add_foreign_key "audit_logs", "agents"
   add_foreign_key "audit_logs", "organizations"
+  add_foreign_key "audit_logs", "tasks"
   add_foreign_key "channel_configs", "agents"
   add_foreign_key "conversations", "agents"
   add_foreign_key "conversations", "organizations"
@@ -377,11 +412,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_15_210951) do
   add_foreign_key "pending_approvals", "users", column: "reviewed_by_id"
   add_foreign_key "scheduled_tasks", "agents"
   add_foreign_key "scheduled_tasks", "organizations"
+  add_foreign_key "scheduled_work", "agents"
+  add_foreign_key "scheduled_work", "organizations"
   add_foreign_key "task_comments", "agents"
   add_foreign_key "task_comments", "tasks"
   add_foreign_key "task_comments", "users"
   add_foreign_key "tasks", "agents"
   add_foreign_key "tasks", "agents", column: "assigned_by_agent_id"
+  add_foreign_key "tasks", "conversations"
   add_foreign_key "tasks", "organizations"
   add_foreign_key "tasks", "users", column: "assigned_by_user_id"
   add_foreign_key "users", "organizations"

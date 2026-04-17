@@ -23,7 +23,7 @@ import {
   Check,
 } from "lucide-react"
 import { useState, useCallback, useRef } from "react"
-import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown } from "lucide-react"
+import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown } from "lucide-react"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { agentsPath, editAgentPath, agentChannelConfigsPath } from "@/routes"
 import type { Agent, Task, ChannelConfig, ScheduledTask } from "@/types"
 
@@ -983,17 +984,38 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                   )}
                 </div>
               </div>
-              {(st as any).recent_runs?.length > 0 && (
-                <div className="px-3 pb-2 border-t border-border/50">
-                  <p className="text-[10px] text-muted-foreground mt-1.5 mb-1">Recent runs</p>
-                  {(st as any).recent_runs.map((run: any) => (
-                    <div key={run.id} className="flex items-start gap-2 py-1">
-                      <div className={`size-1.5 rounded-full mt-1.5 shrink-0 ${run.status === "success" ? "bg-emerald-500" : "bg-red-500"}`} />
-                      <span className="text-[11px] text-muted-foreground flex-1 truncate">{run.output || "No output"}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{new Date(run.created_at).toLocaleTimeString()}</span>
+              {(st.recent_runs?.length ?? 0) > 0 && (
+                <Collapsible>
+                  <CollapsibleTrigger className="flex items-center gap-1.5 px-3 py-1.5 w-full text-left border-t border-border/50 hover:bg-muted/30 transition-colors">
+                    <ChevronDown className="size-3 text-muted-foreground transition-transform [[data-state=closed]>&]:[-rotate-90]" />
+                    <span className="text-[10px] text-muted-foreground">{st.recent_runs!.length} run(s)</span>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-3 pb-3 space-y-2">
+                      {st.recent_runs!.map((run) => (
+                        <div key={run.id} className="rounded border bg-background p-2.5 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={run.status === "success" ? "default" : "destructive"} className="text-[10px]">
+                              {run.status}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">{new Date(run.created_at).toLocaleString()}</span>
+                            {run.duration_ms && <span className="text-[10px] text-muted-foreground">{(run.duration_ms / 1000).toFixed(1)}s</span>}
+                          </div>
+                          {run.output && (
+                            <pre className="text-[11px] whitespace-pre-wrap text-muted-foreground bg-muted/50 rounded p-2 max-h-48 overflow-y-auto">{run.output}</pre>
+                          )}
+                          {run.tool_calls?.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {run.tool_calls.map((tc, i) => (
+                                <Badge key={i} variant="secondary" className="text-[9px]">{tc.name}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </div>
           ))}
