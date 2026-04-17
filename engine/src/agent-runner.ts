@@ -385,9 +385,20 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       );
     }
 
-    // Mark task as done on successful completion (unless skipAutoComplete — e.g. reopened task)
-    if (job.type === "task_assignment" && job.payload?.taskId && !job.payload?.skipAutoComplete) {
+    // Mark task as done on successful completion (unless skipAutoComplete — e.g. reopened task).
+    if (isTaskAssignment && job.payload?.taskId && !job.payload?.skipAutoComplete) {
       await host.updateTask(job.payload.taskId, { status: "done", result: { response: finalResponse.slice(0, 10000) } }).catch(() => {});
+    }
+
+    // Auto-mirror agent response as a TaskComment so the UI thread always
+    // shows the agent's work — but only if the agent didn't already call
+    // comment_on_task itself (avoids duplicate comments).
+    if (isTaskAssignment && job.payload?.taskId && finalResponse) {
+      const alreadyCommented = result.interceptor.capturedToolCalls()
+        .some((tc: { name: string }) => tc.name === "mcp__tasks__comment_on_task");
+      if (!alreadyCommented) {
+        await host.addTaskComment(job.payload.taskId, agent.id, finalResponse).catch(() => {});
+      }
     }
 
     await syncMemoryToDb(agent.id);
