@@ -144,8 +144,59 @@ export function emitTextDelta(text: string): void {
   broadcast({ type: "text_delta", text, timestamp: Date.now() });
 }
 
+// Human-readable labels for tool calls. Used by Telegram status messages,
+// web UI progress indicators, and the progress broadcast event.
+const TOOL_LABELS: Record<string, string> = {
+  WebSearch: "🔍 Searching the web...",
+  WebFetch: "🌐 Fetching page...",
+  Read: "📄 Reading file...",
+  Write: "✏️ Writing file...",
+  Bash: "⚙️ Running command...",
+  Browser: "🖥️ Using browser...",
+  Skill: "📚 Loading skill...",
+  Agent: "🤖 Delegating to sub-agent...",
+  Grep: "🔎 Searching code...",
+  Glob: "📂 Finding files...",
+};
+
+// Composio + MCP tools: extract a readable name from prefixed tool names
+function humanizeToolName(tool: string): string {
+  if (TOOL_LABELS[tool]) return TOOL_LABELS[tool];
+
+  // mcp__composio__GOOGLESHEETS_CREATE_GOOGLE_SHEET1 → "Creating Google Sheet..."
+  // mcp__composio__VERCEL_CREATE_DEPLOYMENT → "Deploying to Vercel..."
+  // mcp__tasks__write_checkpoint → "Saving progress..."
+  // mcp__recall__search_messages → "Searching messages..."
+  const composioMatch = tool.match(/^mcp__composio__(\w+?)_(.+)/);
+  if (composioMatch && composioMatch[1] && composioMatch[2]) {
+    const app = composioMatch[1].toLowerCase().replace(/s$/, "");
+    const action = composioMatch[2].toLowerCase().replace(/_/g, " ").replace(/\d+$/, "").trim();
+    return `🔗 ${capitalize(app)}: ${action}...`;
+  }
+
+  const mcpMatch = tool.match(/^mcp__(.+?)__(.+)/);
+  if (mcpMatch && mcpMatch[1] && mcpMatch[2]) {
+    const server = mcpMatch[1].replace(/-/g, " ");
+    const action = mcpMatch[2].replace(/_/g, " ");
+    return `🔧 ${capitalize(server)}: ${action}...`;
+  }
+
+  return `🔧 ${tool}...`;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function getToolLabel(tool: string): string {
+  return humanizeToolName(tool);
+}
+
 export function emitToolCall(tool: string, input: unknown): void {
-  broadcast({ type: "tool_call", tool, input, timestamp: Date.now() });
+  const label = humanizeToolName(tool);
+  broadcast({ type: "tool_call", tool, label, input, timestamp: Date.now() });
+  // Also broadcast a progress event that any UI/channel can consume
+  broadcast({ type: "progress", label, tool, timestamp: Date.now() });
   // Notify all active per-job listeners. Inbox processes serially so there is
   // typically one, but iterating is safe either way.
   for (const listener of toolCallListeners.values()) {

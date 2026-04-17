@@ -23,6 +23,7 @@ import { ToolInterceptor } from "./tool-interceptor.js";
 import { processOutbox } from "./email/outbox-processor.js";
 import { maybeHandleApprovalResponse, formatChannelApprovalPreview } from "./email/approval-handler.js";
 import {
+  broadcast,
   emitThinking,
   emitTextDelta,
   emitToolCall,
@@ -501,6 +502,19 @@ async function runAgentLoop(
       responseContent = msg.result;
     }
 
+    // SDK progress events — human-readable summaries of what the agent is doing
+    if (msg.type === "system" && msg.subtype === "task_progress" && msg.summary) {
+      logger.info(`Progress: ${msg.summary}`);
+      broadcast({ type: "progress_summary", summary: msg.summary, timestamp: Date.now() });
+    }
+    if (msg.type === "tool_use_summary" && msg.summary) {
+      logger.info(`Tool summary: ${msg.summary}`);
+      broadcast({ type: "progress_summary", summary: msg.summary, timestamp: Date.now() });
+    }
+    if (msg.type === "system" && msg.subtype === "task_notification") {
+      logger.info(`Task notification: ${msg.summary || msg.status}`);
+    }
+
     // Capture usage on the result message (end-of-turn summary)
     if (msg.type === "result" && msg.usage) {
       cacheReadTokens = msg.usage.cache_read_input_tokens || 0;
@@ -605,6 +619,7 @@ async function buildQueryOptions(
     ],
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
+    agentProgressSummaries: true,
     mcpServers,
     // Phase S — PreToolUse hook for dangerous command detection
     hooks: {

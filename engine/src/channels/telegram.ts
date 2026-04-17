@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { config } from "../config.js";
 import { redis } from "../queue.js";
 import { host } from "../host/index.js";
-import { onDone, onToolCall } from "../gateway.js";
+import { onDone, onToolCall, getToolLabel } from "../gateway.js";
 import { logger } from "../logger.js";
 
 // Sprint 1a — Telegram media types we accept (best-largest size for photos,
@@ -200,19 +200,7 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   let lastTool = "";
 
   const toolListener = async (tool: string) => {
-    const toolLabels: Record<string, string> = {
-      WebSearch: "🔍 Searching the web...",
-      WebFetch: "🌐 Fetching page...",
-      Read: "📄 Reading file...",
-      Write: "✏️ Writing file...",
-      Bash: "⚙️ Running command...",
-      Browser: "🖥️ Using browser...",
-      Skill: "📚 Loading skill...",
-      Agent: "🤖 Delegating to sub-agent...",
-      Grep: "🔎 Searching code...",
-      Glob: "📂 Finding files...",
-    };
-    const label = toolLabels[tool] || `🔧 Using ${tool}...`;
+    const label = getToolLabel(tool);
     if (tool === lastTool) return; // avoid duplicate updates
     lastTool = tool;
 
