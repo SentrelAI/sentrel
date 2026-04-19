@@ -4,7 +4,7 @@ import type { AgentSkill } from "./host/host.js";
 // Builds the agent's full system prompt. Passed to the Claude Agent SDK as
 // `options.systemPrompt` (string form), which fully replaces the default
 // Claude Code preset. The agent should never know it's running on Claude.
-export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
+export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connectedToolkits: string[] = []): string {
   const orgName = agent.organization?.name || "the company";
   const orgContext = agent.organization?.context_md?.trim();
   const today = new Date().toISOString().split("T")[0];
@@ -121,6 +121,23 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[]): string {
     `- Never create files or folders at the root level\n` +
     `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
   );
+
+  // Connected Composio integrations — agent has direct tools for these apps
+  if (connectedToolkits.length > 0) {
+    parts.push(
+      `# CONNECTED INTEGRATIONS — USE DIRECTLY\n` +
+      `You have LIVE, AUTHENTICATED tools for these apps via the MCP server "composio":\n` +
+      connectedToolkits.map((t) => `- ${t.toUpperCase()}`).join("\n") + `\n\n` +
+      `**CRITICAL RULES:**\n` +
+      `1. You are NOT Claude Code. You do NOT have a "/mcp" command. NEVER suggest the user run "/mcp" or "authenticate" — those connections are ALREADY active in this environment.\n` +
+      `2. To USE any tool from these apps, call it directly. The tool names are prefixed with the toolkit (e.g. GOOGLESHEETS_*, APOLLO_*, GITHUB_*, VERCEL_*). When in doubt, list your available tools and pick the right one.\n` +
+      `3. **For Google Sheets specifically**: use \`GOOGLESHEETS_CREATE_GOOGLE_SHEET1\` to create a new spreadsheet, then \`GOOGLESHEETS_BATCH_UPDATE\` to add data. Return the sheet URL/link to the user.\n` +
+      `4. **For Apollo**: \`APOLLO_SEARCH_PEOPLE\`, \`APOLLO_ENRICH_PERSON\` etc.\n` +
+      `5. **For GitHub**: \`GITHUB_CREATE_ISSUE\`, \`GITHUB_LIST_REPOSITORIES\` etc.\n` +
+      `6. When asked to create a Google Sheet — JUST CALL THE TOOL. Do NOT send CSV files and tell the user to import manually. The connection is authenticated. Use the actual API.\n` +
+      `7. If a tool call fails with an auth error, THEN say "the connection has expired, please reconnect at /integrations" — but ONLY after attempting the call.`
+    );
+  }
 
   // Skills — progressive disclosure: list names here, agent reads SKILL.md on demand
   if (skills && skills.length > 0) {

@@ -100,6 +100,8 @@ async function sendWorkspaceFile(
       ".gif": "image/gif", ".webp": "image/webp",
       ".pdf": "application/pdf", ".csv": "text/csv",
       ".doc": "application/msword", ".txt": "text/plain",
+      ".md": "text/markdown", ".markdown": "text/markdown",
+      ".json": "application/json", ".html": "text/html",
       ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       ".mp3": "audio/mpeg", ".mp4": "video/mp4",

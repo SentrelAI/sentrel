@@ -14,10 +14,15 @@ export interface CapturedEmail {
 
 export class ToolInterceptor {
   private emails: CapturedEmail[] = [];
+  private allToolCalls: Array<{ name: string }> = [];
 
   // Inspect a tool_use block from the SDK stream and capture if relevant.
   observe(block: { type: string; name?: string; input?: Record<string, unknown> }): void {
     if (block.type !== "tool_use") return;
+
+    // Track all tool calls for audit logging
+    if (block.name) this.allToolCalls.push({ name: block.name });
+
     if (block.name !== "Write") return;
 
     const filePath = block.input?.file_path;
@@ -36,5 +41,9 @@ export class ToolInterceptor {
 
   capturedEmails(): CapturedEmail[] {
     return this.emails;
+  }
+
+  capturedToolCalls(): Array<{ name: string }> {
+    return this.allToolCalls;
   }
 }
