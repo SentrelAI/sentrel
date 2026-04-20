@@ -21,14 +21,18 @@ import { getActiveToolkits, buildComposioServerForToolkits } from "../integratio
 import { logger } from "../logger.js";
 
 // Shared state between agent-runner and this tool handler.
-// agent-runner populates `current` after query() starts; handler reads it.
+// agent-runner populates `current` + `baseMcpServers` after query() starts.
+// The handler calls setMcpServers with the FULL set (base + composio) so
+// we don't accidentally nuke recall/send-media/scheduling/tasks when
+// adding a new composio toolkit.
 export interface QueryState {
   current: any | null; // Query handle from the SDK
   loadedToolkits: Set<string>;
+  baseMcpServers: Record<string, any>; // non-composio servers to preserve
 }
 
 export function createQueryState(): QueryState {
-  return { current: null, loadedToolkits: new Set() };
+  return { current: null, loadedToolkits: new Set(), baseMcpServers: {} };
 }
 
 export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState) {
@@ -96,10 +100,13 @@ export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState
           };
         }
 
-        // This is the magic: replace the dynamic MCP servers set with our
-        // updated composio server. The agent's NEXT internal model turn
-        // will see the new tools.
-        const result = await state.current.setMcpServers({ composio: composioServer });
+        // CRITICAL: setMcpServers REPLACES the entire dynamic set. We must
+        // pass ALL servers (base + composio), not just composio, or we nuke
+        // recall, send-media, scheduling, tasks, and integrations itself.
+        const serverSet = { ...state.baseMcpServers, composio: composioServer };
+        logger.info(`search_integrations: calling setMcpServers with ${Object.keys(serverSet).length} servers: ${Object.keys(serverSet).join(", ")}`);
+        const result = await state.current.setMcpServers(serverSet);
+        logger.info(`search_integrations: setMcpServers returned: ${JSON.stringify(result)}`);
         if (result?.errors && Object.keys(result.errors).length > 0) {
           logger.warn("setMcpServers had errors", { errors: result.errors });
         }

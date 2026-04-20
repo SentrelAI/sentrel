@@ -505,6 +505,13 @@ async function runAgentLoop(
       capturedSessionId = msg.session_id;
     }
 
+    // Log which Composio tools the agent has on init (for debugging tool loading)
+    if (msg.type === "system" && msg.subtype === "init" && msg.tools) {
+      const toolNames = Array.isArray(msg.tools) ? msg.tools : Object.keys(msg.tools || {});
+      const composioTools = toolNames.filter((t: string) => t.startsWith("mcp__composio__"));
+      logger.info(`SDK init: ${composioTools.length} Composio tools available`);
+    }
+
     if (msg.message?.content) {
       for (const block of msg.message.content) {
         if (block.type === "text" && block.text) {
@@ -540,13 +547,24 @@ async function runAgentLoop(
     }
 
     // Capture usage on the result message (end-of-turn summary)
-    if (msg.type === "result" && msg.usage) {
-      cacheReadTokens = msg.usage.cache_read_input_tokens || 0;
-      cacheCreationTokens = msg.usage.cache_creation_input_tokens || 0;
+    if (msg.type === "result") {
+      if (msg.usage) {
+        cacheReadTokens = msg.usage.cache_read_input_tokens || 0;
+        cacheCreationTokens = msg.usage.cache_creation_input_tokens || 0;
+      }
+      // Streaming input mode: the for-await loop doesn't exit on its own —
+      // the SDK expects more user messages. Close the input stream on result
+      // so the SDK can end the query cleanly.
+      if (closeInputStream) {
+        (closeInputStream as () => void)();
+        closeInputStream = null;
+      }
+      try { await q.close(); } catch {}
+      break;
     }
   }
 
-  // Close the input stream so the SDK can clean up
+  // Belt-and-suspenders: close input stream if we exited the loop some other way
   if (closeInputStream) (closeInputStream as () => void)();
   queryState.current = null;
 
@@ -584,25 +602,37 @@ async function buildQueryOptions(
   };
   const sendMediaServer = buildSendMediaMcpServer(job.channel || "web", channelMeta);
 
-  // Step 2 — Context-aware tool loading (3-layer cascade).
-  // Layer 1: Audit log tool history (automatic) — keep toolkits the agent
-  //   used recently, so "try again" works without re-searching.
-  // Layer 2: search_integrations MCP tool (LLM-driven) — agent calls it
-  //   when it needs to find integrations. Uses local embeddings.
-  // Layer 3: COMPOSIO_SEARCH_TOOLS (Composio API fallback).
-  //
-  // No regex. The LLM decides when to search and what to search for.
+  // Step 2 — Context-aware tool loading (hybrid: pre-load + on-demand).
+  // Layer 1 (pre-query): Audit log tool history — keep toolkits the agent
+  //   used recently (handles "try again").
+  // Layer 2 (pre-query): Embedding match on user message — pre-load
+  //   toolkits the user is clearly asking for. Agent has tools from turn 1.
+  // Layer 3 (on-demand): search_integrations MCP tool — agent calls it to
+  //   load ADDITIONAL toolkits mid-session if needed.
+  // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
   const availableToolkits = await getActiveToolkits(agent.organization_id);
   const toolRouting = process.env.TOOL_ROUTING || "smart";
 
-  // Layer 1: keep toolkits the agent used in recent runs
-  const recentToolkitsFromHistory = await getRecentComposioToolkits(agent.id);
+  // Layer 1: audit log history
+  const layer1 = await getRecentComposioToolkits(agent.id);
+
+  // Layer 2: embedding match on user message + last 2 history turns
+  const routingText = [
+    job.payload?.instruction || "",
+    job.payload?.body || "",
+    job.payload?.subject || "",
+    ...history.slice(-2).map((m) => m.content),
+  ].join(" ");
+  const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
+  const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
+
   const relevantToolkits = toolRouting === "all"
     ? availableToolkits
-    : recentToolkitsFromHistory.filter((t) => availableToolkits.includes(t));
+    : [...new Set([...layer1, ...layer2])].filter((t) => availableToolkits.includes(t));
 
   logger.info(
-    `Tool routing: ${relevantToolkits.length === 0 ? "search-only (LLM will search_integrations on demand)" : relevantToolkits.join(", ")} (available: ${availableToolkits.join(", ") || "none"})`,
+    `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} ` +
+    `(layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
   );
 
   const composioResult = await getComposioMcpServer(agent.organization_id, relevantToolkits);
@@ -626,6 +656,16 @@ async function buildQueryOptions(
     mcpServers.composio = composioServer;
   }
 
+  // Store base (non-composio) servers so search_integrations can include
+  // them in its setMcpServers call — otherwise setMcpServers would nuke them.
+  queryState.baseMcpServers = {
+    recall: recallServer,
+    "send-media": sendMediaServer,
+    scheduling: schedulingServer,
+    tasks: tasksServer,
+    integrations: integrationsServer,
+  };
+
   const options: Record<string, unknown> = {
     cwd: config.dataDir,
     allowedTools: [
@@ -641,9 +681,22 @@ async function buildQueryOptions(
       "Browser",
       // Custom MCP tools
       "mcp__recall__search_messages",
+      "mcp__recall__search_activity",
       "mcp__send-media__send_voice",
       "mcp__send-media__send_image",
       "mcp__send-media__send_file",
+      "mcp__integrations__search_integrations",
+      "mcp__scheduling__schedule_task",
+      "mcp__scheduling__set_reminder",
+      "mcp__scheduling__list_schedules",
+      "mcp__scheduling__delete_schedule",
+      "mcp__tasks__create_task",
+      "mcp__tasks__list_tasks",
+      "mcp__tasks__update_task",
+      "mcp__tasks__comment_on_task",
+      "mcp__tasks__write_checkpoint",
+      "mcp__tasks__ask_user",
+      "mcp__tasks__cancel_self",
       // Composio tools: explicit list (wildcards may not match)
       ...composioToolNames.map((name) => `mcp__composio__${name}`),
     ],

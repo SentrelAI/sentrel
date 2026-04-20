@@ -122,19 +122,28 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connected
     `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
   );
 
-  // Connected integrations — tell the agent how to find and use them.
-  // With embedding-based routing, tools may not be pre-loaded. The agent
-  // calls search_integrations to discover and load them on demand.
+  // Connected integrations — principle-based instructions that generalize
+  // to any app without hardcoding names. The agent discovers specific tools
+  // at runtime via search_integrations.
   if (connectedToolkits.length > 0) {
     parts.push(
-      `# CONNECTED INTEGRATIONS\n` +
-      `You have LIVE, AUTHENTICATED connections to these apps: ${connectedToolkits.map((t) => t.toUpperCase()).join(", ")}.\n\n` +
-      `**HOW TO USE:**\n` +
-      `1. Call \`search_integrations({ query: "what you need" })\` to find the right tools. Example: search_integrations({ query: "create a spreadsheet" }).\n` +
-      `2. The matching tools will be loaded and available. Call them directly (prefixed with the app name: GOOGLESHEETS_*, APOLLO_*, GITHUB_*, VERCEL_*).\n` +
-      `3. NEVER send CSV files when the user asks for Google Sheets — use the API tools instead.\n` +
-      `4. NEVER suggest "/mcp" commands or "authenticate" — connections are already active.\n` +
-      `5. If a tool call fails with auth error, say "connection expired, reconnect at /integrations" — but ONLY after trying.`
+      `# CONNECTED INTEGRATIONS — WORKFLOW\n\n` +
+      `This organization has LIVE authenticated connections to third-party apps: **${connectedToolkits.map((t) => t.toUpperCase()).join(", ")}**.\n` +
+      `You can perform real actions in these apps (not simulations, not local files).\n\n` +
+      `## The integrations workflow:\n\n` +
+      `**When a user's request involves any third-party app or service** — whether they name it explicitly (e.g. "add this to Airtable", "send a Slack message", "create a Notion page") or implicitly by describing an action ("deploy this site", "send an email", "schedule a meeting") — you MUST:\n\n` +
+      `1. Call \`search_integrations({ query: "describe what you need" })\` — e.g. "create a spreadsheet", "send email", "deploy website". This is the \`mcp__integrations__search_integrations\` tool (different from the SDK's built-in \`ToolSearch\`).\n` +
+      `2. The tool loads the matching app's real API tools into your session. Then call them directly.\n` +
+      `3. Use whatever the user asked for. If they said Google Sheets → Google Sheets. If Airtable → Airtable. Don't substitute one for another.\n\n` +
+      `## The failure mode to avoid:\n\n` +
+      `A user asks to "put this in a spreadsheet" or "add to Airtable" or "send via Slack" — and instead of calling search_integrations to get the real API, you write a local file (CSV/JSON/etc.) and send it as an attachment. **This is wrong.** It wastes the user's time and forces them to do the work manually. Always use the real integration.\n\n` +
+      `The ONLY time you should write a local file for data output is when:\n` +
+      `- The user explicitly asks for a file ("give me a CSV", "export as JSON").\n` +
+      `- No integration exists for what they want (search_integrations returned nothing relevant AND the user didn't name a specific app).\n\n` +
+      `## Other rules:\n` +
+      `- If an integration tool call fails with an auth error, say "the connection has expired — reconnect at /integrations". ONLY after attempting the call.\n` +
+      `- Never suggest "/mcp" or "authenticate" — connections are already active.\n` +
+      `- If the user mentions an app not in the list above, try search_integrations anyway — the connection list may be out of date.`
     );
   }
 
