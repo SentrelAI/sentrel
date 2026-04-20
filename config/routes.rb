@@ -65,6 +65,12 @@ Rails.application.routes.draw do
     resources :pending_approvals, only: [:index, :update]
     resources :audit_logs, only: [:index]
 
+    # Observability — run timings, costs, tool call trees, error tracking
+    namespace :ops do
+      resources :runs, only: [:index, :show]
+      get "cost", to: "cost#index"
+    end
+
     resource :settings, only: [:show, :update] do
       post :verify_domain
       post :check_domain_verification

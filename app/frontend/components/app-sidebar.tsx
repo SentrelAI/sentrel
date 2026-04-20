@@ -7,6 +7,7 @@ import {
   TrendingUp,
   ShieldCheck,
   ScrollText,
+  Activity,
   Settings,
   Plus,
   Sun,
@@ -55,6 +56,7 @@ const mainNavItems: NavItem[] = [
 
 const secondaryNavItems: NavItem[] = [
   { title: "Approvals", href: pendingApprovalsPath(), icon: ShieldCheck },
+  { title: "Ops", href: "/ops/runs", icon: Activity },
   { title: "Audit Log", href: auditLogsPath(), icon: ScrollText },
   { title: "Settings", href: settingsPath(), icon: Settings },
 ]

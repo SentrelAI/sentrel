@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_16_230405) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_20_213152) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -116,22 +116,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_16_230405) do
     t.bigint "agent_id"
     t.integer "cache_creation_input_tokens"
     t.integer "cache_read_input_tokens"
+    t.string "conversation_id_ref"
     t.datetime "created_at", null: false
+    t.integer "duration_ms"
+    t.integer "first_token_ms"
     t.jsonb "input", default: {}
+    t.integer "input_tokens"
+    t.string "job_id"
+    t.string "model_id"
     t.bigint "organization_id", null: false
     t.jsonb "output", default: {}
+    t.integer "output_tokens"
     t.jsonb "routed_toolkits", default: []
+    t.jsonb "spans", default: []
     t.string "status"
     t.bigint "task_id"
     t.string "tool_name"
+    t.decimal "total_cost_usd", precision: 10, scale: 6
     t.datetime "updated_at", null: false
     t.boolean "was_resume", default: false, null: false
     t.index ["agent_id", "created_at"], name: "index_audit_logs_on_agent_id_and_created_at"
     t.index ["agent_id"], name: "index_audit_logs_on_agent_id"
+    t.index ["duration_ms"], name: "index_audit_logs_on_duration_ms"
+    t.index ["job_id"], name: "index_audit_logs_on_job_id"
+    t.index ["model_id"], name: "index_audit_logs_on_model_id"
     t.index ["organization_id", "created_at"], name: "index_audit_logs_on_organization_id_and_created_at"
     t.index ["organization_id"], name: "index_audit_logs_on_organization_id"
     t.index ["routed_toolkits"], name: "index_audit_logs_on_routed_toolkits", using: :gin
     t.index ["task_id"], name: "index_audit_logs_on_task_id"
+    t.index ["total_cost_usd"], name: "index_audit_logs_on_total_cost_usd"
     t.index ["was_resume"], name: "index_audit_logs_on_was_resume"
   end
 
