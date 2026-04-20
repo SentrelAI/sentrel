@@ -183,3 +183,16 @@ export async function getComposioMcpServer(
     return null;
   }
 }
+
+/**
+ * Build a Composio MCP server for a specific set of toolkits.
+ * Used by search_integrations to dynamically add tools mid-session via
+ * Query.setMcpServers(). Returns just the server (no metadata wrapper).
+ */
+export async function buildComposioServerForToolkits(
+  orgId: number,
+  toolkits: string[],
+): Promise<any | null> {
+  const result = await getComposioMcpServer(orgId, toolkits);
+  return result?.server ?? null;
+}

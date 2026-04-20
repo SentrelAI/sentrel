@@ -14,7 +14,7 @@ import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
-import { buildIntegrationSearchMcpServer } from "./tools/integrations.js";
+import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { scanCommand } from "./security/command-scanner.js";
 import { createCommandApproval, type ApprovalLevel } from "./security/command-approval.js";
 import { recordApproval } from "./security/approval-interceptor.js";
@@ -221,7 +221,15 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
   const built = buildPrompt(agent, job, history, conversation, processedMedia, taskCheckpoint);
 
-  const { options, relevantToolkits } = await buildQueryOptions(agent, job, history);
+  // Shared state so the search_integrations tool can call setMcpServers()
+  // to dynamically add Composio toolkits mid-session (same user interaction).
+  const queryState = createQueryState();
+
+  const { options, relevantToolkits } = await buildQueryOptions(agent, job, queryState, history);
+
+  // Layer 1: pre-load toolkits the agent used in its last 3 runs — warm start
+  // so "try again" doesn't need to re-search. Other toolkits load on-demand.
+  queryState.loadedToolkits = new Set(relevantToolkits);
   // System prompt advertises all connected toolkits (not just the routed subset)
   // so the agent knows what's available if it wants to call search_integrations.
   const allConnectedToolkits = await getActiveToolkits(agent.organization_id);
@@ -234,7 +242,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // SDK handles resume natively. Session rotation keeps transcripts small
     // (30-turn cap), so load times stay reasonable. BullMQ's job lock (10 min)
     // catches pathological hangs.
-    const result = await runAgentLoop(built.promptText, options);
+    const result = await runAgentLoop(built.promptText, options, queryState);
 
     // ── Persist captured session ID for future resumption ──
     // Covers both inbound_message and task_assignment (Step 4) — back-and-forth
@@ -457,6 +465,7 @@ interface QueryResult {
 async function runAgentLoop(
   promptText: string,
   options: Record<string, unknown>,
+  queryState: QueryState,
 ): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
   let responseContent = "";
@@ -466,12 +475,27 @@ async function runAgentLoop(
 
   emitThinking();
 
-  // Pass as a plain string for now. Sprint 0c's content-block shape is
-  // preserved in prompt-builder for future multimodal use (Sprint 2), but
-  // the SDK's async generator input form caused hangs in practice.
-  // When Sprint 2 needs image/document blocks, we'll switch to the
-  // Anthropic Messages API directly instead of the Claude Agent SDK wrapper.
-  for await (const message of query({ prompt: promptText, options: options as any })) {
+  // Streaming input mode. Returns a Query handle we stash in queryState so
+  // the search_integrations tool handler can call setMcpServers() to load
+  // new toolkits dynamically during the run (same user interaction).
+  //
+  // The async generator must stay open until the query finishes — otherwise
+  // the SDK closes the control channel and setMcpServers() won't work.
+  let closeInputStream: (() => void) | null = null;
+  async function* userMessageStream() {
+    yield {
+      type: "user" as const,
+      message: { role: "user" as const, content: promptText },
+      parent_tool_use_id: null,
+      session_id: "",
+    };
+    await new Promise<void>((resolve) => { closeInputStream = resolve; });
+  }
+
+  const q = query({ prompt: userMessageStream(), options: options as any });
+  queryState.current = q;
+
+  for await (const message of q) {
     const msg = message as any;
 
     // Capture sessionId from the first message that has one (per sdk.d.ts:2467+,
@@ -522,6 +546,10 @@ async function runAgentLoop(
     }
   }
 
+  // Close the input stream so the SDK can clean up
+  if (closeInputStream) (closeInputStream as () => void)();
+  queryState.current = null;
+
   return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens };
 }
 
@@ -533,6 +561,7 @@ interface BuiltQueryOptions {
 async function buildQueryOptions(
   agent: Agent,
   job: JobData,
+  queryState: QueryState,
   history: Message[] = [],
 ): Promise<BuiltQueryOptions> {
   const subAgents = await buildSubAgentDefinitions(agent);
@@ -584,7 +613,7 @@ async function buildQueryOptions(
   // Post-V1 #2 — scheduling + task management tools
   const schedulingServer = buildSchedulingMcpServer(agent.id, agent.organization_id, job.channel, job.payload?.metadata);
   const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
-  const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id);
+  const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState);
 
   const mcpServers: Record<string, unknown> = {
     recall: recallServer,
