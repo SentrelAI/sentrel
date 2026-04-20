@@ -122,20 +122,19 @@ export function buildSystemPrompt(agent: Agent, skills?: AgentSkill[], connected
     `- When modifying existing files, use the Edit tool for targeted changes — don't rewrite the whole file with Write`
   );
 
-  // Connected Composio integrations — agent has direct tools for these apps
+  // Connected integrations — tell the agent how to find and use them.
+  // With embedding-based routing, tools may not be pre-loaded. The agent
+  // calls search_integrations to discover and load them on demand.
   if (connectedToolkits.length > 0) {
     parts.push(
-      `# CONNECTED INTEGRATIONS — USE DIRECTLY\n` +
-      `You have LIVE, AUTHENTICATED tools for these apps via the MCP server "composio":\n` +
-      connectedToolkits.map((t) => `- ${t.toUpperCase()}`).join("\n") + `\n\n` +
-      `**CRITICAL RULES:**\n` +
-      `1. You are NOT Claude Code. You do NOT have a "/mcp" command. NEVER suggest the user run "/mcp" or "authenticate" — those connections are ALREADY active in this environment.\n` +
-      `2. To USE any tool from these apps, call it directly. The tool names are prefixed with the toolkit (e.g. GOOGLESHEETS_*, APOLLO_*, GITHUB_*, VERCEL_*). When in doubt, list your available tools and pick the right one.\n` +
-      `3. **For Google Sheets specifically**: use \`GOOGLESHEETS_CREATE_GOOGLE_SHEET1\` to create a new spreadsheet, then \`GOOGLESHEETS_BATCH_UPDATE\` to add data. Return the sheet URL/link to the user.\n` +
-      `4. **For Apollo**: \`APOLLO_SEARCH_PEOPLE\`, \`APOLLO_ENRICH_PERSON\` etc.\n` +
-      `5. **For GitHub**: \`GITHUB_CREATE_ISSUE\`, \`GITHUB_LIST_REPOSITORIES\` etc.\n` +
-      `6. When asked to create a Google Sheet — JUST CALL THE TOOL. Do NOT send CSV files and tell the user to import manually. The connection is authenticated. Use the actual API.\n` +
-      `7. If a tool call fails with an auth error, THEN say "the connection has expired, please reconnect at /integrations" — but ONLY after attempting the call.`
+      `# CONNECTED INTEGRATIONS\n` +
+      `You have LIVE, AUTHENTICATED connections to these apps: ${connectedToolkits.map((t) => t.toUpperCase()).join(", ")}.\n\n` +
+      `**HOW TO USE:**\n` +
+      `1. Call \`search_integrations({ query: "what you need" })\` to find the right tools. Example: search_integrations({ query: "create a spreadsheet" }).\n` +
+      `2. The matching tools will be loaded and available. Call them directly (prefixed with the app name: GOOGLESHEETS_*, APOLLO_*, GITHUB_*, VERCEL_*).\n` +
+      `3. NEVER send CSV files when the user asks for Google Sheets — use the API tools instead.\n` +
+      `4. NEVER suggest "/mcp" commands or "authenticate" — connections are already active.\n` +
+      `5. If a tool call fails with auth error, say "connection expired, reconnect at /integrations" — but ONLY after trying.`
     );
   }
 

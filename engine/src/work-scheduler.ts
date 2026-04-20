@@ -22,6 +22,22 @@ const POLL_INTERVAL_MS = 60_000;
 let registeredWorkIds = new Set<number>();
 
 export async function startWorkScheduler(): Promise<void> {
+  // Purge ALL stale repeatable jobs from previous engine runs. BullMQ
+  // persists repeatables in Redis across restarts — old schedulers,
+  // deleted schedules, and changed cron expressions leave ghost jobs
+  // that fire indefinitely. We re-register fresh from the DB below.
+  try {
+    const stale = await queue.getRepeatableJobs();
+    for (const r of stale) {
+      await queue.removeRepeatableByKey(r.key);
+    }
+    if (stale.length > 0) {
+      logger.info(`Work scheduler: purged ${stale.length} stale repeatable job(s) from Redis`);
+    }
+  } catch (err) {
+    logger.warn("Work scheduler: failed to purge stale jobs", { error: (err as Error).message });
+  }
+
   await loadAndRegister();
   setInterval(loadAndRegister, POLL_INTERVAL_MS);
 }
