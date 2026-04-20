@@ -284,23 +284,58 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
     clearInterval(typingInterval);
     if (pendingEdit) { clearTimeout(pendingEdit); pendingEdit = null; }
 
-    // Finalize: delete the streaming status message (we're about to send
-    // the full response as a fresh message with proper markdown formatting).
-    if (statusMsgId) {
+    if (!response) {
+      // Timeout — finalize the status message with an error note
+      if (statusMsgId) {
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId }),
+          });
+        } catch {}
+      }
+      await sendMessage(botToken, chatId, "⚠️ Still processing — check the dashboard for the full response.");
+    } else if (response.length <= 4096 && statusMsgId) {
+      // Response fits in one message AND we have a streaming message to finalize —
+      // edit it with markdown instead of delete+resend. No flicker.
       try {
-        await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
+        const editRes = await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId }),
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: statusMsgId,
+            text: response,
+            parse_mode: "Markdown",
+          }),
         });
-      } catch {}
-    }
-
-    if (response) {
-      await sendMessage(botToken, chatId, response);
+        const editData = await editRes.json() as { ok: boolean };
+        if (!editData.ok) {
+          // Markdown parse failed, retry without formatting
+          await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId, text: response }),
+          });
+        }
+        logger.info(`Telegram: finalized streamed message (${response.length} chars)`);
+      } catch (err) {
+        logger.warn("Telegram: edit-to-final failed, falling back to send", { error: (err as Error).message });
+        await sendMessage(botToken, chatId, response);
+      }
     } else {
-      // Timeout — send what we know
-      await sendMessage(botToken, chatId, "⚠️ Still processing — check the dashboard for the full response.");
+      // Response too long OR no streaming message — delete status, send fresh chunks
+      if (statusMsgId) {
+        try {
+          await fetch(`https://api.telegram.org/bot${botToken}/deleteMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, message_id: statusMsgId }),
+          });
+        } catch {}
+      }
+      await sendMessage(botToken, chatId, response);
     }
   } finally {
     // Always detach listeners so they don't leak across runs.
