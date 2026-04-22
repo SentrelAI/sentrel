@@ -60,6 +60,9 @@ class IntegrationsController < ApplicationController
         error_msg = data["message"] || data["error"] || data.to_json[0..300]
         render json: { error: "Failed to connect #{service}: #{error_msg}" }, status: :unprocessable_entity
       end
+    rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED, SocketError => e
+      Rails.logger.error "Composio connect network error: #{e.class}: #{e.message}"
+      render json: { error: "Composio API unreachable — try again in a minute" }, status: :service_unavailable
     rescue => e
       Rails.logger.error "Composio connect error: #{e.class}: #{e.message}"
       render json: { error: "Connection failed: #{e.message}" }, status: :internal_server_error
@@ -157,7 +160,7 @@ class IntegrationsController < ApplicationController
     req = Net::HTTP::Get.new(uri)
     req["x-api-key"] = api_key
     req["Content-Type"] = "application/json"
-    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
   end
 
   # Fetch active connections from Composio and sync to our DB.
@@ -200,6 +203,6 @@ class IntegrationsController < ApplicationController
     req["x-api-key"] = api_key
     req["Content-Type"] = "application/json"
     req.body = body.to_json
-    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
   end
 end
