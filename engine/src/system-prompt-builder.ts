@@ -215,13 +215,23 @@ export function buildSystemPrompt(
     );
   }
 
-  // Skills — progressive disclosure: list names here, agent reads SKILL.md on demand
+  // Skills — progressive disclosure: list names here, agent reads SKILL.md on demand.
+  // Each skill can also contribute a short system_prompt_fragment that gets
+  // inlined so the agent has always-on guidance without having to Read the
+  // full SKILL.md file first.
   if (skills && skills.length > 0) {
     const skillList = skills.map((s) => `- ${s.name} (skills/${s.slug}/SKILL.md): ${s.description}`).join("\n");
     parts.push(
       `# Your skills\n` +
       `You have these skills installed. Read the SKILL.md file for detailed instructions when you need them:\n${skillList}`
     );
+
+    const fragments = skills
+      .map((s) => (s as any).system_prompt_fragment)
+      .filter((f: unknown): f is string => typeof f === "string" && f.trim().length > 0);
+    if (fragments.length > 0) {
+      parts.push(`# Skill-specific guidelines\n\n${fragments.join("\n\n")}`);
+    }
   }
 
   const now = new Date();

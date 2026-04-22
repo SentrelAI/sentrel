@@ -37,6 +37,10 @@ export interface AgentSkill {
   category: string;
   requires_connections: string[];
   enabled: boolean;
+  // Phase 4 — explicit dependencies + system-prompt fragment.
+  required_capabilities: string[];
+  required_integrations: string[];
+  system_prompt_fragment: string | null;
 }
 
 // Extra L — observability fields surfaced to audit_logs as columns so they

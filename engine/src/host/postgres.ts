@@ -350,7 +350,8 @@ export class PostgresHost implements Host {
   async getAgentSkills(agentId: number): Promise<AgentSkill[]> {
     const { rows } = await this.pool.query(
       `SELECT sd.slug, sd.name, sd.description, sd.skill_md, sd.category,
-              sd.requires_connections, ags.enabled
+              sd.requires_connections, sd.required_capabilities, sd.required_integrations,
+              sd.system_prompt_fragment, ags.enabled
        FROM agent_skills ags
        JOIN skill_definitions sd ON sd.id = ags.skill_definition_id
        WHERE ags.agent_id = $1 AND ags.enabled = true
@@ -364,6 +365,9 @@ export class PostgresHost implements Host {
       skill_md: r.skill_md,
       category: r.category,
       requires_connections: r.requires_connections || [],
+      required_capabilities: r.required_capabilities || [],
+      required_integrations: r.required_integrations || [],
+      system_prompt_fragment: r.system_prompt_fragment || null,
       enabled: r.enabled,
     }));
   }
