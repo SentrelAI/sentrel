@@ -1,4 +1,11 @@
 import { logger } from "../../logger.js";
+import { CircuitBreaker } from "../../lib/circuit-breaker.js";
+
+const whisperBreaker = new CircuitBreaker("openai-whisper", {
+  failThreshold: 3,
+  cooldownMs: 30_000,
+  timeoutMs: 30_000, // Whisper can legitimately take 10-20s for long audio
+});
 
 // OpenAI Whisper API transcription provider ($0.006/min).
 // Default provider for Sprint 2. Swap-ready with Deepgram, Soniox, or Gemini
@@ -25,19 +32,20 @@ export async function transcribe(
     formData.append("language", language);
   }
 
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: formData,
+  const data = await whisperBreaker.call(async (signal) => {
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+      signal,
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      logger.error(`Whisper API error: ${res.status} ${errBody}`);
+      throw new Error(`Whisper transcription failed: ${res.status}`);
+    }
+    return (await res.json()) as { text: string };
   });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    logger.error(`Whisper API error: ${res.status} ${errBody}`);
-    throw new Error(`Whisper transcription failed: ${res.status}`);
-  }
-
-  const data = (await res.json()) as { text: string };
   logger.info(`Whisper: transcribed ${filename} (${data.text.length} chars)`);
   return data.text;
 }

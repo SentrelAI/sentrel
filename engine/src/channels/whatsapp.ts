@@ -2,8 +2,14 @@ import { config } from "../config.js";
 import { host } from "../host/index.js";
 import { onDone, onTextDelta } from "../gateway.js";
 import { logger } from "../logger.js";
+import { CircuitBreaker } from "../lib/circuit-breaker.js";
 
 let botNumber = "";
+
+// Twilio-specific breaker. Outbound SMS/WhatsApp sends have low latency
+// when healthy (~500ms); a slow Twilio shouldn't block agent completion
+// for more than 10s per chunk.
+const twilioBreaker = new CircuitBreaker("twilio", { failThreshold: 3, cooldownMs: 30_000, timeoutMs: 10_000 });
 
 export async function initWhatsApp(): Promise<void> {
   const channelConfigs = await host.getChannelConfigs(config.employeeId);
@@ -87,19 +93,28 @@ export async function sendMessage(to: string, body: string): Promise<void> {
   const auth = Buffer.from(`${sid}:${token}`).toString("base64");
 
   for (const chunk of chunks) {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ From: `whatsapp:${botNumber}`, To: `whatsapp:${to}`, Body: chunk }).toString(),
-    });
-    const resBody = await res.text();
-    if (!res.ok) {
-      logger.error(`WhatsApp send failed (${res.status})`, { error: resBody });
-    } else {
-      try {
-        const parsed = JSON.parse(resBody);
-        logger.info(`WhatsApp: message ${parsed.sid} status=${parsed.status}`);
-      } catch {}
+    try {
+      await twilioBreaker.call(async (signal) => {
+        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+          method: "POST",
+          headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ From: `whatsapp:${botNumber}`, To: `whatsapp:${to}`, Body: chunk }).toString(),
+          signal,
+        });
+        const resBody = await res.text();
+        if (!res.ok) {
+          logger.error(`WhatsApp send failed (${res.status})`, { error: resBody });
+          throw new Error(`WhatsApp send failed: ${res.status}`);
+        }
+        try {
+          const parsed = JSON.parse(resBody);
+          logger.info(`WhatsApp: message ${parsed.sid} status=${parsed.status}`);
+        } catch {}
+      });
+    } catch (err) {
+      // Breaker-open or network error — log and move on. Don't retry here;
+      // the breaker already gates further calls.
+      logger.error(`WhatsApp: send chunk failed — ${(err as Error).message}`);
     }
   }
   logger.info(`WhatsApp: sent to ${to} (${body.length} chars)`);

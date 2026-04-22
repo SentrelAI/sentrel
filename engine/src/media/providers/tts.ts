@@ -1,4 +1,11 @@
 import { logger } from "../../logger.js";
+import { CircuitBreaker } from "../../lib/circuit-breaker.js";
+
+// One breaker per provider — a slow ElevenLabs shouldn't trip the OpenAI probe.
+const ttsOptions = { failThreshold: 3, cooldownMs: 30_000, timeoutMs: 20_000 };
+const openaiTtsBreaker = new CircuitBreaker("openai-tts", ttsOptions);
+const elevenlabsTtsBreaker = new CircuitBreaker("elevenlabs-tts", ttsOptions);
+const cartesiaTtsBreaker = new CircuitBreaker("cartesia-tts", ttsOptions);
 
 // Text-to-speech provider abstraction. Default: OpenAI TTS ($0.015/1K chars).
 // Switch via TTS_PROVIDER env var: "openai" | "elevenlabs" | "cartesia"
@@ -25,27 +32,28 @@ async function synthesizeOpenAI(text: string, voice?: string) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("TTS: OPENAI_API_KEY not set");
 
-  const res = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.TTS_MODEL || "tts-1",
-      input: text,
-      voice: voice || process.env.TTS_VOICE || "alloy",
-      response_format: "opus",
-    }),
+  const arrayBuffer = await openaiTtsBreaker.call(async (signal) => {
+    const res = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.TTS_MODEL || "tts-1",
+        input: text,
+        voice: voice || process.env.TTS_VOICE || "alloy",
+        response_format: "opus",
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      logger.error(`OpenAI TTS error: ${res.status} ${err}`);
+      throw new Error(`OpenAI TTS failed: ${res.status}`);
+    }
+    return await res.arrayBuffer();
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    logger.error(`OpenAI TTS error: ${res.status} ${err}`);
-    throw new Error(`OpenAI TTS failed: ${res.status}`);
-  }
-
-  const arrayBuffer = await res.arrayBuffer();
   logger.info(`OpenAI TTS: synthesized ${text.length} chars`);
   return {
     bytes: Buffer.from(arrayBuffer),
@@ -62,30 +70,31 @@ async function synthesizeElevenLabs(text: string, voice?: string) {
 
   const voiceId = voice || process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM"; // Rachel
 
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
+  const arrayBuffer = await elevenlabsTtsBreaker.call(async (signal) => {
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({
+          text,
+          model_id: process.env.ELEVENLABS_MODEL || "eleven_monolingual_v1",
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+        signal,
       },
-      body: JSON.stringify({
-        text,
-        model_id: process.env.ELEVENLABS_MODEL || "eleven_monolingual_v1",
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    const err = await res.text();
-    logger.error(`ElevenLabs TTS error: ${res.status} ${err}`);
-    throw new Error(`ElevenLabs TTS failed: ${res.status}`);
-  }
-
-  const arrayBuffer = await res.arrayBuffer();
+    );
+    if (!res.ok) {
+      const err = await res.text();
+      logger.error(`ElevenLabs TTS error: ${res.status} ${err}`);
+      throw new Error(`ElevenLabs TTS failed: ${res.status}`);
+    }
+    return await res.arrayBuffer();
+  });
   logger.info(`ElevenLabs TTS: synthesized ${text.length} chars`);
   return {
     bytes: Buffer.from(arrayBuffer),
@@ -102,28 +111,29 @@ async function synthesizeCartesia(text: string, voice?: string) {
 
   const voiceId = voice || process.env.CARTESIA_VOICE_ID || "a0e99841-438c-4a64-b679-ae501e7d6091";
 
-  const res = await fetch("https://api.cartesia.ai/tts/bytes", {
-    method: "POST",
-    headers: {
-      "X-API-Key": apiKey,
-      "Cartesia-Version": "2024-06-10",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      transcript: text,
-      model_id: "sonic-english",
-      voice: { mode: "id", id: voiceId },
-      output_format: { container: "mp3", bit_rate: 128000, sample_rate: 44100 },
-    }),
+  const arrayBuffer = await cartesiaTtsBreaker.call(async (signal) => {
+    const res = await fetch("https://api.cartesia.ai/tts/bytes", {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+        "Cartesia-Version": "2024-06-10",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        transcript: text,
+        model_id: "sonic-english",
+        voice: { mode: "id", id: voiceId },
+        output_format: { container: "mp3", bit_rate: 128000, sample_rate: 44100 },
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      logger.error(`Cartesia TTS error: ${res.status} ${err}`);
+      throw new Error(`Cartesia TTS failed: ${res.status}`);
+    }
+    return await res.arrayBuffer();
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    logger.error(`Cartesia TTS error: ${res.status} ${err}`);
-    throw new Error(`Cartesia TTS failed: ${res.status}`);
-  }
-
-  const arrayBuffer = await res.arrayBuffer();
   logger.info(`Cartesia TTS: synthesized ${text.length} chars`);
   return {
     bytes: Buffer.from(arrayBuffer),
