@@ -417,6 +417,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         modelId,
         jobId,
         conversationIdRef: conversation?.id?.toString() || null,
+        activeCapabilities: resolveCapabilities(agent) as unknown as Record<string, unknown>,
       },
     );
 
@@ -473,6 +474,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         durationMs: Date.now() - startTime,
         jobId,
         conversationIdRef: conversation?.id?.toString() || null,
+        activeCapabilities: resolveCapabilities(agent) as unknown as Record<string, unknown>,
       },
     );
     throw err;

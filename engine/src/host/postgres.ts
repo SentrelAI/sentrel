@@ -274,9 +274,10 @@ export class PostgresHost implements Host {
         cache_read_input_tokens, cache_creation_input_tokens,
         spans, total_cost_usd, input_tokens, output_tokens,
         duration_ms, first_token_ms, model_id, job_id, conversation_id_ref,
+        active_capabilities,
         created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())`,
+                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), NOW())`,
       [
         orgId,
         agentId,
@@ -299,6 +300,7 @@ export class PostgresHost implements Host {
         extra?.modelId ?? null,
         extra?.jobId ?? null,
         extra?.conversationIdRef ?? null,
+        JSON.stringify(extra?.activeCapabilities ?? {}),
       ],
     );
   }

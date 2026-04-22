@@ -57,6 +57,9 @@ export interface AuditLogExtra {
   modelId?: string | null;
   jobId?: string;
   conversationIdRef?: string | null;
+  // Snapshot of resolveCapabilities(agent) at run time — debugging field
+  // for "why didn't the agent use capability X?" after-the-fact.
+  activeCapabilities?: Record<string, unknown>;
 }
 
 // Sprint 1 — blob storage
