@@ -11,7 +11,10 @@ import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 
 export interface IngestInput {
-  agentId: number;
+  /** Agent-scoped ingest (personal KB). Pass one of this or `orgId`. */
+  agentId?: number;
+  /** Org-scoped ingest (shared KB every agent in the org searches). */
+  orgId?: number;
   title: string;
   sourceType: store.RagDocument["source_type"];
   sourceUrl?: string | null;
@@ -31,7 +34,11 @@ export interface IngestResult {
 
 export async function ingestDocument(input: IngestInput): Promise<IngestResult> {
   const start = Date.now();
-  const { agentId, title, sourceType, sourceUrl, content, metadata, contextualize = true } = input;
+  const { agentId, orgId, title, sourceType, sourceUrl, content, metadata, contextualize = true } = input;
+
+  if (!agentId && !orgId) throw new Error("ingestDocument: pass agentId or orgId");
+  if (agentId && orgId)   throw new Error("ingestDocument: pass either agentId or orgId, not both");
+  const scope: store.Scope = agentId ? store.agentScope(agentId) : store.orgScope(orgId!);
 
   if (!isEmbeddingReady()) {
     throw new Error("Embedding model not ready — cannot ingest documents yet");
@@ -40,7 +47,7 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
   const contentHash = hashContent(content);
 
   // Idempotent: if this exact content was already ingested, skip
-  const existingDocs = await store.listDocuments(agentId);
+  const existingDocs = await store.listDocuments(scope);
   const already = existingDocs.find((d) => d.content_hash === contentHash);
   if (already) {
     return {
@@ -52,16 +59,17 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     };
   }
 
-  // Track whether this is the very first document for this agent —
-  // on success we flip the knowledge_base capability on automatically.
-  const wasFirstDocument = existingDocs.length === 0;
+  // Track whether this is the very first document for this agent — on success
+  // we flip the knowledge_base capability on automatically. Skipped for org
+  // ingest (org-shared docs don't toggle per-agent capabilities).
+  const wasFirstDocument = existingDocs.length === 0 && !!agentId;
 
   // Chunk
   const chunks = chunkText(content);
-  logger.info(`RAG ingest: ${title} → ${chunks.length} chunks`);
+  logger.info(`RAG ingest [${scope.kind}:${scope.id}]: ${title} → ${chunks.length} chunks`);
 
   // Create the document record first (so chunks can reference it)
-  const documentId = await store.upsertDocument(agentId, {
+  const documentId = await store.upsertDocument(scope, {
     title, source_type: sourceType, source_url: sourceUrl ?? null,
     content_hash: contentHash, metadata,
   });
@@ -91,11 +99,9 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
     });
   }
 
-  await store.insertChunks(agentId, documentId, chunkRecords);
+  await store.insertChunks(scope, documentId, chunkRecords);
 
-  // First doc? Auto-enable the knowledge_base capability so the agent
-  // starts using RAG on the next turn without a manual config flip.
-  if (wasFirstDocument) {
+  if (wasFirstDocument && agentId) {
     try {
       const flipped = await host.enableCapability(agentId, "knowledge_base");
       if (flipped) {
@@ -107,7 +113,7 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
   }
 
   const durationMs = Date.now() - start;
-  logger.info(`RAG ingest complete: ${title} (${chunkRecords.length} chunks, ${durationMs}ms)`);
+  logger.info(`RAG ingest complete [${scope.kind}:${scope.id}]: ${title} (${chunkRecords.length} chunks, ${durationMs}ms)`);
 
   return {
     documentId,

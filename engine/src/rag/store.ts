@@ -1,20 +1,23 @@
-// Per-agent RAG store — libsql (Turso SQLite fork) with native F32_BLOB
+// RAG store — libsql (Turso SQLite fork) with native F32_BLOB
 // vector type and vector_distance_cos().
 //
-// Why libsql over vanilla SQLite + sqlite-vec:
-//   - Ships prebuilt binaries for Bun/Node — no native rebuild dance.
-//   - Native vector support (F32_BLOB, vector_distance_cos, libsql_vector_idx)
-//     is built into the database. No loadable extensions.
-//   - API works identically when swapping between local file and remote
-//     Turso URL (useful if we ever want to sync RAG data).
+// One .sqlite file per scope:
+//   - agent_data/rag/agent-{id}.db — personal knowledge per agent.
+//   - agent_data/rag/org-{id}.db   — org-shared knowledge every agent in the
+//                                     org searches alongside its own.
 //
-// One .sqlite file per agent at agent_data/rag/agent-{id}.db.
+// Every exported function takes a `Scope` so the same code serves both paths.
 
 import { createClient, type Client } from "@libsql/client";
 import fs from "fs";
 import path from "path";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
+
+export type Scope = { kind: "agent"; id: number } | { kind: "org"; id: number };
+export const agentScope = (id: number): Scope => ({ kind: "agent", id });
+export const orgScope   = (id: number): Scope => ({ kind: "org", id });
+const scopeKey = (s: Scope) => `${s.kind}:${s.id}`;
 
 export interface RagDocument {
   id: number;
@@ -40,22 +43,24 @@ export interface SearchResult {
   document_metadata: Record<string, unknown>; // parent document metadata (for per-doc threshold etc.)
 }
 
-// Cache one client per agent — avoids re-opening the file on every call
-const clients = new Map<number, Client>();
-const initialized = new Set<number>();
+// Cache one client per scope — avoids re-opening the file on every call
+const clients = new Map<string, Client>();
+const initialized = new Set<string>();
 
-function dbPathFor(agentId: number): string {
+function dbPathFor(scope: Scope): string {
   const dir = path.join(config.dataDir, "rag");
   fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, `agent-${agentId}.db`);
+  const prefix = scope.kind === "agent" ? "agent" : "org";
+  return path.join(dir, `${prefix}-${scope.id}.db`);
 }
 
-async function openDb(agentId: number): Promise<Client> {
-  const cached = clients.get(agentId);
-  if (cached && initialized.has(agentId)) return cached;
+async function openDb(scope: Scope): Promise<Client> {
+  const key = scopeKey(scope);
+  const cached = clients.get(key);
+  if (cached && initialized.has(key)) return cached;
 
-  const db = cached ?? createClient({ url: `file:${dbPathFor(agentId)}` });
-  if (!cached) clients.set(agentId, db);
+  const db = cached ?? createClient({ url: `file:${dbPathFor(scope)}` });
+  if (!cached) clients.set(key, db);
 
   // Schema migrations — idempotent
   await db.execute(`
@@ -112,7 +117,7 @@ async function openDb(agentId: number): Promise<Client> {
     END
   `);
 
-  initialized.add(agentId);
+  initialized.add(scopeKey(scope));
   return db;
 }
 
@@ -123,7 +128,7 @@ function vecLiteral(embedding: number[]): string {
 // ── Document operations ──────────────────────────────────────
 
 export async function upsertDocument(
-  agentId: number,
+  scope: Scope,
   doc: {
     title: string;
     source_type: RagDocument["source_type"];
@@ -132,7 +137,7 @@ export async function upsertDocument(
     metadata?: Record<string, unknown>;
   },
 ): Promise<number> {
-  const db = await openDb(agentId);
+  const db = await openDb(scope);
   // Idempotent by content_hash
   const existing = await db.execute({
     sql: "SELECT id FROM documents WHERE content_hash = ? LIMIT 1",
@@ -154,8 +159,8 @@ export async function upsertDocument(
   return Number(res.rows[0]!.id);
 }
 
-export async function listDocuments(agentId: number): Promise<RagDocument[]> {
-  const db = await openDb(agentId);
+export async function listDocuments(scope: Scope): Promise<RagDocument[]> {
+  const db = await openDb(scope);
   const res = await db.execute(`
     SELECT id, title, source_type, source_url, content_hash, chunk_count, metadata, indexed_at, created_at
     FROM documents ORDER BY created_at DESC
@@ -173,8 +178,8 @@ export async function listDocuments(agentId: number): Promise<RagDocument[]> {
   }));
 }
 
-export async function deleteDocument(agentId: number, documentId: number): Promise<void> {
-  const db = await openDb(agentId);
+export async function deleteDocument(scope: Scope, documentId: number): Promise<void> {
+  const db = await openDb(scope);
   await db.batch([
     { sql: "DELETE FROM chunks WHERE document_id = ?", args: [documentId] },
     { sql: "DELETE FROM documents WHERE id = ?", args: [documentId] },
@@ -184,7 +189,7 @@ export async function deleteDocument(agentId: number, documentId: number): Promi
 // ── Chunk operations ─────────────────────────────────────────
 
 export async function insertChunks(
-  agentId: number,
+  scope: Scope,
   documentId: number,
   chunks: Array<{
     chunk_index: number;
@@ -195,7 +200,7 @@ export async function insertChunks(
   }>,
 ): Promise<void> {
   if (chunks.length === 0) return;
-  const db = await openDb(agentId);
+  const db = await openDb(scope);
 
   // Batch insert — single transaction by libsql
   const statements = chunks.map((c) => ({
@@ -222,12 +227,12 @@ export async function insertChunks(
 // Hybrid search: vector similarity + FTS keyword match, merged via
 // Reciprocal Rank Fusion (K=60, top-K fused from both lists).
 export async function hybridSearch(
-  agentId: number,
+  scope: Scope,
   queryEmbedding: number[],
   queryText: string,
   limit = 5,
 ): Promise<SearchResult[]> {
-  const db = await openDb(agentId);
+  const db = await openDb(scope);
   const K = 60;
   const CANDIDATES = Math.max(20, limit * 4);
 
@@ -308,4 +313,91 @@ export async function closeAllRagDbs(): Promise<void> {
   }
   clients.clear();
   initialized.clear();
+}
+
+// Search across the agent's personal KB and the org-shared KB. Results from
+// both are scored independently by the scope's own hybridSearch, then merged
+// by raw distance (lower is better) with a source annotation so citations
+// can say "per our Compliance KB" vs "per your own notes".
+export async function searchMerged(
+  orgId: number,
+  agentId: number,
+  queryEmbedding: number[],
+  queryText: string,
+  limit = 5,
+): Promise<Array<SearchResult & { source: "agent" | "org" }>> {
+  const [agentHits, orgHits] = await Promise.all([
+    hybridSearch(agentScope(agentId), queryEmbedding, queryText, limit).catch(() => []),
+    hybridSearch(orgScope(orgId),     queryEmbedding, queryText, limit).catch(() => []),
+  ]);
+  const merged: Array<SearchResult & { source: "agent" | "org" }> = [
+    ...agentHits.map((h) => ({ ...h, source: "agent" as const })),
+    ...orgHits.map((h)   => ({ ...h, source: "org"   as const })),
+  ];
+  merged.sort((a, b) => a.distance - b.distance);
+  return merged.slice(0, limit);
+}
+
+// Copy a document + its chunks + embeddings from one scope to another.
+// Used by the `share_to_org` tool when an agent promotes a personal doc
+// to the shared org KB. Destination-dedupes on content_hash — calling
+// again is a no-op.
+export async function copyDocument(
+  fromScope: Scope,
+  toScope: Scope,
+  documentId: number,
+): Promise<{ destDocumentId: number; chunkCount: number; skipped: boolean } | null> {
+  const src = await openDb(fromScope);
+  const dst = await openDb(toScope);
+
+  const docRow = await src.execute({
+    sql: `SELECT title, source_type, source_url, content_hash, metadata FROM documents WHERE id = ? LIMIT 1`,
+    args: [documentId],
+  });
+  if (docRow.rows.length === 0) return null;
+  const d = docRow.rows[0]! as any;
+
+  // Dedupe at destination by content_hash.
+  const existing = await dst.execute({
+    sql: `SELECT id, chunk_count FROM documents WHERE content_hash = ? LIMIT 1`,
+    args: [String(d.content_hash)],
+  });
+  if (existing.rows.length > 0) {
+    return { destDocumentId: Number(existing.rows[0]!.id), chunkCount: Number(existing.rows[0]!.chunk_count), skipped: true };
+  }
+
+  const inserted = await dst.execute({
+    sql: `INSERT INTO documents (title, source_type, source_url, content_hash, metadata, indexed_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now')) RETURNING id`,
+    args: [
+      String(d.title), String(d.source_type), d.source_url as string | null,
+      String(d.content_hash), String(d.metadata || "{}"),
+    ],
+  });
+  const destDocumentId = Number(inserted.rows[0]!.id);
+
+  const chunks = await src.execute({
+    sql: `SELECT chunk_index, content, context, embedding, metadata FROM chunks WHERE document_id = ? ORDER BY chunk_index`,
+    args: [documentId],
+  });
+
+  if (chunks.rows.length > 0) {
+    // libsql can't round-trip the F32_BLOB directly across connections with a
+    // clean text shape, so re-embed via the vector32 literal if we have the
+    // embedding as text. In practice chunks.embedding comes back as a Buffer;
+    // we INSERT it as the same raw bytes.
+    const statements = chunks.rows.map((r: any) => ({
+      sql: `INSERT INTO chunks (document_id, chunk_index, content, context, embedding, metadata)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [destDocumentId, Number(r.chunk_index), String(r.content), r.context as string | null, r.embedding, String(r.metadata || "{}")],
+    }));
+    statements.push({
+      sql: `UPDATE documents SET chunk_count = ? WHERE id = ?`,
+      args: [chunks.rows.length, destDocumentId],
+    });
+    await dst.batch(statements);
+  }
+
+  logger.info(`RAG copy: ${fromScope.kind}:${fromScope.id} doc ${documentId} → ${toScope.kind}:${toScope.id} doc ${destDocumentId} (${chunks.rows.length} chunks)`);
+  return { destDocumentId, chunkCount: chunks.rows.length, skipped: false };
 }

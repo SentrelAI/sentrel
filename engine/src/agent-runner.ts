@@ -725,7 +725,7 @@ async function buildQueryOptions(
   }
 
   if (caps.knowledge_base.enabled) {
-    const knowledgeServer = buildKnowledgeMcpServer(agent.id);
+    const knowledgeServer = buildKnowledgeMcpServer(agent.id, agent.organization_id);
     mcpServers.knowledge = knowledgeServer;
     baseMcpServers.knowledge = knowledgeServer;
   }
@@ -826,6 +826,7 @@ async function buildQueryOptions(
       ] : []),
       ...(caps.knowledge_base.enabled ? [
         "mcp__knowledge__search_knowledge",
+        "mcp__knowledge__share_to_org",
       ] : []),
       ...(caps.scheduling.enabled ? [
         "mcp__scheduling__schedule_task",
@@ -1064,16 +1065,20 @@ async function prefetchKnowledge(agent: Agent, job: JobData) {
   const agentThreshold = caps.knowledge_base.threshold ?? 0.75;
 
   try {
-    const { listDocuments, hybridSearch } = await import("./rag/store.js");
+    const { listDocuments, searchMerged, agentScope, orgScope } = await import("./rag/store.js");
     const { embedText, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
     if (!isEmbeddingReady()) return null;
-    const docs = await listDocuments(agent.id);
-    if (docs.length === 0) return null;
+    // Fast exit: skip if neither the agent nor the org has any docs indexed.
+    const [agentDocs, orgDocs] = await Promise.all([
+      listDocuments(agentScope(agent.id)).catch(() => []),
+      listDocuments(orgScope(agent.organization_id)).catch(() => []),
+    ]);
+    if (agentDocs.length === 0 && orgDocs.length === 0) return null;
 
     const embedding = await embedText(userText);
     if (!embedding) return null;
 
-    const raw = await hybridSearch(agent.id, embedding, userText, topK);
+    const raw = await searchMerged(agent.organization_id, agent.id, embedding, userText, topK);
     // Per-doc threshold override: a document can set metadata.threshold
     // (0..1 cosine similarity) to be more permissive (low-bar match — good
     // for catch-all reference docs) or stricter (high-precision — good for

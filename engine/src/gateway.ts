@@ -77,16 +77,20 @@ export function startGateway(): void {
             res.end(JSON.stringify({ error: "No file part in upload" }));
             return;
           }
-          const agentId = parseInt(parsed.fields.agent_id || "0");
-          if (!agentId) {
+          const agentIdParam = parsed.fields.agent_id;
+          const orgIdParam   = parsed.fields.org_id;
+          if (!agentIdParam && !orgIdParam) {
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Missing agent_id" }));
+            res.end(JSON.stringify({ error: "Missing agent_id or org_id" }));
             return;
           }
+          const scopeArg = agentIdParam
+            ? { agentId: parseInt(agentIdParam) }
+            : { orgId: parseInt(orgIdParam!) };
           const title = parsed.fields.title || file.filename || "Untitled";
           const extracted = await extractFromBytes(file.data, file.filename, file.contentType);
           result = await ingestDocument({
-            agentId,
+            ...scopeArg,
             title,
             sourceType: extracted.sourceType,
             content: extracted.text,
@@ -100,8 +104,11 @@ export function startGateway(): void {
           // JSON path — pre-extracted text (URL fetch, raw paste)
           const body = await readJsonBody(req);
           const { ingestDocument } = await import("./rag/ingest.js");
+          const scopeArg = body.org_id
+            ? { orgId: Number(body.org_id) }
+            : { agentId: Number(body.agent_id) };
           result = await ingestDocument({
-            agentId: body.agent_id,
+            ...scopeArg,
             title: body.title,
             sourceType: body.source_type || "text",
             sourceUrl: body.source_url,
@@ -135,8 +142,11 @@ export function startGateway(): void {
         const { extractFromBytes } = await import("./rag/extractor.js");
         const { ingestDocument } = await import("./rag/ingest.js");
         const extracted = await extractFromBytes(bytes, filename, urlRes.headers.get("content-type") || undefined);
+        const scopeArg = body.org_id
+          ? { orgId: Number(body.org_id) }
+          : { agentId: Number(body.agent_id) };
         const result = await ingestDocument({
-          agentId: parseInt(body.agent_id),
+          ...scopeArg,
           title: body.title || body.url,
           sourceType: extracted.sourceType,
           sourceUrl: body.url,
@@ -153,7 +163,8 @@ export function startGateway(): void {
       return;
     }
 
-    // GET /rag/documents?agent_id=N — list indexed docs for an agent
+    // GET /rag/documents?agent_id=N  (personal KB)
+    // GET /rag/documents?org_id=N    (org-shared KB — every agent in the org searches it)
     if (req.method === "GET" && req.url?.startsWith("/rag/documents")) {
       const secret = process.env.ENGINE_API_SECRET;
       if (!secret || req.headers["x-engine-secret"] !== secret) {
@@ -161,11 +172,15 @@ export function startGateway(): void {
       }
       try {
         const url = new URL(req.url, "http://localhost");
-        const agentId = parseInt(url.searchParams.get("agent_id") || "0");
-        const { listDocuments } = await import("./rag/store.js");
-        const docs = await listDocuments(agentId);
+        const { listDocuments, agentScope, orgScope } = await import("./rag/store.js");
+        const agentIdParam = url.searchParams.get("agent_id");
+        const orgIdParam   = url.searchParams.get("org_id");
+        const scope = orgIdParam
+          ? orgScope(parseInt(orgIdParam))
+          : agentScope(parseInt(agentIdParam || "0"));
+        const docs = await listDocuments(scope);
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ documents: docs }));
+        res.end(JSON.stringify({ documents: docs, scope: `${scope.kind}:${scope.id}` }));
       } catch (err) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: (err as Error).message }));
@@ -173,7 +188,7 @@ export function startGateway(): void {
       return;
     }
 
-    // DELETE /rag/documents/:id?agent_id=N
+    // DELETE /rag/documents/:id?agent_id=N  (or ?org_id=N)
     if (req.method === "DELETE" && req.url?.startsWith("/rag/documents/")) {
       const secret = process.env.ENGINE_API_SECRET;
       if (!secret || req.headers["x-engine-secret"] !== secret) {
@@ -181,10 +196,14 @@ export function startGateway(): void {
       }
       try {
         const url = new URL(req.url, "http://localhost");
-        const agentId = parseInt(url.searchParams.get("agent_id") || "0");
         const docId = parseInt(url.pathname.split("/").pop() || "0");
-        const { deleteDocument } = await import("./rag/store.js");
-        await deleteDocument(agentId, docId);
+        const { deleteDocument, agentScope, orgScope } = await import("./rag/store.js");
+        const agentIdParam = url.searchParams.get("agent_id");
+        const orgIdParam   = url.searchParams.get("org_id");
+        const scope = orgIdParam
+          ? orgScope(parseInt(orgIdParam))
+          : agentScope(parseInt(agentIdParam || "0"));
+        await deleteDocument(scope, docId);
         res.writeHead(204); res.end();
       } catch (err) {
         res.writeHead(500, { "Content-Type": "application/json" });
