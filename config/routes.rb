@@ -34,6 +34,7 @@ Rails.application.routes.draw do
   authenticate :user do
     get "dashboard", to: "dashboard#index", as: :dashboard
 
+    get "agents/tree", to: "agents#tree", as: :agents_tree
     resources :agents do
       resources :conversations, only: [:index, :show]
       resources :channel_configs, only: [:index, :create, :update, :destroy] do

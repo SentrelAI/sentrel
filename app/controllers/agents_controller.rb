@@ -10,6 +10,30 @@ class AgentsController < ApplicationController
     }
   end
 
+  # GET /agents/tree(.json)
+  # Full nested org chart for the current tenant. Roots = agents with no
+  # manager; children = each agent's direct reports. Used by the agents index
+  # "tree" view and the engine's teammate roster.
+  def tree
+    agents = current_tenant.agents.includes(:ai_config).order(:name)
+    by_manager = agents.group_by(&:manager_id)
+
+    build = ->(agent) {
+      {
+        id: agent.to_param,
+        name: agent.name,
+        slug: agent.slug,
+        role: agent.role,
+        status: agent.status,
+        model_id: agent.ai_config&.model_id,
+        reports: (by_manager[agent.id] || []).map { |child| build.call(child) },
+      }
+    }
+
+    roots = (by_manager[nil] || []).map { |a| build.call(a) }
+    render json: { roots: roots, total: agents.size }
+  end
+
   def show
     # Find internal chat conversation (boss ↔ agent). Multiple internal convs
     # exist for historical reasons — pick the most recently active one, and
