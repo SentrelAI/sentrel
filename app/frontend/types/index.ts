@@ -119,6 +119,8 @@ export interface AgentTemplate {
   capabilities: Record<string, { enabled?: boolean; [k: string]: unknown }>
   suggested_skill_slugs: string[]
   suggested_manager_role: string | null
+  suggested_provider: string | null
+  suggested_model: string | null
   variables: string[]
 }
 

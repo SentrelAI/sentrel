@@ -21,6 +21,8 @@ interface Template {
   capabilities: Record<string, { enabled?: boolean; [k: string]: unknown }>
   suggested_skill_slugs: string[]
   suggested_manager_role: string | null
+  suggested_provider: string | null
+  suggested_model: string | null
   variables: string[]
 }
 
@@ -123,7 +125,9 @@ export default function AgentNew({ templates, agents }: Props) {
   function choose(t: Template) {
     setPicked(t)
     // Prefill defaults from the template. Manager defaults to the first agent
-    // whose role matches suggested_manager_role (if any).
+    // whose role matches suggested_manager_role (if any). Model + provider
+    // use the template's recommendation (Opus for CEO/Engineer, Sonnet for
+    // most, Haiku for Support/SDR).
     const mgr = t.suggested_manager_role
       ? agents.find((a) => a.role.toLowerCase() === t.suggested_manager_role!.toLowerCase())
       : null
@@ -133,6 +137,11 @@ export default function AgentNew({ templates, agents }: Props) {
       template_slug: t.slug,
       manager_id: mgr?.id || "none",
       capabilities: t.capabilities,
+      ai_config: {
+        ...data.ai_config,
+        provider: t.suggested_provider || data.ai_config.provider,
+        model_id: t.suggested_model  || data.ai_config.model_id,
+      },
     })
   }
 
@@ -307,7 +316,9 @@ export default function AgentNew({ templates, agents }: Props) {
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground">
-              Sonnet is the daily driver. Opus for heavy reasoning / long tasks. Haiku for cheap + fast background work.
+              {picked.suggested_model
+                ? <>Template recommends <span className="font-mono">{picked.suggested_model}</span> for this role. Override if you want.</>
+                : "Sonnet is the daily driver. Opus for heavy reasoning / long tasks. Haiku for cheap + fast background work."}
             </p>
           </div>
         </section>

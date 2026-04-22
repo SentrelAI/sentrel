@@ -157,7 +157,13 @@ class AgentsController < ApplicationController
     end
 
     if @agent.save
-      @agent.create_ai_config!(ai_config_params)
+      # Use template's suggested model if the form didn't override it.
+      ai_cfg = ai_config_params.to_h
+      if template
+        ai_cfg[:provider] = template.suggested_provider if ai_cfg[:provider].blank? && template.suggested_provider.present?
+        ai_cfg[:model_id] = template.suggested_model    if ai_cfg[:model_id].blank?    && template.suggested_model.present?
+      end
+      @agent.create_ai_config!(ai_cfg)
 
       # Install the template's suggested skills (if any).
       if template && template.suggested_skill_slugs.any?
@@ -262,6 +268,8 @@ class AgentsController < ApplicationController
       capabilities: t.capabilities,
       suggested_skill_slugs: t.suggested_skill_slugs,
       suggested_manager_role: t.suggested_manager_role,
+      suggested_provider: t.suggested_provider,
+      suggested_model: t.suggested_model,
       variables: t.variables,
     }
   end

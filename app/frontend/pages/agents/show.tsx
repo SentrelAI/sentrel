@@ -40,8 +40,14 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select as SelectUI, SelectContent as SelectUIContent, SelectItem as SelectUIItem, SelectTrigger as SelectUITrigger, SelectValue as SelectUIValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { agentsPath, dashboardPath, editAgentPath, agentChannelConfigsPath } from "@/routes"
-import type { Agent, Task, ChannelConfig, ScheduledTask } from "@/types"
+import type { Agent, Task, ChannelConfig, ScheduledTask, ScheduledTaskRun } from "@/types"
 
 interface ConversationItem {
   id: number
@@ -677,46 +683,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
 
         {/* Tasks */}
         {section === "tasks" && (
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            {tasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                <CheckSquare className="size-8 mb-2 opacity-20" />
-                <span className="text-sm">No tasks assigned</span>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {tasks.map((task) => {
-                  const statusDot: Record<string, string> = {
-                    todo: "bg-zinc-400",
-                    in_progress: "bg-blue-500",
-                    done: "bg-emerald-500",
-                    failed: "bg-red-500",
-                  }
-                  const priorityStyle: Record<string, string> = {
-                    urgent: "text-red-500 bg-red-500/10",
-                    high: "text-amber-500 bg-amber-500/10",
-                    normal: "text-muted-foreground bg-muted",
-                    low: "text-muted-foreground/60 bg-muted",
-                  }
-                  return (
-                    <div key={task.id} className="flex items-center justify-between px-3 py-2.5 rounded-md border border-border hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className={`size-2 rounded-full ${statusDot[task.status] || "bg-zinc-400"}`} />
-                        <span className="font-medium text-sm">{task.title}</span>
-                        <Badge variant="secondary" className="text-[10px]">{task.status.replace("_", " ")}</Badge>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${priorityStyle[task.priority] || ""}`}>
-                          {task.priority}
-                        </span>
-                      </div>
-                      {task.due_at && (
-                        <span className="text-xs text-muted-foreground">Due {new Date(task.due_at).toLocaleDateString()}</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          <TasksSection agentId={agent.id} agentName={agent.name} initialTasks={tasks} />
         )}
 
         {/* Schedule */}
@@ -827,10 +794,451 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
   )
 }
 
+/* ═════════════════════════════════════════════════════════════
+   Tasks panel — per-agent task list + creation + detail
+   ═════════════════════════════════════════════════════════════ */
+
+const TASK_STATUS_META: Record<string, { dot: string; label: string; fg: string }> = {
+  todo:        { dot: "bg-muted-foreground/40",         label: "To do",       fg: "text-muted-foreground" },
+  in_progress: { dot: "bg-[var(--color-indigo)]",       label: "In progress", fg: "text-[var(--color-indigo)]" },
+  done:        { dot: "bg-[var(--color-success)]",      label: "Done",        fg: "text-[var(--color-success)]" },
+  failed:      { dot: "bg-[var(--destructive)]",        label: "Failed",      fg: "text-[var(--destructive)]" },
+}
+
+const TASK_PRIORITY_META: Record<string, { label: string; className: string }> = {
+  urgent: { label: "URGENT", className: "bg-[var(--destructive)]/10 text-[var(--destructive)] border-[var(--destructive)]/30" },
+  high:   { label: "HIGH",   className: "bg-amber-500/10 text-amber-500 border-amber-500/30" },
+  normal: { label: "NORMAL", className: "bg-[var(--muted)] text-muted-foreground border-[var(--border)]" },
+  low:    { label: "LOW",    className: "bg-[var(--muted)] text-muted-foreground/60 border-[var(--border)]" },
+}
+
+function TasksSection({ agentId, agentName, initialTasks }: { agentId: string | number; agentName: string; initialTasks: Task[] }) {
+  const [tasks, setTasks] = useState<Task[]>(initialTasks)
+  const [creating, setCreating] = useState(false)
+  const [openTask, setOpenTask] = useState<Task | null>(null)
+  const [filter, setFilter] = useState<"all" | "todo" | "in_progress" | "done" | "failed">("all")
+
+  const [title, setTitle] = useState("")
+  const [instruction, setInstruction] = useState("")
+  const [priority, setPriority] = useState<"low" | "normal" | "high" | "urgent">("normal")
+  const [due, setDue] = useState("")
+  const [posting, setPosting] = useState(false)
+
+  const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+
+  const counts = {
+    all: tasks.length,
+    todo: tasks.filter((t) => t.status === "todo").length,
+    in_progress: tasks.filter((t) => t.status === "in_progress").length,
+    done: tasks.filter((t) => t.status === "done").length,
+    failed: tasks.filter((t) => t.status === "failed").length,
+  }
+
+  const visible = filter === "all" ? tasks : tasks.filter((t) => t.status === filter)
+
+  async function handleCreate() {
+    if (!title.trim()) return
+    setPosting(true)
+    const res = await fetch(`/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({
+        task: {
+          agent_id: agentId,
+          title,
+          instruction,
+          priority,
+          due_at: due || null,
+        },
+      }),
+    })
+    if (res.ok) {
+      const created = await res.json()
+      setTasks((prev) => [created, ...prev])
+      setTitle("")
+      setInstruction("")
+      setPriority("normal")
+      setDue("")
+      setCreating(false)
+    }
+    setPosting(false)
+  }
+
+  async function handleStatus(taskId: string, status: string) {
+    await fetch(`/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ task: { status } }),
+    })
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: status as Task["status"] } : t)),
+    )
+  }
+
+  async function handleDelete(taskId: string) {
+    await fetch(`/tasks/${taskId}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": csrfToken },
+    })
+    setTasks((prev) => prev.filter((t) => t.id !== taskId))
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 border-b px-6 py-3">
+        <div className="flex items-center gap-4">
+          <div>
+            <div className="font-display text-sm font-semibold tracking-[-0.01em]">
+              Tasks for {agentName}
+            </div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              {counts.todo} to do · {counts.in_progress} running · {counts.done} done
+            </div>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          className="h-8 gap-1.5 font-semibold"
+          onClick={() => setCreating((v) => !v)}
+        >
+          {creating ? <XIcon className="size-3.5" /> : <Plus className="size-3.5" strokeWidth={2.5} />}
+          {creating ? "Cancel" : "New task"}
+        </Button>
+      </div>
+
+      {/* Create form */}
+      {creating && (
+        <div className="border-b bg-[var(--muted)]/30 px-6 py-4">
+          <div className="space-y-3 max-w-2xl">
+            <div className="space-y-1.5">
+              <Label htmlFor="task-title" className="text-xs">Title</Label>
+              <Input
+                id="task-title"
+                placeholder="Research top 10 healthcare AI competitors"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="task-instruction" className="text-xs">Instruction</Label>
+              <textarea
+                id="task-instruction"
+                rows={3}
+                placeholder="Step-by-step what the agent should do…"
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                className="w-full rounded-md border bg-card px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Priority</Label>
+                <SelectUI value={priority} onValueChange={(v) => setPriority(v as typeof priority)}>
+                  <SelectUITrigger className="w-full">
+                    <SelectUIValue />
+                  </SelectUITrigger>
+                  <SelectUIContent>
+                    <SelectUIItem value="low">Low</SelectUIItem>
+                    <SelectUIItem value="normal">Normal</SelectUIItem>
+                    <SelectUIItem value="high">High</SelectUIItem>
+                    <SelectUIItem value="urgent">Urgent</SelectUIItem>
+                  </SelectUIContent>
+                </SelectUI>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-due" className="text-xs">Due date</Label>
+                <Input
+                  id="task-due"
+                  type="date"
+                  value={due}
+                  onChange={(e) => setDue(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleCreate} disabled={posting || !title.trim()}>
+                {posting ? "Creating…" : "Create task"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter tabs */}
+      {tasks.length > 0 && (
+        <div className="flex items-center gap-1 border-b px-6 py-2">
+          {([
+            { key: "all", label: "All" },
+            { key: "todo", label: "To do" },
+            { key: "in_progress", label: "Running" },
+            { key: "done", label: "Done" },
+            { key: "failed", label: "Failed" },
+          ] as const).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setFilter(t.key)}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                filter === t.key
+                  ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+              <span
+                className={`rounded-sm px-1 font-mono text-[10px] ${
+                  filter === t.key ? "bg-[var(--color-indigo)]/15" : "bg-[var(--muted)]"
+                }`}
+              >
+                {counts[t.key as keyof typeof counts]}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Task list */}
+      <div className="px-6 py-4">
+        {visible.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="mb-3 flex size-12 items-center justify-center rounded-md border border-dashed">
+              <CheckSquare className="size-5 text-muted-foreground" />
+            </div>
+            <p className="font-display text-sm font-semibold">
+              {filter === "all" ? `No tasks for ${agentName} yet` : `No ${filter.replace("_", " ")} tasks`}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Assign a task and the agent will start working on it.
+            </p>
+            {!creating && (
+              <Button size="sm" className="mt-5 gap-1.5" onClick={() => setCreating(true)}>
+                <Plus className="size-3.5" />
+                New task
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {visible.map((task) => {
+              const st = TASK_STATUS_META[task.status] ?? TASK_STATUS_META.todo
+              const pri = TASK_PRIORITY_META[task.priority] ?? TASK_PRIORITY_META.normal
+              const fullTask = task as Task & { instruction?: string | null; description?: string | null; result?: string | null; comments_count?: number }
+
+              return (
+                <button
+                  type="button"
+                  key={task.id}
+                  onClick={() => setOpenTask(task)}
+                  className="flex w-full items-start gap-3 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:border-[var(--border-strong)]"
+                >
+                  <span className={`mt-1.5 size-2 shrink-0 rounded-full ${st.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] font-semibold tracking-[-0.005em] text-foreground">
+                        {task.title}
+                      </span>
+                      <span className={`rounded-sm border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] ${pri.className}`}>
+                        {pri.label}
+                      </span>
+                    </div>
+                    {fullTask.description && (
+                      <p className="mt-1 line-clamp-1 text-[12px] text-muted-foreground">
+                        {fullTask.description}
+                      </p>
+                    )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                      <span className={st.fg}>{st.label}</span>
+                      {task.due_at && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="size-3" />
+                          Due {new Date(task.due_at).toLocaleDateString()}
+                        </span>
+                      )}
+                      {task.completed_at && (
+                        <span className="text-[var(--color-success)]">
+                          ✓ {new Date(task.completed_at).toLocaleDateString()}
+                        </span>
+                      )}
+                      {(fullTask.comments_count ?? 0) > 0 && (
+                        <span className="flex items-center gap-1">
+                          <MessageSquare className="size-3" />
+                          {fullTask.comments_count}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <ArrowUpRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Task detail dialog */}
+      <Dialog open={!!openTask} onOpenChange={(o) => !o && setOpenTask(null)}>
+        <DialogContent className="max-w-2xl">
+          {openTask && (() => {
+            const task = openTask
+            const st = TASK_STATUS_META[task.status] ?? TASK_STATUS_META.todo
+            const pri = TASK_PRIORITY_META[task.priority] ?? TASK_PRIORITY_META.normal
+            const t = task as Task & { instruction?: string | null; description?: string | null; result?: string | null }
+            return (
+              <>
+                <DialogHeader>
+                  <div className="flex items-center gap-2">
+                    <span className={`size-2 rounded-full ${st.dot}`} />
+                    <span className={`font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${st.fg}`}>
+                      {st.label}
+                    </span>
+                    <span className={`rounded-sm border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] ${pri.className}`}>
+                      {pri.label}
+                    </span>
+                  </div>
+                  <DialogTitle className="mt-2 font-display text-xl font-semibold tracking-[-0.015em]">
+                    {task.title}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                    {task.due_at && <span>Due {new Date(task.due_at).toLocaleDateString()}</span>}
+                    {task.completed_at && (
+                      <span className="text-[var(--color-success)]">
+                        Completed {new Date(task.completed_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {t.description && (
+                    <div>
+                      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Description
+                      </div>
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+                        {t.description}
+                      </p>
+                    </div>
+                  )}
+                  {t.instruction && (
+                    <div>
+                      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Instruction
+                      </div>
+                      <div className="rounded-md border bg-[var(--muted)]/50 p-3">
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+                          {t.instruction}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {t.result && (
+                    <div>
+                      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                        Result
+                      </div>
+                      <div className="rounded-md border border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.06] p-3">
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
+                          {t.result}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t pt-4">
+                    <div className="flex items-center gap-2">
+                      {task.status !== "in_progress" && task.status !== "done" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            handleStatus(task.id, "in_progress")
+                            setOpenTask({ ...task, status: "in_progress" })
+                          }}
+                        >
+                          Start
+                        </Button>
+                      )}
+                      {task.status !== "done" && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            handleStatus(task.id, "done")
+                            setOpenTask({ ...task, status: "done" })
+                          }}
+                        >
+                          Mark done
+                        </Button>
+                      )}
+                      {task.status === "done" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            handleStatus(task.id, "todo")
+                            setOpenTask({ ...task, status: "todo" })
+                          }}
+                        >
+                          Reopen
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Link
+                        href={`/tasks/${task.id}`}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        Full view <ArrowUpRight className="size-3" />
+                      </Link>
+                      <button
+                        onClick={() => {
+                          handleDelete(task.id)
+                          setOpenTask(null)
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-[var(--destructive)]"
+                      >
+                        <Trash2 className="size-3" /> Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════════
+   Schedule panel
+   ═════════════════════════════════════════════════════════════ */
+
+/** Render a cron expression in plain English, falling back to raw. */
+function describeCron(expr: string | null | undefined): string {
+  if (!expr) return "—"
+  const map: Record<string, string> = {
+    "* * * * *":      "Every minute",
+    "0 * * * *":      "Every hour (on the hour)",
+    "0 9 * * *":      "Daily at 9:00",
+    "0 9 * * 1-5":    "Weekdays at 9:00",
+    "0 9 * * 1":      "Mondays at 9:00",
+    "0 */6 * * *":    "Every 6 hours",
+    "0 9 1 * *":      "1st of each month at 9:00",
+  }
+  return map[expr] ?? expr
+}
+
 function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTasks: ScheduledTask[] }) {
   const [tasks, setTasks] = useState(initialTasks)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
+  const [runsFor, setRunsFor] = useState<ScheduledTask | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const cronRef = useRef<HTMLInputElement>(null)
   const instructionRef = useRef<HTMLTextAreaElement>(null)
@@ -900,14 +1308,29 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
     setTasks((prev) => prev.filter((t) => t.id !== id))
   }
 
+  const activeCount = tasks.filter((t) => t.active).length
+  const totalCount = tasks.length
+
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Scheduled Tasks</h3>
-        <Button size="sm" variant="secondary" className="h-7 text-xs gap-1" onClick={() => { setShowForm(!showForm); setEditId(null) }}>
-          <Plus className="size-3" /> Add Schedule
+    <div className="flex-1 overflow-y-auto">
+      <div className="flex items-center justify-between gap-3 border-b px-6 py-3">
+        <div>
+          <div className="font-display text-sm font-semibold tracking-[-0.01em]">Schedule</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            {totalCount} schedule{totalCount === 1 ? "" : "s"} · {activeCount} active
+          </div>
+        </div>
+        <Button
+          size="sm"
+          className="h-8 gap-1.5 font-semibold"
+          onClick={() => { setShowForm(!showForm); setEditId(null) }}
+        >
+          {showForm ? <XIcon className="size-3.5" /> : <Plus className="size-3.5" strokeWidth={2.5} />}
+          {showForm ? "Cancel" : "New schedule"}
         </Button>
       </div>
+
+      <div className="px-6 py-4">
 
       {(showForm || editId) && (
         <div className="rounded-lg border bg-card p-4 mb-4 space-y-3">
@@ -1009,100 +1432,423 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
       )}
 
       {tasks.length === 0 && !showForm ? (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <Clock className="size-8 mb-2 opacity-20" />
-          <span className="text-sm">No scheduled tasks</span>
-          <span className="text-xs mt-1">Create one above or ask the agent to schedule something</span>
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+          <div className="mb-3 flex size-12 items-center justify-center rounded-md border border-dashed">
+            <Clock className="size-5 text-muted-foreground" />
+          </div>
+          <p className="font-display text-sm font-semibold">No schedules yet</p>
+          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+            Create a recurring task — the agent will wake up and run it automatically.
+          </p>
+          <Button size="sm" className="mt-5 gap-1.5" onClick={() => setShowForm(true)}>
+            <Plus className="size-3.5" />
+            New schedule
+          </Button>
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {tasks.map((st) => (
-            <div key={st.id} className="rounded-md border border-border hover:bg-muted/30 transition-colors group">
-              <div className="flex items-center justify-between px-3 py-2.5">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className={`size-2 rounded-full shrink-0 ${st.active ? "bg-emerald-500" : "bg-zinc-400"}`} />
-                  <span className="font-medium text-sm truncate">{st.name}</span>
-                  {st.mode && st.mode !== "cron" && (
-                    <Badge variant="outline" className="text-[9px] shrink-0">
-                      {st.mode === "once" ? "One-time" : "Interval"}
-                    </Badge>
-                  )}
-                  <code className="text-[11px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">
-                    {st.mode === "once" && st.fire_at
-                      ? new Date(st.fire_at).toLocaleString()
-                      : st.mode === "interval" && st.interval_seconds
-                        ? `every ${st.interval_seconds >= 3600 ? `${Math.round(st.interval_seconds / 3600)}h` : `${Math.round(st.interval_seconds / 60)}m`}`
-                        : st.cron_expression}
-                  </code>
-                </div>
-                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleToggle(st.id, st.active)} className="p-1 rounded hover:bg-muted" title={st.active ? "Pause" : "Resume"}>
-                    {st.active ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditId(st.id)
-                      // Hydrate delivery channel from the existing schedule.
-                      // [SILENT] instruction prefix → silent; else use stored channel; default web.
-                      const isSilent = (st.instruction || "").trim().startsWith("[SILENT]")
-                      const storedChannel = (st as any).delivery_channel as string | null | undefined
-                      setDeliveryChannel(isSilent ? "silent" : (storedChannel || "web"))
-                    }}
-                    className="p-1 rounded hover:bg-muted"
-                    title="Edit"
+        <div className="space-y-2">
+          {tasks.map((st) => {
+            const scheduleSummary =
+              st.mode === "once" && st.fire_at
+                ? `Once · ${new Date(st.fire_at).toLocaleString()}`
+                : st.mode === "interval" && st.interval_seconds
+                  ? `Every ${st.interval_seconds >= 3600 ? `${Math.round(st.interval_seconds / 3600)} hours` : `${Math.round(st.interval_seconds / 60)} minutes`}`
+                  : describeCron(st.cron_expression)
+            const channelLabel = (() => {
+              const isSilent = (st.instruction || "").trim().startsWith("[SILENT]")
+              if (isSilent) return "silent"
+              const ch = (st as any).delivery_channel as string | undefined
+              return ch || "web"
+            })()
+            const runs = st.recent_runs ?? []
+
+            return (
+              <div
+                key={st.id}
+                className="overflow-hidden rounded-lg border bg-card transition-colors hover:border-[var(--border-strong)]"
+              >
+                {/* Primary row */}
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <span
+                    className={`mt-1.5 flex size-2 shrink-0 items-center justify-center rounded-full ${
+                      st.active ? "bg-[var(--color-success)]" : "bg-muted-foreground/40"
+                    }`}
                   >
-                    <PenLine className="size-3.5" />
-                  </button>
-                  <button onClick={() => handleDelete(st.id)} className="p-1 rounded hover:bg-muted text-red-500" title="Delete">
-                    <Trash2 className="size-3.5" />
-                  </button>
+                    {st.active && (
+                      <span className="absolute inline-flex size-2 animate-ping rounded-full bg-[var(--color-success)] opacity-50" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[14px] font-semibold tracking-[-0.005em] text-foreground">
+                        {st.name}
+                      </span>
+                      <span
+                        className={`rounded-sm border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                          st.active
+                            ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                            : "border-border bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {st.active ? "ACTIVE" : "PAUSED"}
+                      </span>
+                      {st.mode && st.mode !== "cron" && (
+                        <span className="rounded-sm border bg-muted px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          {st.mode === "once" ? "ONE-TIME" : "INTERVAL"}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="size-3 text-muted-foreground" />
+                        {scheduleSummary}
+                      </span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        {st.timezone || "UTC"}
+                      </span>
+                      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-indigo)]">
+                        → {channelLabel}
+                      </span>
+                    </div>
+
+                    {st.instruction && (
+                      <p className="mt-1.5 line-clamp-1 text-[12px] text-muted-foreground">
+                        {st.instruction.replace(/^\[SILENT\]\s*/i, "")}
+                      </p>
+                    )}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                      {st.last_run_at ? (
+                        <span>Last run · {new Date(st.last_run_at).toLocaleString()}</span>
+                      ) : (
+                        <span className="opacity-60">Never run</span>
+                      )}
+                      {runs.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-0.5">
+                            {runs.slice(0, 8).map((r) => (
+                              <span
+                                key={r.id}
+                                title={`${r.status} · ${new Date(r.created_at).toLocaleString()}`}
+                                className={`size-1.5 rounded-sm ${
+                                  r.status === "success"
+                                    ? "bg-[var(--color-success)]"
+                                    : "bg-[var(--destructive)]"
+                                }`}
+                              />
+                            ))}
+                          </span>
+                          {runs.length} run{runs.length === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleToggle(st.id, st.active)}
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title={st.active ? "Pause" : "Resume"}
+                    >
+                      {st.active ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditId(st.id)
+                        const isSilent = (st.instruction || "").trim().startsWith("[SILENT]")
+                        const storedChannel = (st as any).delivery_channel as string | null | undefined
+                        setDeliveryChannel(isSilent ? "silent" : (storedChannel || "web"))
+                      }}
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      title="Edit"
+                    >
+                      <PenLine className="size-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(st.id)}
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)]"
+                      title="Delete"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 ml-2">
-                  <Badge variant={st.active ? "default" : "secondary"} className="text-[10px]">
-                    {st.active ? "Active" : "Paused"}
-                  </Badge>
-                  {st.last_run_at && (
-                    <span className="text-[10px] text-muted-foreground">
-                      Last: {new Date(st.last_run_at).toLocaleString()}
+
+                {/* Runs — button opens a modal */}
+                {runs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRunsFor(st)}
+                    className="flex w-full items-center justify-between border-t bg-[var(--muted)]/30 px-4 py-2 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:bg-[var(--muted)]/60 hover:text-foreground"
+                  >
+                    <span>View recent runs · {runs.length}</span>
+                    <ArrowUpRight className="size-3" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      </div>
+
+      {/* Runs dialog — master-detail split */}
+      <Dialog open={!!runsFor} onOpenChange={(o) => !o && setRunsFor(null)}>
+        <DialogContent className="!w-[min(1200px,95vw)] !max-w-[min(1200px,95vw)] gap-0 !p-0">
+          {runsFor && <RunsDialogBody schedule={runsFor} />}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* Master-detail view rendered inside the runs dialog. */
+function RunsDialogBody({ schedule }: { schedule: ScheduledTask }) {
+  const runs = schedule.recent_runs ?? []
+  const [selectedId, setSelectedId] = useState<string | null>(runs[0]?.id ?? null)
+  const selected = runs.find((r) => r.id === selectedId) ?? runs[0] ?? null
+
+  const successCount = runs.filter((r) => r.status === "success").length
+  const failCount = runs.length - successCount
+
+  return (
+    <div className="flex h-[70vh] flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              Runs · {runs.length}
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--color-success)]">
+              ✓ {successCount}
+            </span>
+            {failCount > 0 && (
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--destructive)]">
+                ✗ {failCount}
+              </span>
+            )}
+          </div>
+          <h2 className="mt-1 truncate font-display text-lg font-semibold tracking-[-0.015em]">
+            {schedule.name}
+          </h2>
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            {describeCron(schedule.cron_expression)} · {schedule.timezone || "UTC"}
+          </p>
+        </div>
+      </div>
+
+      {runs.length === 0 ? (
+        <div className="flex flex-1 items-center justify-center font-mono text-sm text-muted-foreground">
+          No runs yet
+        </div>
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-12 divide-x">
+          {/* Run list */}
+          <div className="col-span-4 min-h-0 overflow-y-auto">
+            {runs.map((run) => {
+              const isSelected = run.id === selected?.id
+              return (
+                <button
+                  key={run.id}
+                  type="button"
+                  onClick={() => setSelectedId(run.id)}
+                  className={`flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left transition-colors ${
+                    isSelected
+                      ? "bg-[var(--indigo-surface)]"
+                      : "hover:bg-[var(--muted)]/50"
+                  }`}
+                >
+                  <div className="flex w-full items-center gap-2">
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        run.status === "success"
+                          ? "bg-[var(--color-success)]"
+                          : "bg-[var(--destructive)]"
+                      }`}
+                    />
+                    <span
+                      className={`font-mono text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                        run.status === "success"
+                          ? "text-[var(--color-success)]"
+                          : "text-[var(--destructive)]"
+                      }`}
+                    >
+                      {run.status}
+                    </span>
+                    {run.duration_ms !== null && run.duration_ms !== undefined && (
+                      <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                        {(run.duration_ms / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-mono text-[11px] text-foreground">
+                    {new Date(run.created_at).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                  {Array.isArray(run.tool_calls) && run.tool_calls.length > 0 && (
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {run.tool_calls.length} tool call{run.tool_calls.length === 1 ? "" : "s"}
                     </span>
                   )}
-                </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Run detail */}
+          <div className="col-span-8 min-h-0 overflow-y-auto">
+            {selected ? (
+              <RunDetail run={selected} />
+            ) : (
+              <div className="flex h-full items-center justify-center font-mono text-sm text-muted-foreground">
+                Select a run
               </div>
-              {(st.recent_runs?.length ?? 0) > 0 && (
-                <Collapsible>
-                  <CollapsibleTrigger className="flex items-center gap-1.5 px-3 py-1.5 w-full text-left border-t border-border/50 hover:bg-muted/30 transition-colors">
-                    <ChevronDown className="size-3 text-muted-foreground transition-transform [[data-state=closed]>&]:[-rotate-90]" />
-                    <span className="text-[10px] text-muted-foreground">{st.recent_runs!.length} run(s)</span>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="px-3 pb-3 space-y-2">
-                      {st.recent_runs!.map((run) => (
-                        <div key={run.id} className="rounded border bg-background p-2.5 space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={run.status === "success" ? "default" : "destructive"} className="text-[10px]">
-                              {run.status}
-                            </Badge>
-                            <span className="text-[10px] text-muted-foreground">{new Date(run.created_at).toLocaleString()}</span>
-                            {run.duration_ms && <span className="text-[10px] text-muted-foreground">{(run.duration_ms / 1000).toFixed(1)}s</span>}
-                          </div>
-                          {run.output && (
-                            <pre className="text-[11px] whitespace-pre-wrap text-muted-foreground bg-muted/50 rounded p-2 max-h-48 overflow-y-auto">{run.output}</pre>
-                          )}
-                          {run.tool_calls?.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {run.tool_calls.map((tc, i) => (
-                                <Badge key={i} variant="secondary" className="text-[9px]">{tc.name}</Badge>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
-            </div>
-          ))}
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const runMdComponents = {
+  p: (p: any) => <p {...p} className="my-2 text-[13px] leading-relaxed text-foreground" />,
+  h1: (p: any) => <h1 {...p} className="mt-3 mb-1 font-display text-base font-semibold" />,
+  h2: (p: any) => <h2 {...p} className="mt-3 mb-1 font-display text-[15px] font-semibold" />,
+  h3: (p: any) => <h3 {...p} className="mt-3 mb-1 font-display text-sm font-semibold" />,
+  ul: (p: any) => <ul {...p} className="my-2 ml-5 list-disc space-y-1 text-[13px] leading-relaxed" />,
+  ol: (p: any) => <ol {...p} className="my-2 ml-5 list-decimal space-y-1 text-[13px] leading-relaxed" />,
+  li: (p: any) => <li {...p} className="pl-1" />,
+  a: (p: any) => (
+    <a
+      {...p}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="break-all text-[var(--color-indigo)] underline-offset-2 hover:underline"
+    />
+  ),
+  code: ({ inline, ...p }: any) =>
+    inline ? (
+      <code {...p} className="rounded bg-[var(--muted)] px-1 py-0.5 font-mono text-[11px]" />
+    ) : (
+      <code {...p} className="block rounded bg-[var(--muted)] p-2 font-mono text-[11px] overflow-x-auto" />
+    ),
+  pre: (p: any) => (
+    <pre
+      {...p}
+      className="my-2 overflow-x-auto rounded border bg-background p-2.5 font-mono text-[11px] leading-relaxed"
+    />
+  ),
+  blockquote: (p: any) => (
+    <blockquote
+      {...p}
+      className="my-2 border-l-2 border-[var(--color-indigo)]/40 pl-3 text-[13px] italic text-muted-foreground"
+    />
+  ),
+  hr: (p: any) => <hr {...p} className="my-3 border-border" />,
+  strong: (p: any) => <strong {...p} className="font-semibold text-foreground" />,
+  em: (p: any) => <em {...p} className="italic" />,
+  table: (p: any) => (
+    <div className="my-2 overflow-x-auto">
+      <table {...p} className="w-full border-collapse text-[12px]" />
+    </div>
+  ),
+  th: (p: any) => (
+    <th
+      {...p}
+      className="border-b bg-[var(--muted)]/60 px-2 py-1 text-left font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground"
+    />
+  ),
+  td: (p: any) => <td {...p} className="border-b px-2 py-1" />,
+}
+
+function RunMarkdown({ children }: { children: string }) {
+  return (
+    <div className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={runMdComponents}>
+        {children}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+function RunDetail({ run }: { run: ScheduledTaskRun }) {
+  // Dedupe tool calls with count
+  const toolCalls: { name: string; count: number }[] = (() => {
+    const arr = Array.isArray(run.tool_calls) ? (run.tool_calls as { name: string }[]) : []
+    const map = new Map<string, number>()
+    for (const tc of arr) {
+      map.set(tc.name, (map.get(tc.name) ?? 0) + 1)
+    }
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }))
+  })()
+
+  return (
+    <div className="space-y-5 p-5">
+      {/* Meta row */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] ${
+            run.status === "success"
+              ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/10 text-[var(--color-success)]"
+              : "border-[var(--destructive)]/30 bg-[var(--destructive)]/10 text-[var(--destructive)]"
+          }`}
+        >
+          {run.status}
+        </span>
+        <span className="font-mono text-[11px] text-foreground">
+          {new Date(run.created_at).toLocaleString()}
+        </span>
+        {run.duration_ms !== null && run.duration_ms !== undefined && (
+          <span className="font-mono text-[11px] text-muted-foreground">
+            · {(run.duration_ms / 1000).toFixed(2)}s
+          </span>
+        )}
+      </div>
+
+      {/* Output */}
+      {run.output ? (
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            Output
+          </div>
+          <div className="rounded-md border bg-[var(--muted)]/50 px-4 py-3">
+            <RunMarkdown>{run.output}</RunMarkdown>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed py-6 text-center font-mono text-[11px] text-muted-foreground">
+          No output
+        </div>
+      )}
+
+      {/* Tool calls */}
+      {toolCalls.length > 0 && (
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            Tool calls · {toolCalls.reduce((n, t) => n + t.count, 0)}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {toolCalls.map((tc) => (
+              <span
+                key={tc.name}
+                className="inline-flex items-center gap-1 rounded-sm border bg-card px-2 py-0.5 font-mono text-[10px] text-foreground"
+              >
+                {tc.name}
+                {tc.count > 1 && (
+                  <span className="rounded-sm bg-[var(--indigo-surface)] px-1 text-[var(--color-indigo)]">
+                    ×{tc.count}
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>

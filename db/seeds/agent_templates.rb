@@ -4,6 +4,19 @@
 # frameworks (ChatDev, MetaGPT, crewAI role prompts) and tuned for Alchemy's
 # long-running, channel-aware agent model. Tokens like {{agent_name}} and
 # {{company_name}} are substituted at agent-creation time.
+#
+# Model selection rule of thumb:
+#   - Opus 4.7  → high-stakes reasoning, precision, long chains of thought.
+#                 Used by: CEO, Engineer, Product Manager, Compliance, Data Analyst.
+#   - Sonnet 4.6 → daily driver, writing, general agent work. Most roles default here.
+#                 Used by: Marketing, Content Writer, Designer, Researcher, Finance,
+#                          Proposal Writer, Recruiter.
+#   - Haiku 4.5 → high-volume, quick turnaround, low-stakes replies.
+#                 Used by: Support, SDR.
+
+OPUS   = "claude-opus-4-7"
+SONNET = "claude-sonnet-4-6"
+HAIKU  = "claude-haiku-4-5-20251001"
 
 TEMPLATES = [
   {
@@ -12,6 +25,8 @@ TEMPLATES = [
     role: "CEO",
     description: "Strategic leader who sets direction and delegates to the rest of the team.",
     icon: "Crown",
+    suggested_provider: "anthropic",
+    suggested_model: OPUS,
     suggested_manager_role: nil,
     suggested_skill_slugs: %w[web-search send-email],
     capabilities: {
@@ -71,8 +86,10 @@ TEMPLATES = [
     slug: "marketing-lead",
     name: "Marketing Lead",
     role: "Marketing",
-    description: "Owns content strategy, positioning, and RFP responses. Manages researchers and fillers.",
+    description: "Owns content strategy, positioning, and proposal responses. Manages writers and researchers.",
     icon: "Megaphone",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search send-email sdr-outreach],
     capabilities: {
@@ -129,8 +146,10 @@ TEMPLATES = [
     slug: "compliance-officer",
     name: "Compliance Officer",
     role: "Compliance",
-    description: "Reviews contracts, policies, and RFP responses for regulatory and legal risk.",
+    description: "Reviews contracts, policies, and proposal responses for regulatory and legal risk.",
     icon: "ShieldCheck",
+    suggested_provider: "anthropic",
+    suggested_model: OPUS,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search],
     capabilities: {
@@ -190,6 +209,8 @@ TEMPLATES = [
     role: "Proposal Writer",
     description: "Fills out RFPs, security questionnaires, vendor forms, and custom proposals using the org knowledge base.",
     icon: "FileCheck2",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "Marketing",
     suggested_skill_slugs: %w[web-search],
     capabilities: {
@@ -242,6 +263,8 @@ TEMPLATES = [
     role: "Engineer",
     description: "Ships code: bug fixes, small features, code review, deployment, incident response.",
     icon: "Code2",
+    suggested_provider: "anthropic",
+    suggested_model: OPUS,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search],
     capabilities: {
@@ -307,6 +330,8 @@ TEMPLATES = [
     role: "Product Manager",
     description: "Writes specs, prioritizes roadmap, synthesizes user feedback, runs reviews.",
     icon: "Target",
+    suggested_provider: "anthropic",
+    suggested_model: OPUS,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search send-email],
     capabilities: {
@@ -367,6 +392,8 @@ TEMPLATES = [
     role: "Designer",
     description: "UI/brand work — Figma mockups, design reviews, marketing assets, landing pages.",
     icon: "Palette",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "Marketing",
     suggested_skill_slugs: %w[web-search send-files],
     capabilities: {
@@ -421,6 +448,8 @@ TEMPLATES = [
     role: "Content Writer",
     description: "Blog posts, announcements, customer emails, long-form content. Reports to Marketing.",
     icon: "PenLine",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "Marketing",
     suggested_skill_slugs: %w[web-search send-email],
     capabilities: {
@@ -481,6 +510,8 @@ TEMPLATES = [
     role: "Data Analyst",
     description: "Pulls metrics, builds dashboards, writes weekly reports, answers ad-hoc data questions.",
     icon: "BarChart3",
+    suggested_provider: "anthropic",
+    suggested_model: OPUS,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search],
     capabilities: {
@@ -535,6 +566,8 @@ TEMPLATES = [
     role: "Finance",
     description: "Bookkeeping, expense tracking, invoicing, monthly close, runway projections.",
     icon: "DollarSign",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search send-email],
     capabilities: {
@@ -588,6 +621,8 @@ TEMPLATES = [
     role: "SDR",
     description: "Outbound prospecting, lead qualification, meeting booking.",
     icon: "Target",
+    suggested_provider: "anthropic",
+    suggested_model: HAIKU,
     suggested_manager_role: "Marketing",
     suggested_skill_slugs: %w[sdr-prospecting sdr-outreach send-email web-search],
     capabilities: {
@@ -648,6 +683,8 @@ TEMPLATES = [
     role: "Support",
     description: "Customer replies, ticket triage, knowledge base maintenance.",
     icon: "LifeBuoy",
+    suggested_provider: "anthropic",
+    suggested_model: HAIKU,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search send-email],
     capabilities: {
@@ -702,6 +739,8 @@ TEMPLATES = [
     role: "Researcher",
     description: "Web research, synthesis, competitive analysis, market briefs.",
     icon: "Search",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "Marketing",
     suggested_skill_slugs: %w[web-search],
     capabilities: {
@@ -758,6 +797,8 @@ TEMPLATES = [
     role: "Recruiter",
     description: "Sourcing candidates, outreach, scheduling interviews, pipeline tracking.",
     icon: "Users",
+    suggested_provider: "anthropic",
+    suggested_model: SONNET,
     suggested_manager_role: "CEO",
     suggested_skill_slugs: %w[web-search send-email],
     capabilities: {
