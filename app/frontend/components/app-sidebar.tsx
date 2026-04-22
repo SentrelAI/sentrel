@@ -32,6 +32,7 @@ import {
   SidebarMenuItem,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   useSidebar,
 } from "@/components/ui/sidebar"
 import {
@@ -46,7 +47,7 @@ import {
 } from "@/routes"
 import type { NavItem } from "@/types"
 
-const mainNavItems: NavItem[] = [
+const workNavItems: NavItem[] = [
   { title: "Dashboard", href: authenticatedRootPath(), icon: LayoutGrid },
   { title: "Agents", href: agentsPath(), icon: Bot },
   { title: "Tasks", href: tasksPath(), icon: CheckSquare },
@@ -54,7 +55,7 @@ const mainNavItems: NavItem[] = [
   { title: "Reports", href: "/reports", icon: TrendingUp },
 ]
 
-const secondaryNavItems: NavItem[] = [
+const controlNavItems: NavItem[] = [
   { title: "Approvals", href: pendingApprovalsPath(), icon: ShieldCheck },
   { title: "Ops", href: "/ops/runs", icon: Activity },
   { title: "Audit Log", href: auditLogsPath(), icon: ScrollText },
@@ -78,12 +79,17 @@ export function AppSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
 
-        <SidebarGroup className="p-0 pt-2">
+        <SidebarGroup className="p-0 pt-3">
           <SidebarGroupContent>
-            <Button asChild variant="secondary" className="w-full justify-start gap-2 h-9">
+            <Button
+              asChild
+              variant="default"
+              className="w-full justify-start gap-2 h-9 text-[13px]"
+            >
               <Link href={newAgentPath()}>
-                <Plus className="size-4" />
-                <span>New Agent</span>
+                <Plus className="size-3.5" />
+                <span>New agent</span>
+                <kbd className="ml-auto font-mono text-[10px] opacity-70">⌘N</kbd>
               </Link>
             </Button>
           </SidebarGroupContent>
@@ -91,26 +97,37 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <NavMain items={mainNavItems} />
-        <NavSecondary items={secondaryNavItems} className="mt-auto" />
+        <SidebarGroup>
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <NavMain items={workNavItems} />
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupLabel>Control plane</SidebarGroupLabel>
+          <NavSecondary items={controlNavItems} />
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
         <SidebarGroup className="p-0">
-          <SidebarGroupContent className="flex items-center gap-1">
+          <SidebarGroupContent className="flex items-center gap-1 px-1">
             <button
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="flex items-center gap-2 flex-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted"
+              className="flex flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
             >
               {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
-              <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+              <span>{theme === "dark" ? "Light" : "Dark"}</span>
             </button>
             <button
               onClick={toggleSidebar}
-              className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
               title={open ? "Collapse sidebar" : "Expand sidebar"}
             >
-              {open ? <PanelLeftClose className="size-3.5" /> : <PanelLeft className="size-3.5" />}
+              {open ? (
+                <PanelLeftClose className="size-3.5" />
+              ) : (
+                <PanelLeft className="size-3.5" />
+              )}
             </button>
           </SidebarGroupContent>
         </SidebarGroup>

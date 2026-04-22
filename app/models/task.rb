@@ -9,11 +9,9 @@ class Task < ApplicationRecord
   belongs_to :agent
   belongs_to :assigned_by_user, class_name: "User", optional: true
   belongs_to :assigned_by_agent, class_name: "Agent", optional: true
-  # Step 4 — the task's dedicated chat thread. Optional during the dual-write
-  # rollout window; backfill rake populates for existing rows.
+  # Task's dedicated chat thread. Seeded by tasks_controller#create and
+  # used by the engine for session resume.
   belongs_to :conversation, optional: true
-
-  has_many :comments, class_name: "TaskComment", dependent: :destroy
 
   validates :title, presence: true
   validates :status, presence: true, inclusion: { in: STATUSES }

@@ -12,7 +12,6 @@ class Agent < ApplicationRecord
   has_many :channel_configs, dependent: :destroy
   has_many :conversations, dependent: :destroy
   has_many :tasks, dependent: :destroy
-  has_many :scheduled_tasks, dependent: :destroy
   has_many :scheduled_work, dependent: :destroy
   has_many :pending_approvals, dependent: :destroy
   has_many :audit_logs, dependent: :destroy

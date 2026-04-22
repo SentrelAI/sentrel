@@ -11,14 +11,22 @@ class TasksController < ApplicationController
   end
 
   def show
-    comments = @task.comments.includes(:agent, :user).order(created_at: :asc).map do |c|
-      {
-        id: c.id,
-        content: c.content,
-        created_at: c.created_at,
-        author: c.user&.as_json(only: [:id, :name]) || c.agent&.as_json(only: [:id, :name]),
-        author_type: c.user_id ? "user" : "agent",
-      }
+    # Comments now come from the task's conversation messages (the table
+    # `task_comments` was dropped in favor of unified messages). Skip the
+    # seed message (role=user, direction=inbound, channel=task) and render
+    # the rest as comments for UI compatibility.
+    comments = if @task.conversation
+      @task.conversation.messages.order(id: :asc).drop(1).map do |m|
+        {
+          id: m.to_param,
+          content: m.content,
+          created_at: m.created_at,
+          author: m.role == "assistant" ? @task.agent.as_json(only: [:id, :name]) : @task.assigned_by_user&.as_json(only: [:id, :name]),
+          author_type: m.role == "assistant" ? "agent" : "user",
+        }
+      end
+    else
+      []
     end
 
     respond_to do |format|
@@ -126,10 +134,16 @@ class TasksController < ApplicationController
   end
 
   def enqueue_status_check(task)
-    recent_comments = task.comments.includes(:user, :agent).order(created_at: :asc).last(10).map do |c|
-      author = c.user&.name || c.agent&.name || "Unknown"
-      "[#{author}]: #{c.content}"
-    end.join("\n\n")
+    # Pull the last 10 conversation turns (skipping the initial seed msg).
+    recent_comments = if task.conversation
+      msgs = task.conversation.messages.order(id: :asc).drop(1).last(10)
+      msgs.map do |m|
+        author = m.role == "assistant" ? task.agent.name : (task.assigned_by_user&.name || "User")
+        "[#{author}]: #{m.content}"
+      end.join("\n\n")
+    else
+      ""
+    end
 
     instruction = <<~INSTR.strip
       Task was reopened: #{task.title}
@@ -185,15 +199,16 @@ class TasksController < ApplicationController
   end
 
   def task_json(task)
-    # Full response lives in the conversation's last assistant message (Step 4).
-    # Fall back to task.result for tasks created before the migration.
+    # Full response lives in the conversation's last assistant message.
+    # Comment count = total conversation messages minus the seed message.
     full_result = task.conversation&.messages&.where(role: "assistant")&.order(id: :desc)&.first&.content ||
                   task.result&.dig("response")
+    comments_count = task.conversation ? [task.conversation.messages.count - 1, 0].max : 0
 
     task.as_json(only: [:id, :title, :description, :instruction, :status, :priority, :due_at, :started_at, :completed_at, :created_at]).merge(
       agent: task.agent.as_json(only: [:id, :name, :slug]),
       assigned_by: task.assigned_by_user&.as_json(only: [:id, :name]) || task.assigned_by_agent&.as_json(only: [:id, :name]),
-      comments_count: task.comments.count,
+      comments_count: comments_count,
       result: full_result,
     )
   end

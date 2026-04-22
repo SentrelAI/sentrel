@@ -82,8 +82,6 @@ Rails.application.routes.draw do
     end
   end
 
-  # Unauthenticated root
-  devise_scope :user do
-    root "devise/sessions#new"
-  end
+  # Unauthenticated root — public marketing landing page
+  root "home#index"
 end
