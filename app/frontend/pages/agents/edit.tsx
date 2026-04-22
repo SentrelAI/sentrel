@@ -11,6 +11,45 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { agentPath, agentsPath, dashboardPath } from "@/routes"
 import type { Agent } from "@/types"
 
+const CAPABILITIES: Array<{ key: string; label: string; description: string }> = [
+  {
+    key: "knowledge_base",
+    label: "Knowledge base (RAG)",
+    description:
+      "Lets the agent search and cite your uploaded documents — contracts, playbooks, policies. Turns on automatically when you upload the first doc. Also lets the agent share personal docs to the org-shared library.",
+  },
+  {
+    key: "scheduling",
+    label: "Scheduling & reminders",
+    description:
+      "The agent can set reminders (\"remind me Friday at 2\") and schedule recurring work (\"every Monday 9am pull the report\"). Without this, the agent can only respond in-the-moment.",
+  },
+  {
+    key: "tasks",
+    label: "Tasks & delegation",
+    description:
+      "The agent can create tasks for itself, comment to log progress, and delegate to other agents in your org by role or slug. This is what enables the hire-a-team flow — a manager agent can farm work out to its reports, and they report back automatically when done.",
+  },
+  {
+    key: "integrations",
+    label: "Third-party integrations",
+    description:
+      "Composio-powered access to Gmail, Notion, Slack, GitHub, Google Sheets, and 250+ other apps you've connected at /integrations. Without this, the agent can't touch any external service.",
+  },
+  {
+    key: "recall",
+    label: "Conversation + activity history",
+    description:
+      "The agent can look back through older conversations (search_messages) and its own past actions like sent emails, errors, and tool calls (search_activity). Useful for agents that need long memory.",
+  },
+  {
+    key: "send_media",
+    label: "Send voice, images & files",
+    description:
+      "Beyond text replies, the agent can record a voice note (TTS), send an image, or attach a file — on whatever channel the conversation is happening (Telegram, WhatsApp, web chat). Doesn't affect text messaging, which is always on.",
+  },
+]
+
 interface AgentSummary {
   id: string
   name: string
@@ -175,46 +214,44 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
         {/* Capabilities */}
         <section>
           <Overline className="mb-3">Capabilities</Overline>
-          <div className="rounded-lg border border-border p-4 space-y-4">
-            {(["knowledge_base", "scheduling", "tasks", "integrations", "recall", "send_media"] as const).map((key) => {
-              const cap = (data.capabilities as any)[key] || {}
-              const labels: Record<string, { title: string; desc: string }> = {
-                knowledge_base: { title: "Knowledge base (RAG)", desc: "Search over uploaded documents. Auto-enables on first upload." },
-                scheduling:     { title: "Scheduling",            desc: "schedule_task, set_reminder tools." },
-                tasks:          { title: "Task management",       desc: "create_task, comment_on_task tools." },
-                integrations:   { title: "Integrations",          desc: "Third-party app access via Composio (Slack, Gmail, Notion, etc.)." },
-                recall:         { title: "Recall / history",      desc: "search_messages, search_activity tools." },
-                send_media:     { title: "Send media",            desc: "send_voice, send_image, send_file tools." },
-              }
+          <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+            Toggles for what this agent can do. Gates which tools load, which sections appear in its system prompt, and how much context it pulls each turn.
+          </p>
+          <div className="rounded-lg border bg-card divide-y">
+            {CAPABILITIES.map((cap) => {
+              const current = (data.capabilities as any)[cap.key] || {}
               return (
-                <div key={key} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>{labels[key]!.title}</Label>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{labels[key]!.desc}</p>
+                <div key={cap.key} className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{cap.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{cap.description}</div>
                     </div>
                     <Checkbox
-                      checked={!!cap.enabled}
-                      onCheckedChange={(v) => setCap(key, { enabled: !!v })}
+                      checked={!!current.enabled}
+                      onCheckedChange={(v) => setCap(cap.key, { enabled: !!v })}
+                      className="mt-1"
                     />
                   </div>
-                  {key === "knowledge_base" && cap.enabled && (
-                    <div className="grid grid-cols-2 gap-3 pl-3 pt-1">
+                  {cap.key === "knowledge_base" && current.enabled && (
+                    <div className="grid grid-cols-2 gap-3 pl-0 pt-3 mt-3 border-t">
                       <div className="space-y-1">
                         <Label className="text-[10px]">Similarity threshold</Label>
                         <Input
                           type="number" min={0} max={1} step={0.05}
-                          value={cap.threshold ?? 0.75}
+                          value={current.threshold ?? 0.75}
                           onChange={(e) => setCap("knowledge_base", { threshold: parseFloat(e.target.value) })}
                         />
+                        <p className="text-[9px] text-muted-foreground">Higher = stricter match. 0.75 is balanced; 0.85+ for high-precision docs; 0.6 for catch-all reference material.</p>
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px]">Top-k passages</Label>
                         <Input
                           type="number" min={1} max={20}
-                          value={cap.top_k ?? 5}
+                          value={current.top_k ?? 5}
                           onChange={(e) => setCap("knowledge_base", { top_k: parseInt(e.target.value, 10) })}
                         />
+                        <p className="text-[9px] text-muted-foreground">Max passages to inject into the prompt per turn.</p>
                       </div>
                     </div>
                   )}

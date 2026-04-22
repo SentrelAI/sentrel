@@ -36,14 +36,70 @@ interface Props {
   agents: AgentSummary[]
 }
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  knowledge_base: "Knowledge base",
-  scheduling:     "Scheduling",
-  tasks:          "Tasks",
-  integrations:   "Integrations",
-  recall:         "Recall",
-  send_media:     "Send media",
+const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; hint?: string }>> = {
+  anthropic: [
+    { value: "claude-opus-4-7",            label: "Claude Opus 4.7",   hint: "strongest reasoning, slowest + priciest" },
+    { value: "claude-opus-4-6",            label: "Claude Opus 4.6",   hint: "previous Opus, still excellent" },
+    { value: "claude-sonnet-4-6",          label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
+    { value: "claude-sonnet-4-20250514",   label: "Claude Sonnet 4",   hint: "stable earlier Sonnet" },
+    { value: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5",  hint: "fastest + cheapest, good for background tasks" },
+  ],
+  openai: [
+    { value: "gpt-4o",       label: "GPT-4o",       hint: "multimodal flagship" },
+    { value: "gpt-4o-mini",  label: "GPT-4o Mini",  hint: "cheap + fast" },
+    { value: "o1",           label: "o1",           hint: "reasoning model, slow + expensive" },
+    { value: "o3-mini",      label: "o3-mini",      hint: "reasoning, cheaper than o1" },
+  ],
+  google: [
+    { value: "gemini-2.5-pro",   label: "Gemini 2.5 Pro",   hint: "long context, good at structured data" },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", hint: "fast + cheap" },
+  ],
+  openrouter: [
+    { value: "anthropic/claude-opus-4-7",   label: "Claude Opus 4.7 (via OpenRouter)" },
+    { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (via OpenRouter)" },
+    { value: "openai/gpt-4o",               label: "GPT-4o (via OpenRouter)" },
+    { value: "meta-llama/llama-3.1-405b",   label: "Llama 3.1 405B (via OpenRouter)" },
+  ],
 }
+
+const CAPABILITIES: Array<{ key: string; label: string; description: string }> = [
+  {
+    key: "knowledge_base",
+    label: "Knowledge base (RAG)",
+    description:
+      "Lets the agent search and cite your uploaded documents — contracts, playbooks, policies. Turns on automatically when you upload the first doc. Also lets the agent share personal docs to the org-shared library.",
+  },
+  {
+    key: "scheduling",
+    label: "Scheduling & reminders",
+    description:
+      "The agent can set reminders (\"remind me Friday at 2\") and schedule recurring work (\"every Monday 9am pull the report\"). Without this, the agent can only respond in-the-moment.",
+  },
+  {
+    key: "tasks",
+    label: "Tasks & delegation",
+    description:
+      "The agent can create tasks for itself, comment to log progress, and delegate to other agents in your org by role or slug. This is what enables the hire-a-team flow — a manager agent can farm work out to its reports, and they report back automatically when done.",
+  },
+  {
+    key: "integrations",
+    label: "Third-party integrations",
+    description:
+      "Composio-powered access to Gmail, Notion, Slack, GitHub, Google Sheets, and 250+ other apps you've connected at /integrations. Without this, the agent can't touch any external service.",
+  },
+  {
+    key: "recall",
+    label: "Conversation + activity history",
+    description:
+      "The agent can look back through older conversations (search_messages) and its own past actions like sent emails, errors, and tool calls (search_activity). Useful for agents that need long memory.",
+  },
+  {
+    key: "send_media",
+    label: "Send voice, images & files",
+    description:
+      "Beyond text replies, the agent can record a voice note (TTS), send an image, or attach a file — on whatever channel the conversation is happening (Telegram, WhatsApp, web chat). Doesn't affect text messaging, which is always on.",
+  },
+]
 
 export default function AgentNew({ templates, agents }: Props) {
   const [picked, setPicked] = useState<Template | null>(null)
@@ -216,7 +272,13 @@ export default function AgentNew({ templates, agents }: Props) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Provider</Label>
-                <Select value={data.ai_config.provider} onValueChange={(v) => setData("ai_config", { ...data.ai_config, provider: v })}>
+                <Select
+                  value={data.ai_config.provider}
+                  onValueChange={(v) => {
+                    const defaultModel = MODELS_BY_PROVIDER[v]?.[0]?.value || ""
+                    setData("ai_config", { ...data.ai_config, provider: v, model_id: defaultModel })
+                  }}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="anthropic">Anthropic</SelectItem>
@@ -227,25 +289,44 @@ export default function AgentNew({ templates, agents }: Props) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="model">Model</Label>
-                <Input id="model" value={data.ai_config.model_id} onChange={(e) => setData("ai_config", { ...data.ai_config, model_id: e.target.value })} />
+                <Label>Model</Label>
+                <Select
+                  value={data.ai_config.model_id}
+                  onValueChange={(v) => setData("ai_config", { ...data.ai_config, model_id: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pick a model" /></SelectTrigger>
+                  <SelectContent>
+                    {(MODELS_BY_PROVIDER[data.ai_config.provider] || []).map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        <span className="font-medium">{m.label}</span>
+                        {m.hint && <span className="text-muted-foreground"> — {m.hint}</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              Sonnet is the daily driver. Opus for heavy reasoning / long tasks. Haiku for cheap + fast background work.
+            </p>
           </div>
         </section>
 
         <section>
           <Overline className="mb-3">Capabilities</Overline>
-          <div className="rounded-lg border bg-card p-5 space-y-3">
-            {Object.keys(CAPABILITY_LABELS).map((key) => {
-              const enabled = data.capabilities[key]?.enabled === true
+          <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+            Toggles for what this agent can do. The template pre-selects what makes sense for the role — adjust as needed.
+          </p>
+          <div className="rounded-lg border bg-card divide-y">
+            {CAPABILITIES.map((cap) => {
+              const enabled = data.capabilities[cap.key]?.enabled === true
               return (
-                <div key={key} className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm">{CAPABILITY_LABELS[key]}</div>
-                    <div className="text-[10px] text-muted-foreground">{capabilityHint(key)}</div>
+                <div key={cap.key} className="flex items-start justify-between gap-4 p-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{cap.label}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{cap.description}</div>
                   </div>
-                  <Checkbox checked={enabled} onCheckedChange={(v) => toggleCap(key, !!v)} />
+                  <Checkbox checked={enabled} onCheckedChange={(v) => toggleCap(cap.key, !!v)} className="mt-1" />
                 </div>
               )
             })}
@@ -263,14 +344,3 @@ export default function AgentNew({ templates, agents }: Props) {
   )
 }
 
-function capabilityHint(key: string): string {
-  switch (key) {
-    case "knowledge_base": return "RAG retrieval against uploaded docs."
-    case "scheduling":     return "schedule_task, set_reminder tools."
-    case "tasks":          return "create_task, comment_on_task, write_checkpoint."
-    case "integrations":   return "Third-party apps via Composio (Gmail, Notion, etc.)."
-    case "recall":         return "search_messages, search_activity."
-    case "send_media":     return "send_voice, send_image, send_file."
-    default:               return ""
-  }
-}
