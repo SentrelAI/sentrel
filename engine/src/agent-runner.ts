@@ -254,7 +254,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     // (30-turn cap), so load times stay reasonable. BullMQ's job lock (10 min)
     // catches pathological hangs.
     const modelTurnSpan = spans.start("agent_loop", { resumed: !!resumeSessionId });
-    const result = await runAgentLoop(built.promptText, options, queryState, spans);
+    const result = await runAgentLoop(built.promptText, options, queryState, spans, jobId);
     spans.end(modelTurnSpan, { response_length: result.responseContent.length });
 
     // ── Persist captured session ID for future resumption ──
@@ -359,21 +359,15 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       await host.updateScheduledTaskLastRun(job.payload.taskId).catch(() => {});
     }
 
-    // Deliver reminder responses to the original channel
-    if (job.payload?.isReminder && finalResponse && job.channel) {
-      try {
-        const meta = job.payload.metadata || {};
-        if (job.channel === "telegram" && meta.bot_token && meta.chat_id) {
-          await fetch(`https://api.telegram.org/bot${meta.bot_token}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: meta.chat_id, text: finalResponse, parse_mode: "Markdown" }),
-          });
-          logger.info(`Reminder delivered via Telegram to chat ${meta.chat_id}`);
-        }
-      } catch (err) {
-        logger.error("Failed to deliver reminder", { error: (err as Error).message });
-      }
+    // Scheduled tasks deliver their final text to the originating channel —
+    // the one captured when the schedule was created (via chat → that chat's
+    // channel; via UI → the dropdown value, default "web"). [SILENT] tasks
+    // stay audit-only. For "web", we persist to the agent's internal chat
+    // conversation so the user sees it on next visit / via ActionCable.
+    if (job.type === "scheduled_task" && !isSilent && finalResponse && job.channel) {
+      await deliverScheduledResponse(agent, job, finalResponse).catch((err) => {
+        logger.error("Failed to deliver scheduled task response", { error: (err as Error).message, channel: job.channel });
+      });
     }
 
     spans.end(rootSpan, { status: "success" });
@@ -510,7 +504,8 @@ async function runAgentLoop(
   promptText: string,
   options: Record<string, unknown>,
   queryState: QueryState,
-  spans?: SpanCollector,
+  spans: SpanCollector | undefined,
+  jobId: string,
 ): Promise<QueryResult> {
   const interceptor = new ToolInterceptor();
   let responseContent = "";
@@ -571,11 +566,11 @@ async function runAgentLoop(
       for (const block of msg.message.content) {
         if (block.type === "text" && block.text) {
           responseContent = block.text;
-          emitTextDelta(block.text);
+          emitTextDelta(jobId, block.text);
           spans?.event("text_block", { length: block.text.length });
         }
         if (block.type === "tool_use") {
-          emitToolCall(block.name, block.input);
+          emitToolCall(jobId, block.name, block.input);
           interceptor.observe(block);
           // Start a span for the tool call — duration = time until tool_result comes back
           if (spans && block.id) {
@@ -921,6 +916,72 @@ async function buildQueryOptions(
   }
 
   return { options, relevantToolkits };
+}
+
+// Scheduled-task channel delivery. Fires after a non-silent scheduled job
+// completes, forwarding the agent's final text to the channel stored on the
+// schedule's payload_extra (set by the scheduling tool or UI dropdown).
+//
+// - telegram: direct Bot API sendMessage using bot_token + chat_id in metadata.
+// - whatsapp: Twilio outbound SMS/WhatsApp via host helper.
+// - web:      persists a message to the agent's internal conversation for the
+//             assigned user so the Inertia chat tab renders it on next visit,
+//             plus notifies Rails so ActionCable can push it live.
+async function deliverScheduledResponse(agent: Agent, job: JobData, content: string): Promise<void> {
+  const meta = (job.payload?.metadata || {}) as Record<string, unknown>;
+  const channel = job.channel;
+
+  if (channel === "telegram") {
+    const botToken = meta.bot_token as string | undefined;
+    const chatId = meta.chat_id as string | number | undefined;
+    if (!botToken || !chatId) {
+      logger.warn("Scheduled delivery: telegram channel missing bot_token or chat_id");
+      return;
+    }
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: content, parse_mode: "Markdown" }),
+    });
+    logger.info(`Scheduled delivery: sent to Telegram chat ${chatId} (${content.length} chars)`);
+    return;
+  }
+
+  if (channel === "whatsapp") {
+    const from = meta.from as string | undefined;
+    if (!from) {
+      logger.warn("Scheduled delivery: whatsapp channel missing `from` metadata");
+      return;
+    }
+    const { sendMessage } = await import("./channels/whatsapp.js");
+    await sendMessage(from, content);
+    logger.info(`Scheduled delivery: sent to WhatsApp ${from} (${content.length} chars)`);
+    return;
+  }
+
+  if (channel === "web") {
+    // Persist into the agent's internal conversation so the Inertia chat tab
+    // renders it on next load. Picks the most recently active internal conv
+    // — matches the picker in agents_controller#show.
+    const conv = await host.getInternalConversation(agent.id);
+    if (!conv) {
+      logger.warn("Scheduled delivery: web channel has no internal conversation yet");
+      return;
+    }
+    const msg = await host.saveMessage(
+      conv.id,
+      "assistant",
+      content,
+      "outbound",
+      "web",
+      [],
+      { source: "scheduled_task", scheduled_work_id: job.payload?.taskId ?? null },
+    );
+    logger.info(`Scheduled delivery: saved message ${msg.id} to internal conversation ${conv.id}`);
+    return;
+  }
+
+  logger.warn(`Scheduled delivery: unsupported channel "${channel}" — message dropped`);
 }
 
 // Step 6 — notify Rails to broadcast via ActionCable when a task conversation

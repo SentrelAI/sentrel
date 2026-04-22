@@ -34,7 +34,7 @@ export function buildSchedulingMcpServer(agentId: number, orgId: number, current
           fire_at: null,
           interval_seconds: null,
           active: true,
-          payload_extra: {},
+          payload_extra: { channel: currentChannel, channelMeta },
         });
         logger.info(`Scheduled cron created: ${args.name} (${args.cron_expression})`, { id });
         return {

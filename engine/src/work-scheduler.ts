@@ -71,14 +71,27 @@ async function loadAndRegister(): Promise<void> {
 
 async function registerItem(item: ScheduledWorkItem): Promise<void> {
   const jobType = item.mode === "interval" ? "heartbeat" : "scheduled_task";
+
+  // Schedules carry the delivery channel in payload_extra so the agent's
+  // final emitDone routes back to wherever the user originally set the
+  // schedule (chat channel if created via set_reminder/schedule_task,
+  // explicit dropdown value if created via the Schedule UI form).
+  // Default "web" — the internal chat tab on the agent show page.
+  const extra = (item.payload_extra || {}) as Record<string, unknown>;
+  const channel = typeof extra.channel === "string" && extra.channel.length > 0
+    ? (extra.channel as string)
+    : "web";
+  const channelMetadata = (extra.channelMeta as Record<string, unknown> | undefined) || {};
+
   const payload = {
     type: jobType as "heartbeat" | "scheduled_task",
     agentId: config.employeeId,
     orgId: undefined as number | undefined,
+    channel,
     payload: {
       instruction: item.instruction,
       taskId: item.id,
-      metadata: item.payload_extra,
+      metadata: channelMetadata,
     },
   };
 

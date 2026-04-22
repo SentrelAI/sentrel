@@ -122,6 +122,7 @@ export interface Host {
 
   // ── Conversations + messages ──
   getConversation(id: number): Promise<Conversation | null>;
+  getInternalConversation(agentId: number): Promise<Conversation | null>;
   findOrCreateConversation(
     agentId: number,
     orgId: number,

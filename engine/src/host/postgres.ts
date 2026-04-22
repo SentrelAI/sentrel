@@ -89,6 +89,20 @@ export class PostgresHost implements Host {
     return (rows[0] as Conversation) || null;
   }
 
+  // Most recently active internal conversation for this agent. Used by
+  // scheduled-task web delivery to post the agent's response back into the
+  // chat tab. Matches the controller picker (order by updated_at desc).
+  async getInternalConversation(agentId: number): Promise<Conversation | null> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM conversations
+       WHERE agent_id = $1 AND kind = 'internal'
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`,
+      [agentId],
+    );
+    return (rows[0] as Conversation) || null;
+  }
+
   async findOrCreateConversation(
     agentId: number,
     orgId: number,

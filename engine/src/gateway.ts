@@ -282,11 +282,15 @@ export function emitThinking(): void {
   broadcast({ type: "thinking", timestamp: Date.now() });
 }
 
-export function emitTextDelta(text: string): void {
-  broadcast({ type: "text_delta", text, timestamp: Date.now() });
-  // Fire per-job listeners so channels (Telegram, WhatsApp) can stream
-  // text as it's produced — no more 2-minute silent waits.
-  for (const listener of textDeltaListeners.values()) {
+export function emitTextDelta(jobId: string | undefined, text: string): void {
+  broadcast({ type: "text_delta", text, jobId, timestamp: Date.now() });
+  // Route to the one listener keyed to this job. Broadcasting to every
+  // active listener was leaking streaming content across channels when
+  // jobs queued (e.g. a scheduled task's tool output showing up in a
+  // waiting Telegram thread).
+  if (!jobId) return;
+  const listener = textDeltaListeners.get(jobId);
+  if (listener) {
     try { listener(text); } catch {}
   }
 }
@@ -339,15 +343,17 @@ export function getToolLabel(tool: string): string {
   return humanizeToolName(tool);
 }
 
-export function emitToolCall(tool: string, input: unknown): void {
+export function emitToolCall(jobId: string | undefined, tool: string, input: unknown): void {
   const label = humanizeToolName(tool);
   logger.info(`Tool: ${tool} → ${label}`);
-  broadcast({ type: "tool_call", tool, label, input, timestamp: Date.now() });
-  // Also broadcast a progress event that any UI/channel can consume
-  broadcast({ type: "progress", label, tool, timestamp: Date.now() });
-  // Notify all active per-job listeners. Inbox processes serially so there is
-  // typically one, but iterating is safe either way.
-  for (const listener of toolCallListeners.values()) {
+  broadcast({ type: "tool_call", tool, label, input, jobId, timestamp: Date.now() });
+  broadcast({ type: "progress", label, tool, jobId, timestamp: Date.now() });
+  // Route to the one listener keyed to this job. Broadcasting to all
+  // listeners was leaking one job's tool labels into another job's open
+  // channel thread.
+  if (!jobId) return;
+  const listener = toolCallListeners.get(jobId);
+  if (listener) {
     try { listener(tool); } catch {}
   }
 }

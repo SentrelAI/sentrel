@@ -75,7 +75,7 @@ export function setWhatsAppPendingReply(jobId: string, from: string): void {
   }, 600_000);
 }
 
-async function sendMessage(to: string, body: string): Promise<void> {
+export async function sendMessage(to: string, body: string): Promise<void> {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   if (!sid || !token) { logger.error("WhatsApp: missing Twilio creds"); return; }
