@@ -44,11 +44,11 @@ class ScheduledTasksController < ApplicationController
   end
 
   def work_create_params
-    params.require(:scheduled_task).permit(:name, :instruction, :cron_expression, :timezone, :active)
+    params.require(:scheduled_task).permit(:name, :instruction, :cron_expression, :timezone, :active, payload_extra: [:channel])
   end
 
   def work_update_params
-    params.require(:scheduled_task).permit(:name, :instruction, :cron_expression, :timezone, :active)
+    params.require(:scheduled_task).permit(:name, :instruction, :cron_expression, :timezone, :active, payload_extra: [:channel])
   end
 
   # Shape matches what the frontend expects — adds mode badge.
@@ -65,6 +65,7 @@ class ScheduledTasksController < ApplicationController
       mode: sw.mode,
       fire_at: sw.fire_at,
       interval_seconds: sw.interval_seconds,
+      delivery_channel: sw.payload_extra&.dig("channel"),
     }
   end
 end

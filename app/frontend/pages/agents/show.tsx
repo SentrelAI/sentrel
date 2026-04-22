@@ -848,18 +848,27 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
   const instructionRef = useRef<HTMLTextAreaElement>(null)
   const [timezone, setTimezone] = useState("UTC")
   const [tzOpen, setTzOpen] = useState(false)
+  const [deliveryChannel, setDeliveryChannel] = useState<string>("web")
 
   const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
   const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrfToken }
+
+  function buildInstruction(raw: string): string {
+    // Silent mode is enforced via the existing [SILENT] engine gate. Strip any
+    // user-typed [SILENT] first so we don't double-prefix.
+    const clean = raw.replace(/^\[SILENT\]\s*/i, "").trim()
+    return deliveryChannel === "silent" ? `[SILENT] ${clean}` : clean
+  }
 
   async function handleCreate() {
     const body = {
       scheduled_task: {
         name: nameRef.current?.value || "",
         cron_expression: cronRef.current?.value || "",
-        instruction: instructionRef.current?.value || "",
+        instruction: buildInstruction(instructionRef.current?.value || ""),
         timezone: timezone,
         active: true,
+        payload_extra: { channel: deliveryChannel === "silent" ? "web" : deliveryChannel },
       },
     }
     const res = await fetch(`/agents/${agentId}/scheduled_tasks`, { method: "POST", headers, body: JSON.stringify(body) })
@@ -875,8 +884,9 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
       scheduled_task: {
         name: nameRef.current?.value,
         cron_expression: cronRef.current?.value,
-        instruction: instructionRef.current?.value,
+        instruction: buildInstruction(instructionRef.current?.value || ""),
         timezone: timezone,
+        payload_extra: { channel: deliveryChannel === "silent" ? "web" : deliveryChannel },
       },
     }
     const res = await fetch(`/agents/${agentId}/scheduled_tasks/${id}`, { method: "PATCH", headers, body: JSON.stringify(body) })
@@ -938,6 +948,35 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
           </div>
 
           <textarea ref={instructionRef} placeholder="Instruction — what to do when this fires..." defaultValue={editId ? tasks.find(t => t.id === editId)?.instruction || "" : ""} rows={2} className="w-full rounded-md border bg-background px-3 py-1.5 text-sm resize-none" />
+
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Deliver results to</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: "web",      label: "Web chat"  },
+                { value: "telegram", label: "Telegram"  },
+                { value: "whatsapp", label: "WhatsApp"  },
+                { value: "email",    label: "Email"     },
+                { value: "silent",   label: "Silent (audit only)" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDeliveryChannel(opt.value)}
+                  className={`px-2.5 py-1 rounded border text-[11px] transition-colors ${
+                    deliveryChannel === opt.value
+                      ? "bg-foreground text-background border-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Final response is delivered here. "Silent" runs the task but only records the output in audit logs.
+            </p>
+          </div>
 
           <div className="flex items-center gap-2">
             <Popover open={tzOpen} onOpenChange={setTzOpen}>
@@ -1012,7 +1051,18 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
                   <button onClick={() => handleToggle(st.id, st.active)} className="p-1 rounded hover:bg-muted" title={st.active ? "Pause" : "Resume"}>
                     {st.active ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
                   </button>
-                  <button onClick={() => setEditId(st.id)} className="p-1 rounded hover:bg-muted" title="Edit">
+                  <button
+                    onClick={() => {
+                      setEditId(st.id)
+                      // Hydrate delivery channel from the existing schedule.
+                      // [SILENT] instruction prefix → silent; else use stored channel; default web.
+                      const isSilent = (st.instruction || "").trim().startsWith("[SILENT]")
+                      const storedChannel = (st as any).delivery_channel as string | null | undefined
+                      setDeliveryChannel(isSilent ? "silent" : (storedChannel || "web"))
+                    }}
+                    className="p-1 rounded hover:bg-muted"
+                    title="Edit"
+                  >
                     <PenLine className="size-3.5" />
                   </button>
                   <button onClick={() => handleDelete(st.id)} className="p-1 rounded hover:bg-muted text-red-500" title="Delete">

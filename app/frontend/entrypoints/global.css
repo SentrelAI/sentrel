@@ -4,8 +4,16 @@
 
 @plugin "@tailwindcss/typography";
 
-/* ---- Design Tokens ---- */
+/* ==========================================================
+   Fonts — Geist (abcDiatype stand-in) + JetBrains Mono
+   ========================================================== */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap");
+
+/* ==========================================================
+   Composio Design Tokens
+   ========================================================== */
 @theme inline {
+  /* — shadcn surface tokens (light / dark overrides below) — */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -38,93 +46,184 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
 
-  /* Alchemy brand */
-  --color-cyan: #00c8c8;
-  --color-cyan-hover: #00b0b0;
-  --color-cyan-surface: rgba(0, 200, 200, 0.08);
-  --color-cyan-border: rgba(0, 200, 200, 0.20);
-  --color-cyan-glow: rgba(0, 200, 200, 0.12);
-  --color-signal: #0089ff;
+  /* — Radius (Composio uses near-square: 2px for inline, 4px for cards) — */
+  --radius: 4px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 12px;
+  --radius-pill: 37px;
 
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* — Composio brand palette — */
+  --color-void: #0f0f0f;              /* Page background (not quite black) */
+  --color-pure-black: #000000;        /* Card interiors, deep nested */
+  --color-charcoal: #2c2c2c;          /* Secondary borders on dark */
+
+  --color-cobalt: #0007cd;            /* Deep brand blue */
+  --color-signal: #0089ff;            /* Interactive border blue */
+  --color-ocean: #0096ff;             /* CTA accent border */
+  --color-cyan: #00ffff;              /* Electric accent */
+
+  --color-cyan-surface-dark: rgba(0, 255, 255, 0.12);
+  --color-cyan-glow-dark: rgba(0, 255, 255, 0.18);
+  --color-cyan-border-dark: rgba(0, 255, 255, 0.35);
+
+  --color-cyan-surface-light: rgba(0, 137, 205, 0.10);
+  --color-cyan-glow-light: rgba(0, 137, 205, 0.14);
+  --color-cyan-border-light: rgba(0, 137, 205, 0.35);
+
+  /* — White-opacity Border Mist scale (dark surfaces) — */
+  --mist-04: rgba(255, 255, 255, 0.04);
+  --mist-06: rgba(255, 255, 255, 0.06);
+  --mist-08: rgba(255, 255, 255, 0.08);
+  --mist-10: rgba(255, 255, 255, 0.10);
+  --mist-12: rgba(255, 255, 255, 0.12);
+  --mist-20: rgba(255, 255, 255, 0.20);
+
+  /* — Black-opacity inverse for light surfaces — */
+  --ink-04: rgba(10, 10, 10, 0.04);
+  --ink-06: rgba(10, 10, 10, 0.06);
+  --ink-08: rgba(10, 10, 10, 0.08);
+  --ink-10: rgba(10, 10, 10, 0.10);
+  --ink-12: rgba(10, 10, 10, 0.12);
+  --ink-20: rgba(10, 10, 10, 0.20);
+
+  /* — Tiered text opacities — */
+  --text-ghost: rgba(255, 255, 255, 0.60);
+  --text-whisper: rgba(255, 255, 255, 0.50);
+  --text-phantom: rgba(255, 255, 255, 0.20);
+
+  /* — Brutalist shadow — */
+  --shadow-brutalist: 4px 4px 0 0 rgba(0, 0, 0, 0.50);
+  --shadow-brutalist-sm: 2px 2px 0 0 rgba(0, 0, 0, 0.40);
+  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.50);
+  --shadow-float-sm: 0 4px 16px rgba(0, 0, 0, 0.30);
+
+  /* — Dual-font system — */
+  --font-sans:
+    "Geist", "Inter Tight", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-/* ── Light Theme (default) ── */
+/* ==========================================================
+   Dark Theme — the Composio hero aesthetic
+   ========================================================== */
+.dark {
+  --background: #0f0f0f;
+  --foreground: #ffffff;
+
+  --card: #000000;
+  --card-foreground: #ffffff;
+  --popover: #0a0a0a;
+  --popover-foreground: #ffffff;
+
+  --primary: #ffffff;
+  --primary-foreground: #0a0a0a;
+
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #ffffff;
+
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: rgba(255, 255, 255, 0.55);
+
+  --accent: #00ffff;
+  --accent-foreground: #0a0a0a;
+
+  --destructive: #ff4d4d;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.10);
+  --input: rgba(255, 255, 255, 0.10);
+  --ring: #0089ff;
+
+  --chart-1: #00ffff;
+  --chart-2: #0089ff;
+  --chart-3: #0007cd;
+  --chart-4: #8b5cf6;
+  --chart-5: #22c55e;
+
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: rgba(255, 255, 255, 0.60);
+  --sidebar-primary: #00ffff;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: #0089ff;
+
+  --shadow-brutalist: 4px 4px 0 0 rgba(0, 0, 0, 0.50);
+  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.50);
+
+  --mist: var(--mist-10);
+  --mist-soft: var(--mist-06);
+  --mist-strong: var(--mist-12);
+
+  --cyan-surface: var(--color-cyan-surface-dark);
+  --cyan-glow: var(--color-cyan-glow-dark);
+  --cyan-border: var(--color-cyan-border-dark);
+}
+
+/* ==========================================================
+   Light Theme — muted inverse (same shapes, inverted canvas)
+   ========================================================== */
 :root {
-  --radius: 6px;
-  --background: #fafafa;
+  --background: #fafaf8;
   --foreground: #0a0a0a;
+
   --card: #ffffff;
   --card-foreground: #0a0a0a;
   --popover: #ffffff;
   --popover-foreground: #0a0a0a;
+
   --primary: #0a0a0a;
   --primary-foreground: #fafafa;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #0a0a0a;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --accent: #00c8c8;
-  --accent-foreground: #0a0a0a;
-  --destructive: #ef4444;
-  --destructive-foreground: #fafafa;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #0089ff;
-  --chart-1: #00c8c8;
-  --chart-2: #0089ff;
-  --chart-3: #ef4444;
-  --chart-4: #8b5cf6;
-  --chart-5: #22c55e;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #71717a;
-  --sidebar-primary: #0a0a0a;
-  --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #f4f4f5;
-  --sidebar-accent-foreground: #0a0a0a;
-  --sidebar-border: #e4e4e7;
-  --sidebar-ring: #0089ff;
-}
 
-/* ── Dark Theme ── */
-.dark {
-  --background: #161615;
-  --foreground: #ececea;
-  --card: #1c1c1a;
-  --card-foreground: #ececea;
-  --popover: #1c1c1a;
-  --popover-foreground: #ececea;
-  --primary: #ececea;
-  --primary-foreground: #161615;
-  --secondary: rgba(255, 255, 250, 0.06);
-  --secondary-foreground: #ececea;
-  --muted: rgba(255, 255, 250, 0.07);
-  --muted-foreground: #8a8a82;
-  --accent: #00e0e0;
-  --accent-foreground: #161615;
-  --destructive: #ef4444;
-  --destructive-foreground: #ececea;
-  --border: rgba(255, 255, 245, 0.08);
-  --input: rgba(255, 255, 245, 0.10);
+  --secondary: rgba(10, 10, 10, 0.04);
+  --secondary-foreground: #0a0a0a;
+
+  --muted: rgba(10, 10, 10, 0.04);
+  --muted-foreground: rgba(10, 10, 10, 0.55);
+
+  --accent: #0007cd;
+  --accent-foreground: #ffffff;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(10, 10, 10, 0.10);
+  --input: rgba(10, 10, 10, 0.10);
   --ring: #0089ff;
-  --chart-1: #00e0e0;
-  --chart-2: #0089ff;
-  --chart-3: #ef4444;
+
+  --chart-1: #0089ff;
+  --chart-2: #0007cd;
+  --chart-3: #009999;
   --chart-4: #8b5cf6;
   --chart-5: #22c55e;
-  --sidebar: #121211;
-  --sidebar-foreground: #8a8a82;
-  --sidebar-primary: #00e0e0;
-  --sidebar-primary-foreground: #161615;
-  --sidebar-accent: rgba(255, 255, 250, 0.07);
-  --sidebar-accent-foreground: #ececea;
-  --sidebar-border: rgba(255, 255, 245, 0.06);
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: rgba(10, 10, 10, 0.60);
+  --sidebar-primary: #0007cd;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(10, 10, 10, 0.04);
+  --sidebar-accent-foreground: #0a0a0a;
+  --sidebar-border: rgba(10, 10, 10, 0.06);
   --sidebar-ring: #0089ff;
+
+  --shadow-brutalist: 4px 4px 0 0 rgba(10, 10, 10, 0.12);
+  --shadow-float: 0 8px 32px rgba(10, 10, 10, 0.08);
+
+  --mist: var(--ink-10);
+  --mist-soft: var(--ink-06);
+  --mist-strong: var(--ink-12);
+
+  --cyan-surface: var(--color-cyan-surface-light);
+  --cyan-glow: var(--color-cyan-glow-light);
+  --cyan-border: var(--color-cyan-border-light);
 }
