@@ -16,6 +16,8 @@ Rails.application.routes.draw do
     resources :blobs, only: [:create, :show], param: :signed_id
     resource :send_email, only: [:create]
     resources :task_events, only: [:create]
+    # cloud-init callback: engine posts when its container is up + healthy.
+    post "agent_instances/ready", to: "agent_instances#ready"
   end
 
   # Webhook gateway (external services + dashboard chat)
@@ -35,6 +37,7 @@ Rails.application.routes.draw do
     get "dashboard", to: "dashboard#index", as: :dashboard
 
     get "agents/tree", to: "agents#tree", as: :agents_tree
+    get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
       resources :conversations, only: [:index, :show]
       resources :channel_configs, only: [:index, :create, :update, :destroy] do

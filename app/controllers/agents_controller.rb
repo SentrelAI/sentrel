@@ -172,6 +172,10 @@ class AgentsController < ApplicationController
       end
 
       EngineSync.trigger(@agent)
+      # Spawn the agent's machine (Fly / Hetzner / local depending on
+      # AGENT_PROVISIONER). No-op when unconfigured — dev can run a shared
+      # engine process against the agent instead.
+      AgentProvisioner.provision_for(@agent)
       redirect_to agent_path(@agent), notice: "Agent created"
     else
       redirect_back fallback_location: new_agent_path, alert: @agent.errors.full_messages.join(", ")
@@ -198,6 +202,7 @@ class AgentsController < ApplicationController
   end
 
   def destroy
+    AgentProvisioner.terminate_for(@agent)
     @agent.destroy
     redirect_to agents_path, notice: "Agent deleted"
   end

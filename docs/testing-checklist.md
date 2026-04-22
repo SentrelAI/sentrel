@@ -72,4 +72,65 @@ Keep this up to date as new features land. Each checkbox should pass before ship
 ## Specs (commit landing spec coverage)
 
 - [ ] `bundle exec rspec spec/models/agent_capabilities_spec.rb spec/models/public_id_serialization_spec.rb spec/services/engine_sync_spec.rb spec/tasks/merge_internal_conversations_spec.rb` — all 21 examples green.
-- [ ] Run full suite (`bundle exec rspec`) in CI before merge.
+- [ ] Run full suite (`bundle exec rspec`) in CI before merge — 86+ examples.
+
+## Agent templates (commits `d77847c` + `cd14521` + `e37d4b6`)
+
+- [ ] `/agents/new` shows the template picker grid with 14 roles (CEO, Marketing Lead, Compliance Officer, Proposal Writer, Engineer, Product Manager, Designer, Content Writer, Data Analyst, Finance, SDR, Support, Researcher, Recruiter).
+- [ ] Each template shows icon + name + description + "reports to X" + top skill badges.
+- [ ] Pick "Marketing Lead" → Step 2 form prefills role, model (Sonnet 4.6), capabilities, and auto-selects the CEO agent as manager.
+- [ ] Pick "CEO" → Model dropdown prefilled with Opus 4.7 + hint "Template recommends claude-opus-4-7 for this role."
+- [ ] Pick "Support" → Model prefilled with Haiku 4.5.
+- [ ] Submit with name "Sarah" → agent created, Identity tab shows SOUL.md with "I am Sarah, the Marketing Lead at <OrgName>...".
+- [ ] Capabilities from template apply (knowledge_base on by default for roles that want it).
+- [ ] Suggested skills auto-install (`agent_skills` rows created + enabled).
+- [ ] Edit page has no identity/personality/instructions textareas — links to Identity tab instead.
+- [ ] Edit page has Manager dropdown listing every other agent in the org.
+- [ ] `rake db:seed` is idempotent — rerun doesn't duplicate.
+
+## Cross-agent tasks + delegation (commit `b77e2af`)
+
+- [ ] CEO's system prompt shows a "Your team" section listing direct reports with role + skills + one-line summary.
+- [ ] CEO message: "Ask Marketing to draft an RFP for X" → engine log shows `create_task` with `assign_to_role: "Marketing"`.
+- [ ] `psql`: `SELECT id, agent_id, assigned_by_agent_id FROM tasks ORDER BY id DESC LIMIT 1;` → assigned_by_agent_id = CEO's id, agent_id = Marketing's id.
+- [ ] Marketing's inbox immediately has the task_assignment: `LRANGE agent-inbox-<marketing_id> 0 0`.
+- [ ] Marketing completes → CEO inbox gets a task_assignment with "Task completed by <Marketing name>: ... Result: ...".
+- [ ] CEO's follow-up instruction tells it to check whether the original requester (Telegram/WhatsApp/email) needs an update.
+
+## Org-shared knowledge (commits `f61c450` + `809406d`)
+
+- [ ] Knowledge tab has a Personal / Org-shared toggle.
+- [ ] Upload with Personal → indexed at `agent_data/rag/agent-<id>.db`.
+- [ ] Upload with Org-shared → indexed at `agent_data/rag/org-<org_id>.db`.
+- [ ] Different agent in same org → their `search_knowledge` hits show BOTH sources with `[personal/org-shared]` markers.
+- [ ] `share_to_org(document_id: N)` tool called by an agent → document copied to org KB; subsequent teammates see it in search.
+- [ ] Delete with scope=org removes from shared KB only.
+
+## Skills dependencies + bundles (commit Phase 4 Rails + engine)
+
+- [ ] `SkillDefinition.new(required_capabilities: ["integrations"], required_integrations: ["gmail"], system_prompt_fragment: "...")` persists all three.
+- [ ] `skill.dependencies_missing_for(agent, ["gmail"])` returns `{ capabilities: [...], integrations: [] }`.
+- [ ] `SkillBundle.create!(slug: "outbound-sales", skill_slugs: [...], capability_overrides: {...}).install_on(agent)` enables skills + merges caps.
+- [ ] Skill with `system_prompt_fragment` → agent's system prompt has a "Skill-specific guidelines" section with that text.
+
+## Agent deployment per machine (commits pending)
+
+- [ ] `AGENT_PROVISIONER` env unset → creating an agent is a no-op for provisioning (dev default, no-op NullBackend).
+- [ ] `AGENT_PROVISIONER=local` → `Instance.create!(provider: "local")` row with status=running.
+- [ ] `AGENT_PROVISIONER=fly` + `FLY_API_TOKEN` set → `POST /apps/alchemy-agent-<id>/machines` call succeeds; instance row captures machine_id + private_ip.
+- [ ] `AGENT_PROVISIONER=hetzner` + `HETZNER_API_TOKEN` set → Hetzner server created with rendered cloud-init in user_data.
+- [ ] Agent delete → `AgentProvisioner.terminate_for` fires → machine destroyed on provider → instance row status=terminated.
+- [ ] `POST /api/agent_instances/ready` with body `{employee_id: N, public_ip: "1.2.3.4"}` + `X-Engine-Secret` header → instance flips to status=running + records ip.
+- [ ] Bad secret → 401.
+- [ ] `docker build -t alchemy-engine:test .` in engine repo succeeds (Dockerfile smoke).
+- [ ] `docker compose up -d` from engine repo brings up engine + camofox; both containers healthy.
+- [ ] `/agents/agt_.../screen` page renders; with no instance it shows "No machine yet" placeholder.
+- [ ] With a running Fly machine it renders the noVNC iframe pointing at `<public_ip>:6080`.
+
+## Model picker + capability copy (commit `39240e8`)
+
+- [ ] `/agents/new` Provider dropdown lists Anthropic / OpenAI / Google / OpenRouter.
+- [ ] Model dropdown under Anthropic lists Opus 4.7, Opus 4.6, Sonnet 4.6, Sonnet 4, Haiku 4.5 with one-line hints per model.
+- [ ] Switching Provider resets Model to that provider's default.
+- [ ] Capability descriptions on both `/agents/new` and `/agents/agt_.../edit` read as plain English, not tool names.
+- [ ] Knowledge-base capability in edit shows threshold + top-k with tuning hints when enabled.

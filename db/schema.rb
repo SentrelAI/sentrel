@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_22_215919) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_22_222921) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -242,13 +242,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_22_215919) do
     t.string "aws_ip_address"
     t.string "aws_volume_id"
     t.datetime "created_at", null: false
+    t.datetime "health_checked_at"
     t.string "instance_type", default: "t3.micro"
+    t.string "machine_id"
+    t.string "machine_type"
+    t.string "private_ip"
+    t.string "provider", default: "fly", null: false
+    t.text "provisioning_error"
+    t.string "public_ip"
     t.string "region", default: "us-east-1"
     t.datetime "started_at"
     t.string "status", default: "pending", null: false
     t.datetime "stopped_at"
     t.datetime "updated_at", null: false
     t.index ["agent_id"], name: "index_instances_on_agent_id", unique: true
+    t.index ["provider", "machine_id"], name: "index_instances_on_provider_and_machine_id"
   end
 
   create_table "integrations", force: :cascade do |t|
