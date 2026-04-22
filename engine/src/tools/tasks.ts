@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { randomUUID } from "crypto";
 import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 import { scanForInjection } from "../security/injection-scanner.js";
@@ -7,25 +8,72 @@ import { scanForInjection } from "../security/injection-scanner.js";
 export function buildTasksMcpServer(agentId: number, orgId: number) {
   const createTaskTool = tool(
     "create_task",
-    "Create a new task for yourself. Use for tracking work items, to-dos, and follow-ups.",
+    "Create a task. By default it's assigned to you. To delegate to another agent in the org, pass `assign_to_slug` or `assign_to_role` — they'll be notified and start immediately.",
     {
       title: z.string().describe("Short task title"),
       description: z.string().optional().describe("Detailed description of what needs to be done"),
-      instruction: z.string().optional().describe("Specific instruction for when you work on this task"),
+      instruction: z.string().optional().describe("Specific instruction for when the assignee works on this task"),
       priority: z.enum(["low", "normal", "high", "urgent"]).optional().describe("Priority level (default: normal)"),
       due_at: z.string().optional().describe("Due date as ISO 8601 string (e.g. '2026-04-20T17:00:00')"),
+      assign_to_slug: z.string().optional().describe("Delegate to another agent by slug (e.g. 'marketing-lead', 'sarah'). Leave empty to assign to yourself."),
+      assign_to_role: z.string().optional().describe("Delegate by role (e.g. 'Marketing', 'Compliance'). Matches the first agent with that role in the org. Ignored if assign_to_slug is also given."),
     },
     async (args) => {
       try {
-        const id = await host.createTask(orgId, agentId, args.title, {
+        let targetAgentId = agentId;
+        let targetDescription = "yourself";
+
+        if (args.assign_to_slug || args.assign_to_role) {
+          const target = await host.findAgentBySlugOrRole(orgId, args.assign_to_slug ?? null, args.assign_to_role ?? null);
+          if (!target) {
+            return {
+              content: [{
+                type: "text",
+                text: `No agent found with slug=${args.assign_to_slug || "-"} or role=${args.assign_to_role || "-"} in this org.`,
+              }],
+              isError: true,
+            };
+          }
+          if (target.id === agentId) {
+            return { content: [{ type: "text", text: `Cannot delegate to yourself. Leave assign_to_* empty to self-assign.` }], isError: true };
+          }
+          targetAgentId = target.id;
+          targetDescription = `${target.name} (${target.role})`;
+        }
+
+        const id = await host.createTask(orgId, targetAgentId, args.title, {
           description: args.description,
           instruction: args.instruction,
           priority: args.priority,
           due_at: args.due_at,
+          assignedByAgentId: targetAgentId === agentId ? undefined : agentId,
         });
-        logger.info(`Task created: ${args.title}`, { id, priority: args.priority || "normal" });
+        logger.info(`Task created: ${args.title}`, { id, priority: args.priority || "normal", assignedTo: targetDescription });
+
+        // Cross-agent delegation: wake the assignee's engine immediately via
+        // its inbox. Idempotency key = task-assign-<task_id> — double-calls
+        // are a BullMQ no-op.
+        if (targetAgentId !== agentId) {
+          const assignerInstruction = [
+            args.instruction || args.description || args.title,
+            `\n\n(This task was assigned to you by another agent — when you complete it, your response will be reported back to the assigner automatically.)`,
+          ].filter(Boolean).join("\n\n");
+          await host.publishInboundToAgent(targetAgentId, {
+            type: "task_assignment",
+            jobId: `task-assign-${id}`,
+            orgId,
+            payload: {
+              taskId: id,
+              instruction: assignerInstruction,
+            },
+          });
+        }
+
         return {
-          content: [{ type: "text", text: `Task created (ID: ${id}): "${args.title}" — ${args.priority || "normal"} priority${args.due_at ? `, due ${args.due_at}` : ""}` }],
+          content: [{
+            type: "text",
+            text: `Task created (ID: ${id}): "${args.title}" — assigned to ${targetDescription}, ${args.priority || "normal"} priority${args.due_at ? `, due ${args.due_at}` : ""}`,
+          }],
         };
       } catch (err) {
         return { content: [{ type: "text", text: `Failed: ${(err as Error).message}` }], isError: true };

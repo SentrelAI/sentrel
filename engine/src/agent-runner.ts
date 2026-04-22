@@ -437,6 +437,31 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       }
     }
 
+    // Cross-agent report-back: if another agent assigned this task, push a
+    // follow-up into THEIR inbox summarizing the result. Assigner gets woken
+    // immediately instead of discovering completion on next poll.
+    if (isTaskAssignment && job.payload?.taskId && finalResponse) {
+      try {
+        const task = await host.getTask(job.payload.taskId);
+        if (task?.assigned_by_agent_id && task.assigned_by_agent_id !== agent.id) {
+          const summary = finalResponse.slice(0, 1500);
+          await host.publishInboundToAgent(task.assigned_by_agent_id, {
+            type: "task_assignment",
+            jobId: `task-reportback-${task.id}`,
+            orgId: agent.organization_id,
+            payload: {
+              taskId: task.id,
+              instruction: `Task completed by ${agent.name} (${agent.role}): "${task.title}"\n\nResult:\n${summary}\n\n(This is a report-back on a task you delegated. Decide if follow-up action is needed, then call comment_on_task to close the loop.)`,
+              skipAutoComplete: true,
+            },
+          });
+          logger.info(`Report-back queued for assigner agent ${task.assigned_by_agent_id} (task ${task.id})`);
+        }
+      } catch (err) {
+        logger.warn("Cross-agent report-back failed", { error: (err as Error).message });
+      }
+    }
+
     await syncMemoryToDb(agent.id);
     logger.info(`Agent run completed (${finalResponse.length} chars)`);
   } catch (err) {

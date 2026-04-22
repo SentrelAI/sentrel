@@ -194,12 +194,20 @@ export interface Host {
   updateScheduledWorkLastRun(id: number): Promise<void>;
 
   // ── Tasks ──
-  createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number>;
+  createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number }): Promise<number>;
+  findAgentBySlugOrRole(orgId: number, slug?: string | null, role?: string | null): Promise<{ id: number; name: string; slug: string; role: string } | null>;
+  publishInboundToAgent(targetAgentId: number, payload: {
+    type: "task_assignment";
+    jobId: string;
+    orgId?: number;
+    conversationId?: number | null;
+    payload: Record<string, unknown>;
+  }): Promise<void>;
   listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>>;
   updateTask(id: number, updates: { status?: string; title?: string; description?: string; priority?: string; due_at?: string; result?: Record<string, unknown>; progress_summary?: string }): Promise<void>;
   addTaskComment(taskId: number, agentId: number, content: string): Promise<number>;
   // Step 5.5 — long-running task primitives
-  getTask(id: number): Promise<{ id: number; title: string; status: string; checkpoint: Record<string, unknown>; conversation_id: number | null } | null>;
+  getTask(id: number): Promise<{ id: number; title: string; status: string; checkpoint: Record<string, unknown>; conversation_id: number | null; assigned_by_agent_id: number | null; organization_id: number; agent_id: number } | null>;
   writeTaskCheckpoint(id: number, checkpoint: Record<string, unknown>): Promise<void>;
 
   // ── Cross-conversation message recall (Sprint 0e) ──

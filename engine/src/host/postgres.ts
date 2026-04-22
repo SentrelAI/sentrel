@@ -457,13 +457,58 @@ export class PostgresHost implements Host {
 
   // ── Tasks ──
 
-  async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string }): Promise<number> {
+  async createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number }): Promise<number> {
     const { rows } = await this.pool.query(
-      `INSERT INTO tasks (organization_id, agent_id, title, description, instruction, status, priority, due_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, NOW(), NOW()) RETURNING id`,
-      [orgId, agentId, title, opts?.description || null, opts?.instruction || null, opts?.priority || "normal", opts?.due_at || null],
+      `INSERT INTO tasks (organization_id, agent_id, title, description, instruction, status, priority, due_at, assigned_by_agent_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'todo', $6, $7, $8, NOW(), NOW()) RETURNING id`,
+      [
+        orgId, agentId, title,
+        opts?.description || null,
+        opts?.instruction || null,
+        opts?.priority || "normal",
+        opts?.due_at || null,
+        opts?.assignedByAgentId ?? null,
+      ],
     );
     return rows[0].id;
+  }
+
+  // Cross-agent targeting: resolve a slug or role to an agent in the same org.
+  // Picks the first match by id when multiple agents share a role.
+  async findAgentBySlugOrRole(orgId: number, slug?: string | null, role?: string | null): Promise<{ id: number; name: string; slug: string; role: string } | null> {
+    if (!slug && !role) return null;
+    const clauses: string[] = [];
+    const params: unknown[] = [orgId];
+    if (slug) { params.push(slug); clauses.push(`slug = $${params.length}`); }
+    if (role) { params.push(role); clauses.push(`role ILIKE $${params.length}`); }
+    const { rows } = await this.pool.query(
+      `SELECT id, name, slug, role FROM agents
+       WHERE organization_id = $1 AND (${clauses.join(" OR ")})
+       ORDER BY id LIMIT 1`,
+      params,
+    );
+    return rows[0] || null;
+  }
+
+  // Push a job to another agent's inbox — used by cross-agent task assignment
+  // so the assignee's engine picks it up immediately rather than on next run.
+  async publishInboundToAgent(targetAgentId: number, payload: {
+    type: "task_assignment";
+    jobId: string;
+    orgId?: number;
+    conversationId?: number | null;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    const body = {
+      type: payload.type,
+      jobId: payload.jobId,
+      agentId: String(targetAgentId),
+      orgId: payload.orgId,
+      conversationId: payload.conversationId,
+      payload: payload.payload,
+    };
+    const { redis } = await import("../queue.js");
+    await redis.lpush(`agent-inbox-${targetAgentId}`, JSON.stringify(body));
   }
 
   async listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>> {
@@ -496,9 +541,10 @@ export class PostgresHost implements Host {
     await this.pool.query(`UPDATE tasks SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
   }
 
-  async getTask(id: number): Promise<{ id: number; title: string; status: string; checkpoint: Record<string, unknown>; conversation_id: number | null } | null> {
+  async getTask(id: number): Promise<{ id: number; title: string; status: string; checkpoint: Record<string, unknown>; conversation_id: number | null; assigned_by_agent_id: number | null; organization_id: number; agent_id: number } | null> {
     const { rows } = await this.pool.query(
-      `SELECT id, title, status, checkpoint, conversation_id FROM tasks WHERE id = $1 LIMIT 1`,
+      `SELECT id, title, status, checkpoint, conversation_id, assigned_by_agent_id, organization_id, agent_id
+       FROM tasks WHERE id = $1 LIMIT 1`,
       [id],
     );
     if (rows.length === 0) return null;
@@ -509,6 +555,9 @@ export class PostgresHost implements Host {
       status: r.status,
       checkpoint: r.checkpoint || {},
       conversation_id: r.conversation_id,
+      assigned_by_agent_id: r.assigned_by_agent_id,
+      organization_id: r.organization_id,
+      agent_id: r.agent_id,
     };
   }
 
