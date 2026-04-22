@@ -48,3 +48,28 @@ Keep this up to date as new features land. Each checkbox should pass before ship
 - [ ] `rake 'merge:internal_conversations[dry]'` — prints expected summary, no DB writes.
 - [ ] Live run (`rake merge:internal_conversations`) — reparents messages + tasks, deletes empty convs.
 - [ ] Rerun dry — 0 groups found (idempotent).
+
+## Idempotency keys on retryable jobs (commit `7faadb9`)
+
+- [ ] Create a task → Rails log shows the enqueue; check BullMQ Redis — job id is `task-assign-<id>`, not a UUID.
+- [ ] Re-submit the same comment form twice rapidly → only one `task-comment-<id>` job enqueues (second is a BullMQ no-op).
+- [ ] Simulate Twilio webhook retry (same MessageSid replayed) → second call is deduped; check `inbound-whatsapp-<sid>` appears once in Redis.
+- [ ] SES replay same email with same Message-ID → deduped similarly.
+
+## Circuit breakers (commit `6e4856a`)
+
+- [ ] Kill network (`sudo pfctl -e` rule blocking openai.com or similar) while agent tries to transcribe a voice note → after 3 consecutive fails, engine logs `CircuitBreaker[openai-whisper]: OPEN`, next attempts fast-fail.
+- [ ] Restore network, wait 30s → next attempt logs `HALF-OPEN — probing` then `CLOSED (recovered)`.
+- [ ] Same for TTS (openai/elevenlabs/cartesia breakers are independent).
+- [ ] Twilio send failure → breaker opens, chunks fast-fail with "WhatsApp: send chunk failed" but agent completion isn't blocked.
+
+## RAG per-document threshold (commit `6201f90`)
+
+- [ ] Set a document's metadata threshold via `sqlite3 agent_data/rag/agent-N.db "UPDATE documents SET metadata = json_object('threshold', 0.6) WHERE id = 1;"`.
+- [ ] Send a borderline-match query → engine log: that doc's chunk is kept at 0.6 even though agent default is 0.75.
+- [ ] Unset (`metadata = '{}'`) → back to agent-level threshold.
+
+## Specs (commit landing spec coverage)
+
+- [ ] `bundle exec rspec spec/models/agent_capabilities_spec.rb spec/models/public_id_serialization_spec.rb spec/services/engine_sync_spec.rb spec/tasks/merge_internal_conversations_spec.rb` — all 21 examples green.
+- [ ] Run full suite (`bundle exec rspec`) in CI before merge.
