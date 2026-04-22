@@ -61,15 +61,24 @@ RSpec.describe AgentTemplate do
       load Rails.root.join("db/seeds/agent_templates.rb")
     end
 
-    it "seeds 8 templates idempotently" do
-      expect(AgentTemplate.count).to be >= 8
-      %w[ceo marketing-lead compliance-officer rfp-filler sdr support researcher recruiter].each do |slug|
+    it "seeds the full template pack idempotently" do
+      expect(AgentTemplate.count).to be >= 14
+      %w[
+        ceo marketing-lead compliance-officer proposal-writer
+        engineer product-manager designer content-writer data-analyst finance
+        sdr support researcher recruiter
+      ].each do |slug|
         t = AgentTemplate.find_by(slug: slug)
         expect(t).to be_present, "expected template #{slug} to be seeded"
         expect(t.identity_md).to be_present
         expect(t.personality_md).to be_present
         expect(t.instructions_md).to be_present
       end
+    end
+
+    it "has migrated rfp-filler away" do
+      expect(AgentTemplate.find_by(slug: "rfp-filler")).to be_nil
+      expect(AgentTemplate.find_by(slug: "proposal-writer")).to be_present
     end
   end
 end
