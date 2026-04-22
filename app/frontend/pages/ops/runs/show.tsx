@@ -46,6 +46,7 @@ interface RunDetail {
   error: string | null
   session_id: string | null
   spans: Span[]
+  active_capabilities: Record<string, { enabled?: boolean; [k: string]: unknown }>
 }
 
 interface Props {
@@ -148,6 +149,28 @@ export default function OpsRunsShow({ run }: Props) {
         {run.job_id && <span className="px-2 py-1 rounded bg-muted font-mono">{run.job_id.slice(0, 8)}</span>}
         {run.conversation_id && <span className="px-2 py-1 rounded bg-muted">conv #{run.conversation_id}</span>}
       </div>
+
+      {/* Capability chips — shows which caps were enabled for this run */}
+      {Object.keys(run.active_capabilities || {}).length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-5 text-xs">
+          <span className="text-muted-foreground self-center mr-1">caps:</span>
+          {(["recall", "send_media", "integrations", "knowledge_base", "scheduling", "tasks"] as const).map((k) => {
+            const enabled = run.active_capabilities?.[k]?.enabled === true
+            return (
+              <span
+                key={k}
+                className={`px-2 py-0.5 rounded ${
+                  enabled
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : "bg-muted text-muted-foreground line-through"
+                }`}
+              >
+                {k}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {/* Error banner */}
       {isFailed && run.error && (

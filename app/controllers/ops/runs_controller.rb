@@ -87,6 +87,7 @@ class Ops::RunsController < ApplicationController
       spans: r.spans || [],
       first_token_ms: r.first_token_ms,
       conversation_id: r.conversation_id_ref,
+      active_capabilities: r.active_capabilities || {},
     )
   end
 end
