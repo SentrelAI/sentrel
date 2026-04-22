@@ -1034,8 +1034,7 @@ async function prefetchKnowledge(agent: Agent, job: JobData) {
   if (!userText.trim()) return null;
 
   const topK = caps.knowledge_base.top_k ?? 5;
-  const threshold = caps.knowledge_base.threshold ?? 0.75;
-  const maxDistance = 1 - threshold;
+  const agentThreshold = caps.knowledge_base.threshold ?? 0.75;
 
   try {
     const { listDocuments, hybridSearch } = await import("./rag/store.js");
@@ -1048,13 +1047,23 @@ async function prefetchKnowledge(agent: Agent, job: JobData) {
     if (!embedding) return null;
 
     const raw = await hybridSearch(agent.id, embedding, userText, topK);
-    const filtered = raw.filter((r) => r.distance <= maxDistance);
+    // Per-doc threshold override: a document can set metadata.threshold
+    // (0..1 cosine similarity) to be more permissive (low-bar match — good
+    // for catch-all reference docs) or stricter (high-precision — good for
+    // contracts/policies where a wrong match is costly). Falls back to the
+    // agent-level threshold when absent.
+    const filtered = raw.filter((r) => {
+      const docThreshold = typeof r.document_metadata?.threshold === "number"
+        ? (r.document_metadata.threshold as number)
+        : agentThreshold;
+      return r.distance <= (1 - docThreshold);
+    });
     if (filtered.length === 0) {
-      logger.info(`Knowledge prefetch: "${userText.slice(0, 60)}" → 0/${raw.length} above threshold ${threshold}`);
+      logger.info(`Knowledge prefetch: "${userText.slice(0, 60)}" → 0/${raw.length} above threshold (agent default ${agentThreshold})`);
       return null;
     }
 
-    logger.info(`Knowledge prefetch: "${userText.slice(0, 60)}" → ${filtered.length}/${raw.length} passages above threshold ${threshold}`);
+    logger.info(`Knowledge prefetch: "${userText.slice(0, 60)}" → ${filtered.length}/${raw.length} passages above threshold (agent default ${agentThreshold})`);
 
     return {
       query: userText.slice(0, 200),

@@ -36,7 +36,8 @@ export interface SearchResult {
   context: string | null;
   chunk_index: number;
   distance: number; // cosine distance (0 = identical, 2 = opposite)
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown>;          // chunk metadata
+  document_metadata: Record<string, unknown>; // parent document metadata (for per-doc threshold etc.)
 }
 
 // Cache one client per agent — avoids re-opening the file on every call
@@ -234,7 +235,7 @@ export async function hybridSearch(
   const vecRes = await db.execute({
     sql: `
       SELECT c.id AS chunk_id, c.document_id, c.chunk_index, c.content, c.context, c.metadata,
-             d.title AS document_title,
+             d.title AS document_title, d.metadata AS doc_metadata,
              vector_distance_cos(c.embedding, vector32(?)) AS distance
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
@@ -254,7 +255,7 @@ export async function hybridSearch(
         const ftsRes = await db.execute({
           sql: `
             SELECT c.id AS chunk_id, c.document_id, c.chunk_index, c.content, c.context, c.metadata,
-                   d.title AS document_title, bm25(chunks_fts) AS bm25_score
+                   d.title AS document_title, d.metadata AS doc_metadata, bm25(chunks_fts) AS bm25_score
             FROM chunks_fts
             JOIN chunks c ON c.id = chunks_fts.rowid
             JOIN documents d ON d.id = c.document_id
@@ -297,6 +298,7 @@ export async function hybridSearch(
     chunk_index: Number(row.chunk_index),
     distance: row.distance != null ? Number(row.distance) : 1 - score,
     metadata: JSON.parse((row.metadata as string) || "{}"),
+    document_metadata: JSON.parse((row.doc_metadata as string) || "{}"),
   }));
 }
 
