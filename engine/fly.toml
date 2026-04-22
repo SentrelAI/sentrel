@@ -1,0 +1,55 @@
+# Template fly.toml for a per-agent Machine.
+#
+# The provisioner customizes this at agent-create time:
+#   - `app` → alchemy-agent-<agent_id>
+#   - env.EMPLOYEE_ID → the numeric agent id
+#   - secrets (set via `fly secrets set` from provisioner, not committed here)
+#
+# One Machine per agent. Machines share this image but each has its own volume,
+# network, and EMPLOYEE_ID. Fly Machines API handles create / start / stop /
+# destroy — we drive it from Rails.
+
+app = "alchemy-agent-TEMPLATE"
+primary_region = "ord"
+
+[build]
+  image = "ghcr.io/qubitam/alchemy-engine:latest"
+
+[env]
+  DATA_DIR = "/data"
+  GATEWAY_PORT = "3300"
+  TOOL_ROUTING = "smart"
+  RESUME_ENABLED = "true"
+  # EMPLOYEE_ID is set per-machine by the provisioner.
+
+# HTTP service — engine gateway. Rails reaches agents here for /sync + /api/*.
+[http_service]
+  internal_port = 3300
+  force_https = true
+  auto_stop_machines  = "stop"    # Fly shuts the Machine down when idle → cheap.
+  auto_start_machines = true      # Bring it back on any incoming request.
+  min_machines_running = 0        # Agent wakes on demand.
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/health"
+
+# Persistent volume — survives Machine restarts. Mount at /data (where the
+# engine's config.dataDir + Camofox profile + RAG SQLite files live).
+# Fly allocates 10 GB by default; bump if an agent's workspace / RAG gets big.
+[mounts]
+  source = "alchemy_data"
+  destination = "/data"
+  initial_size = "10gb"
+
+# Process groups — engine + camofox sidecar on the same Machine. They share
+# the mounted volume so the engine can read Camofox cookies / screenshots.
+[processes]
+  engine  = "bun run src/main.ts"
+  camofox = "node /opt/camofox/server.js"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"

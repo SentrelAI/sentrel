@@ -1,0 +1,80 @@
+# Per-agent deployment: engine + camofox + (optional) display-stack on one box.
+#
+# Bring up: `docker compose up -d`
+# Tear down: `docker compose down -v` (DELETES the shared /data volume too!)
+#
+# The `data` named volume is the agent's persistent home. Engine workspace,
+# memory, RAG SQLite files, Camofox profile + cookies — all survive restarts.
+#
+# This file works as-is on a Hetzner / DO / bare-VM single-box deploy.
+# For Fly.io multi-process-per-Machine, fly.toml mirrors the same shape.
+
+services:
+  engine:
+    image: ghcr.io/qubitam/alchemy-engine:latest
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - camofox
+    environment:
+      EMPLOYEE_ID: ${EMPLOYEE_ID:?EMPLOYEE_ID required — which agent is this?}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL required}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY required}
+      ENGINE_API_SECRET: ${ENGINE_API_SECRET:?ENGINE_API_SECRET required}
+      RAILS_INTERNAL_URL: ${RAILS_INTERNAL_URL:?RAILS_INTERNAL_URL required}
+      # Optional extras — Composio, TTS, Sentry, channels
+      COMPOSIO_API_KEY: ${COMPOSIO_API_KEY:-}
+      COMPOSIO_TIMEOUT_MS: ${COMPOSIO_TIMEOUT_MS:-5000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      WHATSAPP_BOT_NUMBER: ${WHATSAPP_BOT_NUMBER:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      BETTERSTACK_SOURCE_TOKEN: ${BETTERSTACK_SOURCE_TOKEN:-}
+      DATA_DIR: /data
+      GATEWAY_PORT: "3300"
+      TOOL_ROUTING: ${TOOL_ROUTING:-smart}
+      RESUME_ENABLED: ${RESUME_ENABLED:-true}
+    ports:
+      - "3300:3300"
+    volumes:
+      - data:/data
+    networks:
+      - alchemy
+
+  camofox:
+    # Published image from sibling repo (github.com/askjo/camofox-browser)
+    image: ghcr.io/askjo/camofox-browser:latest
+    restart: unless-stopped
+    environment:
+      CAMOFOX_PORT: "9377"
+      # Persist profile + cookies so logged-in sessions survive restarts
+      CAMOFOX_PROFILE_DIR: /data/camofox
+    ports:
+      - "9377:9377"
+    volumes:
+      - data:/data
+    networks:
+      - alchemy
+    shm_size: 2gb # Firefox needs shared memory
+
+  # OPTIONAL — enable for the "watch my agent work" feature (Phase 3).
+  # Reads Xvfb display that Camofox runs under and exposes it on WebSocket.
+  # Uncomment when we ship noVNC in the UI.
+  #
+  # display-stack:
+  #   image: ghcr.io/qubitam/alchemy-display:latest
+  #   restart: unless-stopped
+  #   network_mode: "service:camofox"  # share Xvfb with camofox
+  #   ports:
+  #     - "6080:6080"
+
+volumes:
+  data:
+    # On Fly: attach as a persistent volume per Machine.
+    # On Hetzner/DO: this named volume lives on the host disk.
+
+networks:
+  alchemy:
+    driver: bridge
