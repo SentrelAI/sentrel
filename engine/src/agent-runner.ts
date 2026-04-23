@@ -1,5 +1,12 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createRequire } from "module";
 import { randomUUID } from "crypto";
+
+// Resolve the SDK's bundled cli.js (not exported in the SDK's exports map,
+// so we reach into the package directory via createRequire).
+const require_ = createRequire(import.meta.url);
+const sdkMainPath = require_.resolve("@anthropic-ai/claude-agent-sdk");
+const pathToSdkCli = sdkMainPath.replace(/[^/]+$/, "cli.js");
 import { config } from "./config.js";
 import { host } from "./host/index.js";
 import { syncMemoryToDb } from "./memory.js";
@@ -798,7 +805,7 @@ async function buildQueryOptions(
     // libc × arch combo). Use the bundled JS CLI via the current runtime
     // (bun on Fly) instead — portable across glibc + musl alike.
     executable: (process.versions.bun ? "bun" : "node") as "bun" | "node",
-    pathToClaudeCodeExecutable: require.resolve("@anthropic-ai/claude-agent-sdk/cli.js"),
+    pathToClaudeCodeExecutable: pathToSdkCli,
     // SDK isolation — don't load the user's ~/.claude/settings.json (which
     // brings in personal MCP servers like Linear/Sentry/Gmail and pollutes
     // the agent's tool list with 60+ unrelated tools).
