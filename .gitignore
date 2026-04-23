@@ -39,6 +39,11 @@
 /.kamal/secrets.*
 !/.kamal/secrets.example
 
+# WireGuard configs (contain private keys) + bridge systemd units
+/alchemy-bridge.conf
+/*-wg.conf
+/socat-*.service
+
 
 # Vite Ruby
 /public/vite*
