@@ -91,13 +91,15 @@ module AgentProvisioner
 
     def create(agent, instance)
       app_name = fly_app_name(agent)
+      region   = ENV.fetch("FLY_REGION", "lax")
       ensure_app!(app_name)
+      volume_id = ensure_volume!(app_name, region)
 
       body = {
         name: "agent-#{agent.id}",
-        region: ENV.fetch("FLY_REGION", "lax"),
+        region: region,
         config: {
-          image: ENV.fetch("ENGINE_IMAGE", "ghcr.io/qubitam/alchemy-engine:latest"),
+          image: ENV.fetch("ENGINE_IMAGE", "ghcr.io/parsedev/alchemy-engine:latest"),
           env: env_for(agent),
           services: [{
             ports: [{ port: 443, handlers: ["tls", "http"] },
@@ -107,7 +109,7 @@ module AgentProvisioner
             auto_stop_machines: "stop",
             auto_start_machines: true,
           }],
-          mounts: [{ source: "alchemy_data", path: "/data", size_gb: 10 }],
+          mounts: [{ volume: volume_id, path: "/data" }],
           guest: { cpus: 1, memory_mb: 2048, cpu_kind: "shared" },
         },
       }
@@ -154,6 +156,22 @@ module AgentProvisioner
       fly_api(:get, "/apps/#{app_name}")
     rescue ApiNotFound
       fly_api(:post, "/apps", { app_name: app_name, org_slug: ENV.fetch("FLY_ORG_SLUG") })
+    end
+
+    # Fly requires a pre-created volume referenced by ID in the machine
+    # create payload. Reuse an existing `alchemy_data` volume in the region
+    # so multiple restarts of the same agent keep the same /data contents.
+    def ensure_volume!(app_name, region)
+      volumes = fly_api(:get, "/apps/#{app_name}/volumes")
+      existing = Array(volumes).find { |v| v["name"] == "alchemy_data" && v["region"] == region }
+      return existing["id"] if existing
+
+      created = fly_api(:post, "/apps/#{app_name}/volumes", {
+        name: "alchemy_data",
+        region: region,
+        size_gb: 10,
+      })
+      created["id"] || raise("Fly volume create returned no id: #{created.inspect}")
     end
 
     def fly_api(method, path, body = nil)
