@@ -40,7 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Non-root user. Everything persistent lives in /data, which the provisioner
 # mounts as a volume. Agent state survives restarts because /data does.
-RUN useradd --create-home --shell /bin/bash --uid 1000 engine
+# (The oven/bun base image already has a 'bun' user at uid 1000, so we let
+#  useradd pick the next free uid instead of forcing a specific one.)
+RUN useradd --create-home --shell /bin/bash engine
 WORKDIR /srv/engine
 
 # node_modules from the builder stage
