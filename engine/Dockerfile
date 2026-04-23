@@ -26,12 +26,10 @@ WORKDIR /srv/engine
 # Copy lock + manifest first for layer caching on dep-only changes.
 # NOT --frozen-lockfile: the lockfile is generated on the developer's Mac
 # and skips Linux-only platform optional deps (see Bun issue #26156).
-# --cpu + --os pins the target so Bun installs the glibc variant of
-# claude-agent-sdk's native binary (not musl, which would fail on Debian).
+# The running container already defines its CPU/OS target; each variant
+# (amd64, arm64) pulls its matching claude-agent-sdk platform binary.
 COPY package.json bun.lock ./
-RUN bun install --cpu=x64 --os=linux \
-  && test -x node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/cli/claude \
-     || test -x node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude
+RUN bun install
 
 # --- Stage 2: runtime image ---------------------------------------------------
 FROM oven/bun:1.1.38-slim AS runtime
