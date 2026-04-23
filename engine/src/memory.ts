@@ -43,10 +43,42 @@ export function ensureWorkspace(): void {
     // here. The Dockerfile mkdir gets shadowed when Fly mounts an empty
     // volume over /data on first boot, so re-create at runtime.
     path.join(dataDir, "hf-cache"),
+    // Claude Agent SDK session transcripts — resume uses
+    // ~/.claude/projects/<dir>/<sessionId>.jsonl. Stored on /data so the
+    // jsonl survives Machine restarts; see ensureClaudeHome below.
+    path.join(dataDir, ".claude"),
   ];
   for (const dir of dirs) {
     fs.mkdirSync(dir, { recursive: true });
   }
+  ensureClaudeHome();
+}
+
+// Symlink $HOME/.claude -> /data/.claude so the SDK's session transcripts
+// ride along the persistent volume. Without this, session resume fails
+// silently after any Machine restart because the jsonl files are gone.
+function ensureClaudeHome(): void {
+  const home = process.env.HOME || "/home/engine";
+  const target = path.join(dataDir, ".claude");
+  const link = path.join(home, ".claude");
+
+  try {
+    const stat = fs.lstatSync(link);
+    if (stat.isSymbolicLink() && fs.readlinkSync(link) === target) return;
+    // Existing non-symlink dir — move its contents into /data/.claude then replace
+    if (stat.isDirectory()) {
+      for (const entry of fs.readdirSync(link)) {
+        fs.renameSync(path.join(link, entry), path.join(target, entry));
+      }
+      fs.rmdirSync(link);
+    } else {
+      fs.unlinkSync(link);
+    }
+  } catch {
+    // Link doesn't exist yet — fall through to create
+  }
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(target, link, "dir");
 }
 
 // Render SOUL.md from DB fields — the agent can Read this to reference its identity
