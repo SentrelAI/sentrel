@@ -39,8 +39,16 @@ async function main() {
   // 3. Provision role-based skills
   provisionSkills(agent);
 
-  // 4. Init tool embeddings for semantic search (non-blocking)
-  initToolEmbeddings().catch((err) => logger.warn("Tool embeddings init failed, using fallbacks", { error: err.message }));
+  // 4. Init tool embeddings (blocking — downloads ~25MB model on first
+  // boot, then cached on /data/hf-cache). We wait for this so the "ready"
+  // log actually reflects a working tool-router. If it fails, log and
+  // continue — Layer 1 (recent toolkit history) + TOOL_ROUTING=all still
+  // work without embeddings.
+  try {
+    await initToolEmbeddings();
+  } catch (err) {
+    logger.warn("Tool embeddings init failed, using fallbacks", { error: (err as Error).message });
+  }
 
   // 5. Update agent status
   await host.updateAgentStatus(agent.id, "running");
