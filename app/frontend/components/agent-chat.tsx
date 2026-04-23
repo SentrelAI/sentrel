@@ -246,52 +246,41 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
         let responseText = ""
         let approvalData: PendingEmail | null = null
         const mediaAttachments: Array<{ url: string; filename: string; contentType: string }> = []
-        let sub: { unsubscribe(): void }
+        let sub: { unsubscribe(): void } | undefined
+        let resolveResponse: (value: string) => void = () => {}
+        let rejectResponse: (err: Error) => void = () => {}
 
-        const assistantText = await new Promise<string>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            sub?.unsubscribe()
-            consumer.disconnect()
-            reject(new Error("Timed out waiting for reply"))
-          }, 300_000) // 5 min cap
+        const responsePromise = new Promise<string>((resolve, reject) => {
+          resolveResponse = resolve
+          rejectResponse = reject
+        })
 
-          const finalize = (text: string) => {
-            clearTimeout(timeout)
-            sub?.unsubscribe()
-            consumer.disconnect()
-            let out = text
-            for (const m of mediaAttachments) {
-              out += m.contentType.startsWith("image/")
-                ? `\n\n![${m.filename}](${m.url})`
-                : `\n\n[Download ${m.filename}](${m.url})`
-            }
-            if (approvalData) {
-              out += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
-            }
-            resolve(out)
+        const timeout = setTimeout(() => {
+          sub?.unsubscribe()
+          consumer.disconnect()
+          rejectResponse(new Error("Timed out waiting for reply"))
+        }, 300_000) // 5 min cap
+
+        const finalize = (text: string) => {
+          clearTimeout(timeout)
+          sub?.unsubscribe()
+          consumer.disconnect()
+          let out = text
+          for (const m of mediaAttachments) {
+            out += m.contentType.startsWith("image/")
+              ? `\n\n![${m.filename}](${m.url})`
+              : `\n\n[Download ${m.filename}](${m.url})`
           }
+          if (approvalData) {
+            out += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
+          }
+          resolveResponse(out)
+        }
 
-          sub = consumer.subscriptions.create(
-            { channel: "AgentChatChannel", agent_id: agentId },
-            {
-              connected() {
-                fetch("/webhooks/web", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-                  body: JSON.stringify({
-                    agent_id: agentId,
-                    body: userText,
-                    attachment_signed_ids: attachmentSignedIds,
-                  }),
-                  signal: abortSignal,
-                }).catch((err) => {
-                  clearTimeout(timeout)
-                  sub?.unsubscribe()
-                  consumer.disconnect()
-                  reject(err)
-                })
-              },
-              received(data: Record<string, any>) {
+        sub = consumer.subscriptions.create(
+          { channel: "AgentChatChannel", agent_id: agentId },
+          {
+            received(data: Record<string, any>) {
                 switch (data.type) {
                   case "text_delta":
                     responseText = data.text || responseText
@@ -318,7 +307,7 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
                     clearTimeout(timeout)
                     sub?.unsubscribe()
                     consumer.disconnect()
-                    reject(new Error(data.error || "Agent run failed"))
+                    rejectResponse(new Error(data.error || "Agent run failed"))
                     break
                   case "message":
                     // Fallback: the `done` event may be missed if a relay drops;
@@ -332,9 +321,35 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
               },
             },
           )
+
+        // Post the user message. Happens in parallel with cable-subscribe;
+        // Rails saves the user Message regardless of whether cable is up yet.
+        await fetch("/webhooks/web", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+          body: JSON.stringify({
+            agent_id: agentId,
+            body: userText,
+            attachment_signed_ids: attachmentSignedIds,
+          }),
+          signal: abortSignal,
+        }).catch((err) => {
+          clearTimeout(timeout)
+          sub?.unsubscribe()
+          consumer.disconnect()
+          rejectResponse(err)
         })
 
-        yield { content: [{ type: "text" as const, text: assistantText }] }
+        // Yield empty first so the assistant-ui shows the typing / thinking
+        // dots indicator while we wait for the engine's `done` event.
+        yield { content: [{ type: "text" as const, text: "" }] }
+
+        try {
+          const finalText = await responsePromise
+          yield { content: [{ type: "text" as const, text: finalText }] }
+        } catch (err) {
+          yield { content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }] }
+        }
         return
       }
 
