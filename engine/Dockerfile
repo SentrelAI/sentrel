@@ -41,7 +41,8 @@ RUN apk add --no-cache \
       ffmpeg \
       ca-certificates curl \
       tini \
-      bash
+      bash \
+      gcompat libstdc++
 
 # Non-root user. Everything persistent lives in /data, which the provisioner
 # mounts as a volume. Agent state survives restarts because /data does.
