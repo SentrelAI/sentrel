@@ -2,6 +2,7 @@ import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
+import { redis } from "./queue.js";
 
 const PORT = parseInt(process.env.GATEWAY_PORT || "3300");
 
@@ -284,14 +285,80 @@ export function startGateway(): void {
     logger.info(`  POST /sync   — trigger config reload`);
     logger.info(`  GET  /health — engine health check`);
   });
+
+  subscribeApprovalChannel();
 }
 
-// Broadcast event to all connected clients
+// In production the browser can't open a direct WS into the engine (Fly
+// 6pn private network), so command-approval RESPONSES from the user come
+// in via Rails → Redis pub/sub instead. Subscribe here so the existing
+// resolveCommandApproval + recordApproval flow fires the same way it does
+// for a local-dev WS message.
+function subscribeApprovalChannel(): void {
+  const agentId = process.env.EMPLOYEE_ID;
+  if (!agentId) return;
+  const channel = `agent-${agentId}-approvals`;
+  const sub = redis.duplicate();
+  sub.subscribe(channel, (err) => {
+    if (err) {
+      logger.warn("Approval sub: failed to subscribe", { error: err.message });
+      return;
+    }
+    logger.info(`Approval sub: listening on ${channel}`);
+  });
+  sub.on("message", async (_ch, raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.type !== "command_approval_response") return;
+      const { resolveCommandApproval } = await import("./security/command-approval.js");
+      const { recordApproval } = await import("./security/approval-interceptor.js");
+      const resolved = resolveCommandApproval(msg.approvalId, msg.level);
+      if (resolved && msg.level !== "deny") {
+        await recordApproval(msg.command || "", msg.level, null as any);
+      }
+      logger.info(`Approval sub: ${msg.approvalId} → ${msg.level}`);
+    } catch (err) {
+      logger.warn("Approval sub: bad payload", { error: (err as Error).message });
+    }
+  });
+}
+
+// Broadcast event to all connected clients AND relay to Rails so the
+// web UI can render it over ActionCable (the engine WS isn't reachable
+// from browsers in prod — Fly 6pn is private). The Rails side broadcasts
+// to AgentChatChannel which the browser subscribes to.
 export function broadcast(event: Record<string, unknown>): void {
   const data = JSON.stringify(event);
   for (const client of clients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(data);
+    }
+  }
+  relayToRails(event).catch(() => {}); // fire-and-forget, don't block
+}
+
+let lastRelayFailureAt = 0;
+async function relayToRails(event: Record<string, unknown>): Promise<void> {
+  const rails = process.env.RAILS_INTERNAL_URL;
+  const secret = process.env.ENGINE_API_SECRET;
+  const agentId = process.env.EMPLOYEE_ID;
+  if (!rails || !secret || !agentId) return;
+  try {
+    await fetch(`${rails}/api/agent_events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Engine-Secret": secret,
+      },
+      body: JSON.stringify({ agent_id: Number(agentId), event }),
+      signal: AbortSignal.timeout(3_000),
+    });
+  } catch (err) {
+    // Rate-limit the warn so a temporary Rails outage doesn't spam logs
+    const now = Date.now();
+    if (now - lastRelayFailureAt > 30_000) {
+      lastRelayFailureAt = now;
+      logger.warn("Rails relay failed (suppressing for 30s)", { error: (err as Error).message });
     }
   }
 }
