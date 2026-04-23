@@ -35,11 +35,8 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libpq-dev libvips libyaml-dev pkg-config unzip ca-certificates && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Install Bun (package manager) + Node.js (vite_ruby shells out to `npx`)
-ENV BUN_INSTALL=/usr/local/bun
-ENV PATH=$BUN_INSTALL/bin:$PATH
-RUN curl -fsSL https://bun.sh/install | bash && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+# Install Node.js (vite_ruby shells out to `npx vite build`)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
@@ -52,9 +49,10 @@ RUN bundle install && \
     # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
     bundle exec bootsnap precompile -j 1 --gemfile
 
-# Install JS dependencies
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+# Install JS dependencies via npm so vite_ruby's `npx vite build` uses the
+# same node_modules layout (mixing bun + npm breaks rolldown platform bindings).
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 # Copy application code
 COPY . .
