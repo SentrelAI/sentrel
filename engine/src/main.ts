@@ -39,16 +39,24 @@ async function main() {
   // 3. Provision role-based skills
   provisionSkills(agent);
 
-  // 4. Init tool embeddings (blocking — downloads ~25MB model on first
-  // boot, then cached on /data/hf-cache). We wait for this so the "ready"
-  // log actually reflects a working tool-router. If it fails, log and
-  // continue — Layer 1 (recent toolkit history) + TOOL_ROUTING=all still
-  // work without embeddings.
-  try {
-    await initToolEmbeddings();
-  } catch (err) {
-    logger.warn("Tool embeddings init failed, using fallbacks", { error: (err as Error).message });
-  }
+  // 4. Init tool embeddings with a bounded wait. First boot downloads ~25MB
+  // from HuggingFace Hub then caches on /data/hf-cache (symlinked via
+  // env.cacheDir). Subsequent boots load from cache in <1s. We wait up to
+  // 30s so the "ready" log reflects a warm tool-router on cold starts,
+  // then fall through so Fly egress hiccups don't block the engine. If
+  // the download finishes later it still populates the index.
+  const embedInit = initToolEmbeddings().catch((err) =>
+    logger.warn("Tool embeddings init failed, using fallbacks", { error: (err as Error).message }),
+  );
+  await Promise.race([
+    embedInit,
+    new Promise<void>((resolve) =>
+      setTimeout(() => {
+        logger.warn("Tool embeddings still loading after 30s — continuing without waiting");
+        resolve();
+      }, 30_000),
+    ),
+  ]);
 
   // 5. Update agent status
   await host.updateAgentStatus(agent.id, "running");
