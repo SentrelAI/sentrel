@@ -8,10 +8,10 @@ image: parsedev/alchemy
 servers:
   web:
     - 52.2.137.107
-  # job:
-  #   hosts:
-  #     - 52.2.137.107
-  #   cmd: bundle exec sidekiq
+  job:
+    hosts:
+      - 52.2.137.107
+    cmd: bundle exec sidekiq
 
 # SSL via Let's Encrypt. Point DNS A record at the EC2 IP first, then deploy.
 proxy:
