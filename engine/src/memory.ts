@@ -38,6 +38,11 @@ export function ensureWorkspace(): void {
     path.join(dataDir, "workspace", "screenshots"),
     path.join(dataDir, "workspace", "documents"),
     path.join(dataDir, "sessions"),
+    path.join(dataDir, "rag"),
+    // @huggingface/transformers cache — HF_HOME/TRANSFORMERS_CACHE point
+    // here. The Dockerfile mkdir gets shadowed when Fly mounts an empty
+    // volume over /data on first boot, so re-create at runtime.
+    path.join(dataDir, "hf-cache"),
   ];
   for (const dir of dirs) {
     fs.mkdirSync(dir, { recursive: true });
