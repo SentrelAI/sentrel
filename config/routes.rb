@@ -16,6 +16,13 @@ Rails.application.routes.draw do
     resources :blobs, only: [:create, :show], param: :signed_id
     resource :send_email, only: [:create]
     resources :task_events, only: [:create]
+    # Engine relays every broadcast() event here; Rails re-emits over
+    # AgentChatChannel so the browser sees live tool calls, progress, and
+    # approval prompts without a direct WS into the engine.
+    resources :agent_events, only: [:create]
+    # User clicks Allow/Deny on a dangerous-command approval in the UI →
+    # Rails relays the decision to the engine via Redis pub/sub.
+    resources :command_approvals, only: [:create]
     # cloud-init callback: engine posts when its container is up + healthy.
     post "agent_instances/ready", to: "agent_instances#ready"
   end

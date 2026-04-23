@@ -229,20 +229,49 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
       const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 
       // In production the engine WebSocket isn't reachable from the browser
-      // (Fly 6pn private network). Instead, subscribe to AgentChatChannel
-      // over Rails' ActionCable — the engine posts to Rails, Message
-      // after_create_commit broadcasts, we render the assistant reply.
+      // (Fly 6pn private network). Engine relays every broadcast() event
+      // over HTTP to Rails; Rails re-emits on AgentChatChannel. We handle
+      // the same event shapes here as the local-dev WS path below:
+      //   text_delta      — streaming assistant text
+      //   tool_call       — live "thinking" tool-name indicator
+      //   pending_approval — send_email approvals
+      //   command_approval — dangerous-command approvals
+      //   media_attachment — image/file outputs
+      //   done            — final assistant content
+      //   error           — surface to the user
+      //   message         — fallback (Message.after_create_commit post-save)
       if (!GATEWAY_URL) {
         const { createConsumer } = await import("@rails/actioncable")
         const consumer = createConsumer()
+        let responseText = ""
+        let approvalData: PendingEmail | null = null
+        const mediaAttachments: Array<{ url: string; filename: string; contentType: string }> = []
+        let sub: { unsubscribe(): void }
+
         const assistantText = await new Promise<string>((resolve, reject) => {
           const timeout = setTimeout(() => {
-            sub.unsubscribe()
+            sub?.unsubscribe()
             consumer.disconnect()
             reject(new Error("Timed out waiting for reply"))
           }, 300_000) // 5 min cap
 
-          const sub = consumer.subscriptions.create(
+          const finalize = (text: string) => {
+            clearTimeout(timeout)
+            sub?.unsubscribe()
+            consumer.disconnect()
+            let out = text
+            for (const m of mediaAttachments) {
+              out += m.contentType.startsWith("image/")
+                ? `\n\n![${m.filename}](${m.url})`
+                : `\n\n[Download ${m.filename}](${m.url})`
+            }
+            if (approvalData) {
+              out += "\n\n" + APPROVAL_MARKER + JSON.stringify(approvalData) + APPROVAL_MARKER_END
+            }
+            resolve(out)
+          }
+
+          sub = consumer.subscriptions.create(
             { channel: "AgentChatChannel", agent_id: agentId },
             {
               connected() {
@@ -257,17 +286,48 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
                   signal: abortSignal,
                 }).catch((err) => {
                   clearTimeout(timeout)
-                  sub.unsubscribe()
+                  sub?.unsubscribe()
                   consumer.disconnect()
                   reject(err)
                 })
               },
-              received(data: { type: string; role: string; content: string }) {
-                if (data.type === "message" && data.role === "assistant" && data.content) {
-                  clearTimeout(timeout)
-                  sub.unsubscribe()
-                  consumer.disconnect()
-                  resolve(data.content)
+              received(data: Record<string, any>) {
+                switch (data.type) {
+                  case "text_delta":
+                    responseText = data.text || responseText
+                    break
+                  case "media_attachment":
+                    mediaAttachments.push({
+                      url: data.url,
+                      filename: data.filename,
+                      contentType: data.contentType,
+                    })
+                    break
+                  case "pending_approval":
+                    if (data.toolName === "send_email") {
+                      approvalData = { approvalId: data.approvalId, ...data.toolInput }
+                    }
+                    break
+                  case "command_approval":
+                    // Handled by the persistent cmd-approval subscription below
+                    break
+                  case "done":
+                    finalize(data.content || responseText)
+                    break
+                  case "error":
+                    clearTimeout(timeout)
+                    sub?.unsubscribe()
+                    consumer.disconnect()
+                    reject(new Error(data.error || "Agent run failed"))
+                    break
+                  case "message":
+                    // Fallback: the `done` event may be missed if a relay drops;
+                    // Message.after_create_commit fires once DB has the assistant
+                    // row, so we can still resolve from that.
+                    if (data.role === "assistant" && data.content) {
+                      finalize(data.content)
+                    }
+                    break
                 }
               },
             },
@@ -381,45 +441,79 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
   const adapter = useRef(createAgentAdapter(agentId)).current
 
-  // Persistent WebSocket — stays open while on the chat page.
-  // Receives command_approval events even when user hasn't sent a message.
+  // Persistent listener — stays open while on the chat page, receives
+  // command_approval events even when user hasn't sent a message. Uses
+  // ActionCable in prod (where the engine WS is unreachable) and the
+  // direct engine WS locally for zero-latency dev feedback.
   useEffect(() => {
     let ws: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout>
+    let cableSub: { unsubscribe(): void } | null = null
+    let consumer: { disconnect(): void } | null = null
     let mounted = true
+
+    const handleCommandApproval = (data: any) => {
+      if (data.type !== "command_approval") return
+      const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      setCmdApproval({
+        approvalId: data.approvalId,
+        command: (data.command as string).slice(0, 300),
+        level: data.level as string,
+        explanation: data.explanation as string,
+        resolve: async (chosenLevel) => {
+          setCmdApproval(null)
+          if (GATEWAY_URL) {
+            // Local dev: resolve via direct engine WS
+            const approvalWs = new WebSocket(GATEWAY_URL)
+            approvalWs.onopen = () => {
+              approvalWs.send(JSON.stringify({
+                type: "command_approval_response",
+                approvalId: data.approvalId,
+                command: data.command,
+                level: chosenLevel,
+              }))
+              setTimeout(() => approvalWs.close(), 500)
+            }
+          } else {
+            // Production: relay via Rails → Redis pub/sub → engine
+            await fetch("/api/command_approvals", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+              body: JSON.stringify({
+                agent_id: agentId,
+                approval_id: data.approvalId,
+                command: data.command,
+                level: chosenLevel,
+              }),
+            })
+          }
+        },
+      })
+    }
 
     function connect() {
       if (!mounted) return
-      if (!GATEWAY_URL) return // Production: no direct engine WS; rely on Inertia.
-      ws = new WebSocket(GATEWAY_URL)
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          if (data.type === "command_approval") {
-            setCmdApproval({
-              approvalId: data.approvalId,
-              command: (data.command as string).slice(0, 300),
-              level: data.level as string,
-              explanation: data.explanation as string,
-              resolve: (chosenLevel) => {
-                setCmdApproval(null)
-                const approvalWs = new WebSocket(GATEWAY_URL)
-                approvalWs.onopen = () => {
-                  approvalWs.send(JSON.stringify({
-                    type: "command_approval_response",
-                    approvalId: data.approvalId,
-                    command: data.command,
-                    level: chosenLevel,
-                  }))
-                  setTimeout(() => approvalWs.close(), 500)
-                }
-              },
-            })
-          }
-        } catch {}
-      }
-      ws.onclose = () => {
-        if (mounted) reconnectTimer = setTimeout(connect, 5000)
+      if (GATEWAY_URL) {
+        // --- Local dev: direct engine WebSocket ---
+        ws = new WebSocket(GATEWAY_URL)
+        ws.onmessage = (event) => {
+          try { handleCommandApproval(JSON.parse(event.data)) } catch {}
+        }
+        ws.onclose = () => {
+          if (mounted) reconnectTimer = setTimeout(connect, 5000)
+        }
+      } else {
+        // --- Production: ActionCable ---
+        import("@rails/actioncable").then(({ createConsumer }) => {
+          if (!mounted) return
+          consumer = createConsumer()
+          cableSub = consumer!.subscriptions.create(
+            { channel: "AgentChatChannel", agent_id: agentId },
+            {
+              received: handleCommandApproval,
+            },
+          )
+        }).catch(() => {})
       }
     }
 
@@ -427,6 +521,8 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
     return () => {
       mounted = false
       ws?.close()
+      cableSub?.unsubscribe()
+      consumer?.disconnect()
       clearTimeout(reconnectTimer)
     }
   }, [agentId])
