@@ -287,6 +287,34 @@ export function startGateway(): void {
   });
 
   subscribeApprovalChannel();
+  subscribeSyncChannel();
+}
+
+// Rails EngineSync publishes config_reload events here when the agent
+// row, skills, or channel configs change. Fires the same handler as the
+// HTTP POST /sync endpoint — Rails can't reach the engine over HTTP
+// (Fly 6pn private network) but both sides speak to the same Valkey.
+function subscribeSyncChannel(): void {
+  const agentId = process.env.EMPLOYEE_ID;
+  if (!agentId) return;
+  const channel = `agent-${agentId}-sync`;
+  const sub = redis.duplicate();
+  sub.subscribe(channel, (err) => {
+    if (err) {
+      logger.warn("Sync sub: failed to subscribe", { error: err.message });
+      return;
+    }
+    logger.info(`Sync sub: listening on ${channel}`);
+  });
+  sub.on("message", async () => {
+    try {
+      if (!onSyncRequested) return;
+      await onSyncRequested();
+      logger.info("Sync sub: config reloaded");
+    } catch (err) {
+      logger.warn("Sync sub: handler failed", { error: (err as Error).message });
+    }
+  });
 }
 
 // In production the browser can't open a direct WS into the engine (Fly
