@@ -210,7 +210,7 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
                 className={
                   op.destructive
                     ? "text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20"
-                    : undefined
+                    : "focus:bg-muted focus:text-foreground"
                 }
               >
                 <Icon className="size-4" />
@@ -219,7 +219,10 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
             )
           })}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setLogsOpen(true)}>
+          <DropdownMenuItem
+            onSelect={() => setLogsOpen(true)}
+            className="focus:bg-muted focus:text-foreground"
+          >
             <FileText className="size-4" />
             <span>View logs</span>
           </DropdownMenuItem>
