@@ -84,14 +84,38 @@ class KnowledgeDocumentsController < ApplicationController
     redirect_to agent_knowledge_documents_path(@agent), notice: "Document deleted"
   end
 
+  # POST /agents/:agent_id/knowledge_documents/:id/promote
+  # Copy an agent-scoped document (+ chunks + embeddings) into the org KB.
+  # Engine dedupes on content_hash, so calling twice is a safe no-op.
+  def promote
+    result = engine_post_json("/rag/promote", {
+      agent_id: @agent.id,
+      org_id: current_tenant.id,
+      document_id: params[:id].to_i,
+    })
+    if result.nil?
+      redirect_to agent_knowledge_documents_path(@agent), alert: "Promote failed — engine did not respond"
+    elsif result["skipped"]
+      redirect_to agent_knowledge_documents_path(@agent), notice: "Already in org library (#{result["chunkCount"]} chunks)"
+    else
+      redirect_to agent_knowledge_documents_path(@agent), notice: "Promoted to org library (#{result["chunkCount"]} chunks)"
+    end
+  end
+
   private
 
   def set_agent
     @agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
   end
 
+  # ENV["ENGINE_URL"] is set in local dev (docker-compose). In prod each
+  # agent has its own Fly app — build the per-agent public hostname
+  # (same pattern as EngineSync). HTTP requests to stopped Fly Machines
+  # wake them automatically.
   def engine_base
-    ENV.fetch("ENGINE_URL", "http://localhost:3300")
+    return ENV["ENGINE_URL"] if ENV["ENGINE_URL"].present?
+    env = ENV.fetch("DEPLOY_ENV", Rails.env.production? ? "prod" : "dev")
+    "https://alchemy-#{env}-agent-#{@agent.id}.fly.dev"
   end
 
   def engine_secret
@@ -103,7 +127,7 @@ class KnowledgeDocumentsController < ApplicationController
     uri = URI.parse("#{engine_base}#{path}")
     req = Net::HTTP::Get.new(uri)
     req["X-Engine-Secret"] = engine_secret
-    res = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(req) }
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") { |http| http.request(req) }
     JSON.parse(res.body) if res.is_a?(Net::HTTPSuccess)
   rescue => e
     Rails.logger.error "Engine GET failed: #{e.message}"
@@ -118,7 +142,7 @@ class KnowledgeDocumentsController < ApplicationController
       "X-Engine-Secret" => engine_secret,
     })
     req.body = body.to_json
-    res = Net::HTTP.start(uri.hostname, uri.port, read_timeout: 600) { |http| http.request(req) }
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", read_timeout: 600) { |http| http.request(req) }
     JSON.parse(res.body) if res.is_a?(Net::HTTPSuccess)
   rescue => e
     Rails.logger.error "Engine POST JSON failed: #{e.message}"
@@ -169,7 +193,7 @@ class KnowledgeDocumentsController < ApplicationController
     req["Content-Length"] = body.bytesize.to_s
     req.body = body
 
-    res = Net::HTTP.start(uri.hostname, uri.port, read_timeout: 600) { |http| http.request(req) }
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", read_timeout: 600) { |http| http.request(req) }
 
     if res.is_a?(Net::HTTPSuccess)
       JSON.parse(res.body)

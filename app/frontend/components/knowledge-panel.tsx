@@ -1,6 +1,6 @@
 import { router, usePage } from "@inertiajs/react"
 import { useState, useRef, DragEvent } from "react"
-import { BookOpen, Upload, FileText, Trash2, Link2, Database, X, AlertCircle, CheckCircle2 } from "lucide-react"
+import { BookOpen, Upload, FileText, Trash2, Link2, Database, X, AlertCircle, CheckCircle2, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -111,6 +111,18 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
     await fetch(`/agents/${agentId}/knowledge_documents/${docId}${qs}`, {
       method: "DELETE",
       headers: { "X-CSRF-Token": csrfToken },
+    })
+    router.reload()
+  }
+
+  // Copy an agent-scoped doc into the org-shared KB so every other agent
+  // in the org can search it. Engine dedupes on content hash, so it's safe
+  // to call twice.
+  async function handlePromote(docId: number) {
+    if (!confirm("Promote this document to the org-shared library? Every agent in this org will be able to search it.")) return
+    await fetch(`/agents/${agentId}/knowledge_documents/${docId}/promote`, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken, "Content-Type": "application/json" },
     })
     router.reload()
   }
@@ -328,9 +340,20 @@ export default function KnowledgePanel({ agentId, agentName, documents }: Knowle
                       <td className="px-3 py-2 text-xs text-right tabular-nums">{doc.chunk_count}</td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">{fmtDate(doc.indexed_at)}</td>
                       <td className="px-3 py-2 text-right">
-                        <button onClick={() => handleDelete(doc.id, doc.scope)} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Delete">
-                          <Trash2 className="size-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          {doc.scope !== "org" && (
+                            <button
+                              onClick={() => handlePromote(doc.id)}
+                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                              title="Promote to org library"
+                            >
+                              <Users className="size-3.5" />
+                            </button>
+                          )}
+                          <button onClick={() => handleDelete(doc.id, doc.scope)} className="p-1 rounded hover:bg-red-500/10 text-red-500" title="Delete">
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )

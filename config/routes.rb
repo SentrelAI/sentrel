@@ -80,7 +80,11 @@ Rails.application.routes.draw do
 
     # Knowledge base (RAG) — per-agent document upload + index management
     resources :agents, only: [] do
-      resources :knowledge_documents, only: [:index, :create, :destroy]
+      resources :knowledge_documents, only: [:index, :create, :destroy] do
+        member do
+          post :promote
+        end
+      end
     end
     resources :agent_templates, only: [:index, :show]
 

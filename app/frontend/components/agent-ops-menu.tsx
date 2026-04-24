@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
@@ -142,7 +142,6 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
   const [logsOpen, setLogsOpen] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const runOp = async (spec: OpSpec) => {
     setPending(null)
@@ -171,16 +170,43 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
     }
   }
 
+  // Hybrid: initial hydrate from Fly's logs API (backfills history), then
+  // switch to live ActionCable stream for <1s latency. Engine's every
+  // winston log fires a `log` event over the existing AgentChatChannel.
   useEffect(() => {
-    if (!logsOpen) {
-      if (pollRef.current) clearInterval(pollRef.current)
-      pollRef.current = null
-      return
-    }
-    fetchLogs()
-    pollRef.current = setInterval(fetchLogs, 4000)
+    if (!logsOpen) return
+    let cableSub: { unsubscribe(): void } | null = null
+    let consumer: { disconnect(): void } | null = null
+
+    fetchLogs() // one-shot backfill
+    import("@rails/actioncable").then(({ createConsumer }) => {
+      consumer = createConsumer()
+      cableSub = consumer!.subscriptions.create(
+        { channel: "AgentChatChannel", agent_id: agentId },
+        {
+          received(data: any) {
+            if (data?.type !== "log") return
+            setLogs((prev) => {
+              const next = [
+                ...prev,
+                {
+                  timestamp: new Date(data.timestamp || Date.now()).toISOString(),
+                  level: data.level,
+                  message: data.message,
+                },
+              ]
+              // Cap to the last 500 lines so memory doesn't blow up on
+              // long sessions. Oldest first; newest appended.
+              return next.length > 500 ? next.slice(next.length - 500) : next
+            })
+          },
+        },
+      )
+    })
+
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
+      cableSub?.unsubscribe()
+      consumer?.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logsOpen, agentId])
@@ -301,7 +327,7 @@ export function AgentOpsMenu({ agentId }: AgentOpsMenuProps) {
               <FileText className="size-4" />
               Agent logs
               {logsLoading && <Loader2 className="text-muted-foreground size-3.5 animate-spin" />}
-              <span className="text-muted-foreground ml-auto text-xs">Polling every 4s</span>
+              <span className="text-muted-foreground ml-auto text-xs">Live stream</span>
             </SheetTitle>
           </SheetHeader>
           <div className="mt-4 overflow-auto rounded-md border bg-black/90 p-3 font-mono text-xs leading-relaxed text-green-300">
