@@ -58,6 +58,15 @@ Rails.application.routes.draw do
       resources :scheduled_tasks, only: [:index, :create, :update, :destroy]
       get "chat/stream", to: "chat_streams#show"
       get "chat/poll", to: "chat_polls#show"
+      # Day-2 ops on the agent's Fly Machine — one-click restart / reload
+      # config / redeploy / destroy + recreate, plus a live log tail.
+      scope module: :agents, path: "ops" do
+        post "restart",     to: "ops#restart",     as: :agent_ops_restart
+        post "reload",      to: "ops#reload",      as: :agent_ops_reload
+        post "redeploy",    to: "ops#redeploy",    as: :agent_ops_redeploy
+        post "reprovision", to: "ops#reprovision", as: :agent_ops_reprovision
+        get  "logs",        to: "ops#logs",        as: :agent_ops_logs
+      end
     end
 
     resources :tasks do

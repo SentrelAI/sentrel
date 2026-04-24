@@ -34,6 +34,7 @@ function formatBytes(bytes: number): string {
 import { StatusDot } from "@/components/brand"
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
+import { AgentOpsMenu } from "@/components/agent-ops-menu"
 import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -161,6 +162,7 @@ function AgentTopBarMeta({ agent }: { agent: Agent }) {
 function AgentTopBarActions({ agent }: { agent: Agent }) {
   return (
     <div className="flex items-center gap-1.5">
+      <AgentOpsMenu agentId={agent.id} />
       <Button variant="ghost" size="sm" className="h-8 gap-1.5" asChild>
         <Link href={agentChannelConfigsPath(agent.id)}>
           <Radio className="size-3.5" />
