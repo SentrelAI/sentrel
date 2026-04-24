@@ -174,6 +174,41 @@ export function startGateway(): void {
       return;
     }
 
+    // POST /rag/promote — copy an agent-scoped document (+ its chunks +
+    // embeddings) into the org-shared KB so every agent in the org can
+    // search it. Dedupes on content_hash, so calling twice is safe.
+    if (req.method === "POST" && req.url === "/rag/promote") {
+      const secret = process.env.ENGINE_API_SECRET;
+      if (!secret || req.headers["x-engine-secret"] !== secret) {
+        res.writeHead(401); res.end(); return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const agentId = Number(body.agent_id);
+        const orgId = Number(body.org_id);
+        const documentId = Number(body.document_id);
+        if (!agentId || !orgId || !documentId) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "agent_id, org_id, and document_id are required" }));
+          return;
+        }
+        const { copyDocument, agentScope, orgScope } = await import("./rag/store.js");
+        const result = await copyDocument(agentScope(agentId), orgScope(orgId), documentId);
+        if (!result) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "document not found in agent KB" }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+        logger.error("RAG promote failed", { error: (err as Error).message });
+      }
+      return;
+    }
+
     // GET /rag/documents?agent_id=N  (personal KB)
     // GET /rag/documents?org_id=N    (org-shared KB — every agent in the org searches it)
     if (req.method === "GET" && req.url?.startsWith("/rag/documents")) {
