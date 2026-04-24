@@ -23,26 +23,33 @@ const MODELS: Array<{
   {
     group: "Anthropic (direct)",
     options: [
-      { provider: "anthropic", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7", hint: "strongest reasoning" },
-      { provider: "anthropic", model_id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", hint: "recommended default" },
-      { provider: "anthropic", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", hint: "fastest + cheapest" },
+      { provider: "anthropic", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7",   hint: "strongest reasoning, priciest" },
+      { provider: "anthropic", model_id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
+      { provider: "anthropic", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  hint: "fastest + cheapest" },
     ],
   },
   {
     group: "OpenRouter — specialty",
     options: [
-      { provider: "openrouter", model_id: "moonshotai/kimi-k2",   label: "Kimi K2 (Moonshot)", hint: "strong agentic tool use" },
-      { provider: "openrouter", model_id: "minimax/minimax-m1",   label: "MiniMax M1",         hint: "long-context reasoning" },
-      { provider: "openrouter", model_id: "minimax/minimax-01",   label: "MiniMax Text-01",    hint: "1M context window" },
-      { provider: "openrouter", model_id: "deepseek/deepseek-chat", label: "DeepSeek V3",      hint: "cheap high-quality" },
+      { provider: "openrouter", model_id: "moonshotai/kimi-k2",         label: "Kimi K2 (Moonshot)", hint: "top agentic tool use" },
+      { provider: "openrouter", model_id: "minimax/minimax-m1",         label: "MiniMax M1",         hint: "long-context reasoning" },
+      { provider: "openrouter", model_id: "minimax/minimax-01",         label: "MiniMax Text-01",    hint: "1M context" },
+      { provider: "openrouter", model_id: "deepseek/deepseek-v3.2",     label: "DeepSeek V3.2",      hint: "cheap, strong reasoning" },
+      { provider: "openrouter", model_id: "deepseek/deepseek-r1",       label: "DeepSeek R1",        hint: "open reasoning model" },
+      { provider: "openrouter", model_id: "qwen/qwen3-235b-a22b",       label: "Qwen 3 235B",        hint: "top open-source generalist" },
     ],
   },
   {
-    group: "OpenRouter — mainline (via OR)",
+    group: "OpenRouter — frontier",
     options: [
-      { provider: "openrouter", model_id: "anthropic/claude-opus-4-7",   label: "Claude Opus 4.7" },
-      { provider: "openrouter", model_id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-      { provider: "openrouter", model_id: "openai/gpt-4o",               label: "GPT-4o" },
+      { provider: "openrouter", model_id: "anthropic/claude-opus-4-7",   label: "Claude Opus 4.7",   hint: "Anthropic flagship" },
+      { provider: "openrouter", model_id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", hint: "Anthropic workhorse" },
+      { provider: "openrouter", model_id: "openai/gpt-5.2",              label: "GPT-5.2",           hint: "OpenAI flagship" },
+      { provider: "openrouter", model_id: "openai/gpt-5-mini",           label: "GPT-5 mini",        hint: "cheap OpenAI" },
+      { provider: "openrouter", model_id: "google/gemini-3-pro",         label: "Gemini 3 Pro",      hint: "Google flagship, huge context" },
+      { provider: "openrouter", model_id: "google/gemini-3-flash",       label: "Gemini 3 Flash",    hint: "cheap + fast Google" },
+      { provider: "openrouter", model_id: "x-ai/grok-4",                 label: "Grok 4",            hint: "xAI flagship" },
+      { provider: "openrouter", model_id: "meta-llama/llama-4-maverick", label: "Llama 4 Maverick",  hint: "Meta open-weights" },
     ],
   },
 ]
@@ -77,16 +84,30 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId }: P
     }
   }
 
-  const currentLabel =
-    MODELS.flatMap((g) => g.options).find(
+  const currentLabel = (() => {
+    const known = MODELS.flatMap((g) => g.options).find(
       (m) => m.provider === currentProvider && m.model_id === currentModelId,
-    )?.label ??
-    (currentModelId ? currentModelId.split("/").pop()?.replace(/^claude-/, "") : "model")
+    )
+    if (known) return known.label
+    if (!currentModelId) return "model"
+    // Prettify legacy/custom ids: "claude-sonnet-4-20250514" → "Sonnet 4"
+    return currentModelId
+      .split("/")
+      .pop()!
+      .replace(/^claude-/, "")
+      .replace(/-\d{8}$/, "") // strip trailing date stamp
+      .replace(/(^|\s|-)([a-z])/g, (_, sep, c) => sep + c.toUpperCase())
+  })()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 gap-1.5 font-normal" disabled={busy}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 font-normal hover:bg-muted hover:text-foreground"
+          disabled={busy}
+        >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
           <span className="text-muted-foreground">Model:</span>
           <span className="font-medium">{currentLabel}</span>
