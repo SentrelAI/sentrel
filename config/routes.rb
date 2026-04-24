@@ -67,6 +67,8 @@ Rails.application.routes.draw do
         post "reprovision", to: "ops#reprovision", as: :agent_ops_reprovision
         get  "logs",        to: "ops#logs",        as: :agent_ops_logs
       end
+      # Quick model switch from the agent page top bar (AgentModelPicker).
+      resource :ai_config, only: [:update], module: :agents, controller: :ai_configs
     end
 
     resources :tasks do

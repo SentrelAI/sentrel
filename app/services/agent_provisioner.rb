@@ -138,11 +138,26 @@ module AgentProvisioner
     end
 
     def env_for(agent)
+      # Provider routing: the Claude Agent SDK always talks to an
+      # Anthropic-compatible endpoint. When the agent is configured to use
+      # OpenRouter we point ANTHROPIC_BASE_URL at OpenRouter and hand it the
+      # OpenRouter key under ANTHROPIC_API_KEY. The SDK + engine code doesn't
+      # need to know — it just calls "Anthropic" and OpenRouter does the
+      # model routing (Kimi, MiniMax, DeepSeek, Llama etc.).
+      provider = agent.ai_config&.provider.to_s
+      anthropic_key = ENV["ANTHROPIC_API_KEY"].to_s
+      base_url = nil
+      if provider == "openrouter" && ENV["OPENROUTER_API_KEY"].present?
+        anthropic_key = ENV["OPENROUTER_API_KEY"]
+        base_url = "https://openrouter.ai/api/v1"
+      end
+
       {
         "EMPLOYEE_ID"         => agent.id.to_s,
         "DATABASE_URL"        => ENV.fetch("ENGINE_DATABASE_URL", ENV["DATABASE_URL"].to_s),
         "REDIS_URL"           => ENV.fetch("ENGINE_REDIS_URL", ENV["REDIS_URL"].to_s),
-        "ANTHROPIC_API_KEY"   => ENV["ANTHROPIC_API_KEY"].to_s,
+        "ANTHROPIC_API_KEY"   => anthropic_key,
+        "ANTHROPIC_BASE_URL"  => base_url,
         "ENGINE_API_SECRET"   => ENV["ENGINE_API_SECRET"].to_s,
         "RAILS_INTERNAL_URL"  => ENV["RAILS_INTERNAL_URL"].to_s,
         "COMPOSIO_API_KEY"    => ENV["COMPOSIO_API_KEY"].to_s,

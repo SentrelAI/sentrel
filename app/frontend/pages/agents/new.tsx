@@ -57,10 +57,14 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; h
     { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", hint: "fast + cheap" },
   ],
   openrouter: [
-    { value: "anthropic/claude-opus-4-7",   label: "Claude Opus 4.7 (via OpenRouter)" },
-    { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (via OpenRouter)" },
-    { value: "openai/gpt-4o",               label: "GPT-4o (via OpenRouter)" },
-    { value: "meta-llama/llama-3.1-405b",   label: "Llama 3.1 405B (via OpenRouter)" },
+    { value: "moonshotai/kimi-k2",          label: "Kimi K2 (Moonshot)",   hint: "top open-source reasoning, strong agentic tool use" },
+    { value: "minimax/minimax-m1",          label: "MiniMax M1",           hint: "long-context reasoning, great for research agents" },
+    { value: "minimax/minimax-01",          label: "MiniMax Text-01",      hint: "fast conversational, 1M context" },
+    { value: "anthropic/claude-opus-4-7",   label: "Claude Opus 4.7 (via OR)" },
+    { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (via OR)" },
+    { value: "openai/gpt-4o",               label: "GPT-4o (via OR)" },
+    { value: "meta-llama/llama-3.1-405b",   label: "Llama 3.1 405B (via OR)" },
+    { value: "deepseek/deepseek-chat",      label: "DeepSeek V3 (via OR)", hint: "cheap high-quality reasoning" },
   ],
 }
 
