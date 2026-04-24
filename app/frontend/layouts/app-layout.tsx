@@ -42,7 +42,7 @@ export default function AppLayout({
           className={
             fullBleed
               ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-              : "flex-1 overflow-auto p-6"
+              : "flex-1 overflow-auto p-4 sm:p-5 md:p-6"
           }
         >
           {children}

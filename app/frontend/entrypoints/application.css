@@ -464,6 +464,9 @@
     color: var(--foreground) !important;
     border-radius: var(--radius-xl) !important;
     box-shadow: var(--shadow-xl) !important;
+    max-width: min(calc(100vw - 1.5rem), 48rem) !important;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
   }
   [data-slot="dialog-overlay"],
   [data-radix-dialog-overlay] {
@@ -770,7 +773,23 @@ tbody tr:hover {
   }
 }
 
-/* Tables — give them a card surface so they don't float */
+/* Tables — give them a card surface so they don't float, and ensure
+   any direct parent .rounded-lg.border wrapper scrolls horizontally
+   on narrow viewports so table columns never clip off-screen. */
 table {
   background: transparent;
+}
+
+@media (max-width: 768px) {
+  .rounded-lg.border:has(> table),
+  .rounded-md.border:has(> table),
+  .rounded-xl.border:has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rounded-lg.border > table,
+  .rounded-md.border > table,
+  .rounded-xl.border > table {
+    min-width: 560px;
+  }
 }

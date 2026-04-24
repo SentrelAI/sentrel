@@ -179,8 +179,8 @@ function Hero() {
         }}
       />
 
-      <div className="relative mx-auto w-full max-w-7xl px-6 pb-28 pt-28 md:pb-36 md:pt-36">
-        <div className="grid grid-cols-1 items-center gap-16 lg:grid-cols-12 lg:gap-12">
+      <div className="relative mx-auto w-full max-w-7xl px-4 pb-20 pt-24 sm:px-6 sm:pb-28 sm:pt-28 md:pb-36 md:pt-36">
+        <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-12">
           {/* ── Left: copy + CTAs ─────────────────────────── */}
           <div className="lg:col-span-6">
             <a
@@ -374,11 +374,11 @@ function LogoMarquee() {
             aria-hidden
             className="pointer-events-none absolute inset-y-0 right-0 z-10 w-32 bg-gradient-to-l from-background to-transparent"
           />
-          <div className="flex w-max animate-marquee items-center gap-16 pr-16">
+          <div className="flex w-max animate-marquee items-center gap-10 pr-10 md:gap-16 md:pr-16">
             {[...logos, ...logos].map((name, i) => (
               <span
                 key={i}
-                className="whitespace-nowrap font-display text-xl font-medium tracking-tight text-muted-foreground/70 transition-colors hover:text-foreground"
+                className="whitespace-nowrap font-display text-base font-medium tracking-tight text-muted-foreground/70 transition-colors hover:text-foreground md:text-xl"
               >
                 {name}
               </span>

@@ -1,8 +1,7 @@
 import { Link, usePage } from "@inertiajs/react"
-import { ChevronDown, Moon, Sun } from "lucide-react"
+import { ChevronDown, Menu, Moon, Sun, X } from "lucide-react"
 import { useEffect, useState } from "react"
 
-import AppLogo from "@/components/app-logo"
 import { useTheme } from "@/hooks/use-theme"
 import { dashboardPath, newUserRegistrationPath } from "@/routes"
 import type { SharedProps } from "@/types"
@@ -22,6 +21,7 @@ export function LandingNav() {
   const ctaLabel = signedIn ? "Dashboard" : "Get started"
 
   const [scrolled, setScrolled] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, setTheme } = useTheme()
   const isDark =
     theme === "dark" ||
@@ -38,6 +38,15 @@ export function LandingNav() {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
+  // Close mobile menu when viewport resizes to desktop
+  useEffect(() => {
+    function onResize() {
+      if (window.innerWidth >= 768) setMobileOpen(false)
+    }
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 w-full">
       <div className="pointer-events-auto relative mx-auto w-full max-w-5xl px-3 pt-3 md:px-5 md:pt-4">
@@ -48,7 +57,7 @@ export function LandingNav() {
               : "border-foreground/20 bg-foreground"
           }`}
         >
-          {/* Ambient cyan/indigo glow inside the pill */}
+          {/* Ambient cyan/indigo glow */}
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 opacity-40"
@@ -58,17 +67,17 @@ export function LandingNav() {
             }}
           />
 
-          {/* Logo — white on dark fill */}
+          {/* Logo */}
           <Link
             href="/"
-            className="relative flex items-center gap-2 pl-5 pr-4 text-background transition-opacity hover:opacity-80"
+            className="relative flex items-center gap-2 pl-4 pr-3 text-background transition-opacity hover:opacity-80 sm:pl-5 sm:pr-4"
           >
             <span className="font-display text-base font-semibold tracking-[-0.03em] text-background">
               Alchemy<span className="text-[var(--cyan)]">.</span>
             </span>
           </Link>
 
-          {/* Links */}
+          {/* Desktop links */}
           <nav className="relative ml-auto hidden items-center md:flex">
             {LINKS.map((link) => (
               <a
@@ -88,28 +97,60 @@ export function LandingNav() {
             ))}
           </nav>
 
-          {/* Theme toggle — matches the dark pill's chrome */}
+          {/* Mobile: hamburger, pushed right. Hides on md */}
+          <button
+            type="button"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+            className="relative ml-auto mr-1 flex size-9 items-center justify-center rounded-md text-background/80 transition-colors hover:bg-background/10 hover:text-background md:hidden"
+          >
+            {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
+          </button>
+
+          {/* Theme toggle — always visible */}
           <button
             type="button"
             onClick={() => setTheme(isDark ? "light" : "dark")}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="relative ml-2 flex size-8 items-center justify-center rounded-md border border-background/15 bg-transparent text-background/70 transition-all hover:border-background/35 hover:bg-background/10 hover:text-background"
+            className="relative mr-1 flex size-8 items-center justify-center rounded-md border border-background/15 bg-transparent text-background/70 transition-all hover:border-background/35 hover:bg-background/10 hover:text-background md:ml-2 md:mr-0"
           >
             {isDark ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
           </button>
 
-          {/* CTA — white button flush to right edge of the pill */}
+          {/* CTA — compact on mobile, flush on desktop */}
           <Link
             href={ctaHref}
-            className="group relative ml-3 flex h-full items-center overflow-hidden border-l border-background/20 bg-background px-6 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-background/90"
+            className="group relative ml-2 flex h-full items-center overflow-hidden border-l border-background/20 bg-background px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-background/90 sm:px-6 md:ml-3"
           >
             <span
               aria-hidden
               className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[var(--color-indigo)]/20 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
             />
-            <span className="relative">{ctaLabel}</span>
+            <span className="relative truncate">{ctaLabel}</span>
           </Link>
         </div>
+
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div
+            className="mt-2 overflow-hidden rounded-lg border border-foreground/20 bg-foreground shadow-xl md:hidden animate-fade-in"
+            onClick={() => setMobileOpen(false)}
+          >
+            <div className="flex flex-col p-2">
+              {LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-center justify-between rounded-md px-3 py-3 font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-background/80 transition-colors hover:bg-background/10 hover:text-background"
+                >
+                  <span>{link.label}</span>
+                  {link.menu && <ChevronDown className="size-3.5 opacity-40" />}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </header>
   )

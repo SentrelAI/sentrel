@@ -63,7 +63,7 @@ export default function DashboardIndex({ agents, stats }: Props) {
           className="pointer-events-none absolute inset-0 bg-dot-grid bg-dot-grid-fade opacity-50"
         />
 
-        <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10">
+        <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-10 md:gap-8">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="space-y-3">
               <Overline accent={runningCount > 0} dot>
@@ -122,7 +122,7 @@ export default function DashboardIndex({ agents, stats }: Props) {
       </section>
 
       {/* ======= Body ======= */}
-      <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-10 lg:grid-cols-12">
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 sm:py-10 md:gap-10 lg:grid-cols-12">
         {/* Agents */}
         <div className="lg:col-span-8">
           <div className="mb-5 flex items-end justify-between">

@@ -439,7 +439,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
       <Head title={agent.name} />
 
       {/* ═══ Tabs ═══ */}
-      <div className="flex items-center gap-0 border-b border-border -mx-6 px-6 -mt-6">
+      <div className="-mx-4 -mt-4 flex items-center gap-0 overflow-x-auto border-b border-border px-4 sm:-mx-5 sm:px-5 md:-mx-6 md:-mt-6 md:px-6">
         {tabs.map((tab) => {
           const Icon = tab.icon
           const active = section === tab.key
@@ -447,7 +447,7 @@ export default function AgentShow({ agent, conversations, emails, chat_messages,
             <button
               key={tab.key}
               onClick={() => { setSection(tab.key); setSelectedConvId(null); setSelectedEmailId(null) }}
-              className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm transition-colors ${
+              className={`relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm transition-colors sm:px-4 ${
                 active
                   ? "text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground"
@@ -1644,9 +1644,9 @@ function RunsDialogBody({ schedule }: { schedule: ScheduledTask }) {
           No runs yet
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-12 divide-x">
+        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-12 md:divide-x">
           {/* Run list */}
-          <div className="col-span-4 min-h-0 overflow-y-auto">
+          <div className="min-h-0 max-h-40 overflow-y-auto border-b md:col-span-4 md:max-h-none md:border-b-0">
             {runs.map((run) => {
               const isSelected = run.id === selected?.id
               return (
@@ -1702,7 +1702,7 @@ function RunsDialogBody({ schedule }: { schedule: ScheduledTask }) {
           </div>
 
           {/* Run detail */}
-          <div className="col-span-8 min-h-0 overflow-y-auto">
+          <div className="min-h-0 overflow-y-auto md:col-span-8">
             {selected ? (
               <RunDetail run={selected} />
             ) : (

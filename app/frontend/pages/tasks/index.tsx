@@ -214,7 +214,7 @@ function Column({ columnKey, label, dot, tasks: columnTasks, setEditingTask, onO
 
   return (
     <div
-      className={`flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card transition-colors ${
+      className={`flex min-h-0 w-[85vw] max-w-[320px] shrink-0 snap-start flex-col overflow-hidden rounded-lg border bg-card transition-colors md:w-auto md:max-w-none md:shrink ${
         isOver ? "border-[var(--color-indigo)] bg-[var(--indigo-surface)]/30" : ""
       }`}
     >
@@ -502,7 +502,7 @@ export default function TasksIndex({ tasks, agents }: Props) {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid min-h-0 flex-1 grid-cols-4 gap-3 overflow-hidden p-4">
+          <div className="flex min-h-0 flex-1 snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden p-3 sm:p-4 md:grid md:snap-none md:grid-cols-2 md:overflow-hidden lg:grid-cols-4">
             {columns.map((col) => (
               <Column
                 key={col.key}
