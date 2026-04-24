@@ -93,8 +93,8 @@ Rails.application.routes.draw do
 
     # Team management — invite teammates, manage roles.
     resources :invitations, only: [:index, :create, :destroy]
-    get  "invitations/:token",        to: "invitations#show",   as: :invitation
-    post "invitations/:token/accept", to: "invitations#accept", as: :accept_invitation
+    get  "invite/:token",        to: "invitations#show",   as: :invitation_link
+    post "invite/:token/accept", to: "invitations#accept", as: :accept_invitation
     resources :reports, only: [:index]
     resources :integrations, only: [:index, :destroy] do
       collection do

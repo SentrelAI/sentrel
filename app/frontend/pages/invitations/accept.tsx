@@ -15,7 +15,7 @@ export default function AcceptInvitation({ invitation, signed_in }: Props) {
     const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
     const form = document.createElement("form")
     form.method = "POST"
-    form.action = `/invitations/${invitation.token}/accept`
+    form.action = `/invite/${invitation.token}/accept`
     const csrfInput = document.createElement("input")
     csrfInput.type = "hidden"
     csrfInput.name = "authenticity_token"
