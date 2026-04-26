@@ -495,7 +495,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         {/* Chat */}
         {section === "chat" && (
           <div className="flex-1 overflow-hidden">
-            <AgentChat agentId={agent.id} agentName={agent.name} initialMessages={chat_messages as any} approvalsByMessage={approvals_by_message} />
+            <AgentChat agentId={agent.id} agentName={agent.name} agentStatus={agent.status} initialMessages={chat_messages as any} approvalsByMessage={approvals_by_message} />
           </div>
         )}
 

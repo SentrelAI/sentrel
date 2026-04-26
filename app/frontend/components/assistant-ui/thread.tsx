@@ -53,6 +53,29 @@ type CmdApprovalData = {
 const CmdApprovalContext = createContext<CmdApprovalData>(null);
 export const CmdApprovalProvider = CmdApprovalContext.Provider;
 
+// Agent lifecycle status — set by AgentChat. The composer is disabled and
+// shows a "loading" state until the underlying agent reaches "running".
+const AgentStatusContext = createContext<string>("running");
+export const AgentStatusProvider = AgentStatusContext.Provider;
+
+function isAgentReady(status: string) {
+  return status === "running";
+}
+
+function agentLoadingLabel(status: string) {
+  switch (status) {
+    case "pending":
+    case "starting":
+      return "Agent is starting up…";
+    case "paused":
+      return "Agent is paused";
+    case "stopped":
+      return "Agent is stopped";
+    default:
+      return "Agent is loading…";
+  }
+}
+
 export const Thread: FC = () => {
   return (
     <ThreadPrimitive.Root
@@ -164,6 +187,25 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
+  const agentStatus = useContext(AgentStatusContext);
+  const agentReady = isAgentReady(agentStatus);
+
+  if (!agentReady) {
+    return (
+      <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
+        <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
+          <div className="flex flex-col items-center gap-3 px-4 text-center">
+            <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+            <h1 className="font-semibold text-xl">{agentLoadingLabel(agentStatus)}</h1>
+            <p className="text-muted-foreground text-sm">
+              Chat will be available once the agent is running.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
@@ -209,13 +251,23 @@ const ThreadSuggestionItem: FC = () => {
 
 const Composer: FC = () => {
   const isRunning = useAuiState((s) => s.thread.isRunning);
+  const agentStatus = useContext(AgentStatusContext);
+  const agentReady = isAgentReady(agentStatus);
+  const disabled = isRunning || !agentReady;
+
+  const placeholder = !agentReady
+    ? agentLoadingLabel(agentStatus)
+    : isRunning
+      ? "Waiting for response…"
+      : "Send a message — or drop files";
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           data-slot="composer-shell"
-          className="group relative flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-all focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/40 data-[dragging=true]:ring-4 data-[dragging=true]:ring-ring/10"
+          aria-disabled={!agentReady}
+          className="group relative flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-all focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/40 data-[dragging=true]:ring-4 data-[dragging=true]:ring-ring/10 aria-disabled:opacity-60 aria-disabled:cursor-not-allowed"
         >
           {/* Drop overlay — visible only while dragging files over the composer */}
           <div className="pointer-events-none absolute inset-0 hidden items-center justify-center rounded-(--composer-radius) bg-background/80 backdrop-blur-sm group-data-[dragging=true]:flex">
@@ -228,21 +280,43 @@ const Composer: FC = () => {
 
           <ComposerAttachments />
           <ComposerPrimitive.Input
-            placeholder={isRunning ? "Waiting for response…" : "Send a message — or drop files"}
-            className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
+            placeholder={placeholder}
+            className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
             rows={1}
             autoFocus
             aria-label="Message input"
-            disabled={isRunning}
+            disabled={disabled}
           />
-          <ComposerAction />
+          <ComposerAction agentReady={agentReady} agentStatus={agentStatus} />
         </div>
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
   );
 };
 
-const ComposerAction: FC = () => {
+const ComposerAction: FC<{ agentReady: boolean; agentStatus: string }> = ({ agentReady, agentStatus }) => {
+  if (!agentReady) {
+    return (
+      <div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
+        <span className="size-8" />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2Icon className="size-3.5 animate-spin" />
+          <span>{agentLoadingLabel(agentStatus)}</span>
+        </div>
+        <Button
+          type="button"
+          variant="default"
+          size="icon"
+          className="aui-composer-send size-8 rounded-full"
+          aria-label="Agent not ready"
+          disabled
+        >
+          <Loader2Icon className="size-4 animate-spin" />
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
       <ComposerAddAttachment />

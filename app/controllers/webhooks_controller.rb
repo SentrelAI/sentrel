@@ -128,6 +128,12 @@ class WebhooksController < ApplicationController
     agent = Agent.find(params[:agent_id])
     return head :not_found unless agent
 
+    # The agent's runtime must be live before we accept user messages — the
+    # engine can't process them while the machine is still provisioning.
+    unless agent.status == "running"
+      return render json: { error: "Agent is not running", status: agent.status }, status: :conflict
+    end
+
     # Use the most recently active internal conv for this user — avoids
     # fragmenting chat history across multiple conversations when old rows
     # exist with different contact_identifier values.

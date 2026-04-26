@@ -10,7 +10,7 @@ import {
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
-import { Thread, CmdApprovalProvider } from "@/components/assistant-ui/thread"
+import { Thread, CmdApprovalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
 
 // The engine gateway lives on Fly's private 6pn network in production, so
 // the browser can't reach it directly. Only connect when we're on localhost
@@ -448,11 +448,12 @@ function createAgentAdapter(agentId: number): ChatModelAdapter {
 interface AgentChatProps {
   agentId: number
   agentName: string
+  agentStatus?: string
   initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown> }[]
   approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
 }
 
-export function AgentChat({ agentId, agentName, initialMessages = [], approvalsByMessage = {} }: AgentChatProps) {
+export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {} }: AgentChatProps) {
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
   const adapter = useRef(createAgentAdapter(agentId)).current
 
@@ -596,11 +597,13 @@ export function AgentChat({ agentId, agentName, initialMessages = [], approvalsB
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <CmdApprovalProvider value={cmdApproval}>
-        <div className="h-full overflow-hidden bg-background">
-          <Thread />
-        </div>
-      </CmdApprovalProvider>
+      <AgentStatusProvider value={agentStatus}>
+        <CmdApprovalProvider value={cmdApproval}>
+          <div className="h-full overflow-hidden bg-background">
+            <Thread />
+          </div>
+        </CmdApprovalProvider>
+      </AgentStatusProvider>
     </AssistantRuntimeProvider>
   )
 }
