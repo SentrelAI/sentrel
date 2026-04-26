@@ -95,9 +95,6 @@ export function AppSidebar() {
               />
               <Plus className="relative size-3.5" strokeWidth={2.5} />
               <span className="relative">New agent</span>
-              <kbd className="relative ml-auto rounded-sm bg-white/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold">
-                ⌘N
-              </kbd>
             </Link>
           </SidebarGroupContent>
         </SidebarGroup>
