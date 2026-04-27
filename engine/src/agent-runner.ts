@@ -781,16 +781,17 @@ async function buildQueryOptions(
     baseMcpServers.scheduling = schedulingServer;
   }
 
+  // Compute the origin context once — used by both the tasks/approvals MCPs
+  // (for cross-agent delegation + report-back routing) and the connections
+  // MCP (for persisting Connect cards with origin so they reach the right
+  // channel after refresh).
+  const taskOrigin = job.origin
+    ? job.origin
+    : job.channel
+      ? { channel: job.channel, metadata: job.payload?.metadata || {}, conversationId: job.conversationId ?? null }
+      : undefined;
+
   if (caps.tasks.enabled) {
-    // Compute the origin context for cross-agent delegation. If this job
-    // already carries an origin (because it's itself a delegated task), keep
-    // forwarding that origin. Otherwise this is the first hop — capture the
-    // current channel + metadata so subsequent delegations can route home.
-    const taskOrigin = job.origin
-      ? job.origin
-      : job.channel
-        ? { channel: job.channel, metadata: job.payload?.metadata || {}, conversationId: job.conversationId ?? null }
-        : undefined;
     const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id, taskOrigin, job.payload?.taskId);
     mcpServers.tasks = tasksServer;
     baseMcpServers.tasks = tasksServer;
@@ -826,8 +827,13 @@ async function buildQueryOptions(
 
     // Item 5 — propose_connection. Lives next to integrations: same gating
     // (a no-integrations agent doesn't need it), same purpose (let the agent
-    // ask the user to connect a service). Posts an inline "Connect <X>" card.
-    const connectionsServer = buildConnectionsMcpServer();
+    // ask the user to connect a service). Posts an inline "Connect <X>" card
+    // AND persists it via pending_approvals so the card survives a refresh.
+    const connectionsServer = buildConnectionsMcpServer({
+      agentId: agent.id,
+      orgId: agent.organization_id,
+      origin: taskOrigin,
+    });
     mcpServers.connections = connectionsServer;
     baseMcpServers.connections = connectionsServer;
 

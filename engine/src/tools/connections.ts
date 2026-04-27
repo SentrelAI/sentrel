@@ -13,7 +13,9 @@
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
+import { host } from "../host/index.js";
 import { emitConnectionProposal } from "../gateway.js";
+import type { Origin } from "../channels/origin-delivery.js";
 
 // Mirror of AVAILABLE_INTEGRATIONS in app/frontend/pages/integrations/index.tsx.
 // Only services in this list have Connect buttons on the integrations page;
@@ -46,7 +48,13 @@ export const SUPPORTED_INTEGRATIONS: Record<string, string> = {
   digital_ocean:    "DigitalOcean",
 };
 
-export function buildConnectionsMcpServer() {
+interface ConnectionsContext {
+  agentId: number;
+  orgId: number;
+  origin?: Origin;
+}
+
+export function buildConnectionsMcpServer(ctx: ConnectionsContext) {
   const supportedSlugs = Object.keys(SUPPORTED_INTEGRATIONS);
 
   const proposeConnectionTool = tool(
@@ -74,6 +82,31 @@ export function buildConnectionsMcpServer() {
         };
       }
       const label = args.label || officialLabel;
+
+      // Persist the proposal so the inline card survives a page refresh.
+      // Same table as action approvals — payload_type='connection_proposal'
+      // makes it distinguishable on the frontend hydration path.
+      const approvalToken = `conn_${Date.now()}_${slug}`;
+      try {
+        await host.createPendingActionApproval({
+          orgId: ctx.orgId,
+          agentId: ctx.agentId,
+          summary: `Connect ${label} — ${args.why}`,
+          payloadType: "connection_proposal",
+          payload: { service: slug, label, why: args.why },
+          options: [
+            { label: `Connect ${label}`, value: "connect" },
+            { label: "Not now", value: "dismiss" },
+          ],
+          riskTier: "low",
+          approvalToken,
+          allowAmendment: false,
+          origin: ctx.origin,
+        });
+      } catch (err) {
+        logger.warn("Failed to persist connection proposal", { error: (err as Error).message });
+      }
+
       emitConnectionProposal({ service: slug, label, why: args.why });
       logger.info(`Connection proposal: ${label} (${args.why})`);
       return {
