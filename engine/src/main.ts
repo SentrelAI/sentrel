@@ -12,6 +12,8 @@ import { startGateway, setSyncHandler } from "./gateway.js";
 import { startTelegramPolling, stopTelegramPolling } from "./channels/telegram.js";
 import { initWhatsApp, stopWhatsApp } from "./channels/whatsapp.js";
 import { initSentry, setAgentContext, captureException, flush as flushSentry } from "./sentry.js";
+import { startAnthropicBillingProxy, stopAnthropicBillingProxy } from "./proxy/anthropic-billing-proxy.js";
+import { startOpenAITranslatorProxy, stopOpenAITranslatorProxy } from "./proxy/openai-translator-proxy.js";
 import { logger, flushLogs } from "./logger.js";
 import type { JobData } from "./types.js";
 
@@ -111,6 +113,14 @@ async function main() {
   });
   startGateway();
 
+  // 10b. Start subscription-OAuth proxies if relevant env vars are present.
+  // Anthropic OAuth tokens need a billing-identifier header; OpenAI OAuth
+  // needs Anthropic Messages → OpenAI Responses translation. Both proxies
+  // listen on localhost; agent_provisioner sets ANTHROPIC_BASE_URL to
+  // route the SDK through them when provider=anthropic_account / openai_account.
+  if (process.env.ANTHROPIC_OAUTH_TOKEN) startAnthropicBillingProxy();
+  if (process.env.OPENAI_OAUTH_TOKEN) startOpenAITranslatorProxy();
+
   // 11. Start channels
   startTelegramPolling();
   await initWhatsApp();
@@ -128,6 +138,8 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     logger.info("Shutting down...");
+    stopAnthropicBillingProxy();
+    stopOpenAITranslatorProxy();
     await host.updateAgentStatus(agent.id, "stopped");
     await worker.close();
     await flushLogs();
