@@ -175,15 +175,33 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     setIntroName(next)
   }
 
+  // Synthesizes a minimal Template-shaped object so the details step can
+  // render even when the templates table is empty (e.g. fresh install with
+  // no seeds). The controller already handles a missing template_slug — it
+  // just skips the markdown pre-fill.
+  function blankTemplate(role: string | null): Template {
+    return {
+      slug: "",
+      name: "Custom agent",
+      role: role || "Custom",
+      description: "Built from your description — no template applied. You can fine-tune identity, personality, and instructions on the agent's Identity tab after creation.",
+      icon: "User",
+      capabilities: {},
+      suggested_skill_slugs: [],
+      suggested_manager_role: null,
+      suggested_provider: null,
+      suggested_model: null,
+      variables: [],
+    }
+  }
+
   function applyDraft(name: string, draft: DraftResponse) {
     const tpl = draft.template_slug
       ? templates.find((t) => t.slug === draft.template_slug)
       : null
-    const fallback = tpl || templates[0]
-    if (!fallback) {
-      setDraftError("No agent templates configured. Ask your admin to seed some.")
-      return false
-    }
+    // Prefer the LLM's pick → otherwise the first available template →
+    // otherwise a blank custom shell so the user is never blocked.
+    const fallback = tpl || templates[0] || blankTemplate(draft.role)
     setPicked(fallback)
 
     const mgr = fallback.suggested_manager_role
@@ -447,13 +465,17 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           )}
 
           <div className="flex justify-between items-center pb-8 max-w-2xl">
-            <button
-              type="button"
-              onClick={() => setStep("template")}
-              className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-            >
-              Browse templates instead →
-            </button>
+            {templates.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setStep("template")}
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+              >
+                Browse templates instead →
+              </button>
+            ) : (
+              <span />
+            )}
             <Button type="submit" disabled={drafting || !description.trim()}>
               {drafting ? "Drafting…" : "Draft my agent"}
             </Button>
