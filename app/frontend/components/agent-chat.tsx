@@ -10,7 +10,7 @@ import {
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
-import { Thread, CmdApprovalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
+import { Thread, CmdApprovalProvider, ActionApprovalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
 
 // The engine gateway lives on Fly's private 6pn network in production, so
 // the browser can't reach it directly. Only connect when we're on localhost
@@ -203,6 +203,17 @@ type CmdApprovalState = {
   level: string
   explanation: string
   resolve: (level: "once" | "session" | "always" | "deny") => void
+} | null
+
+type ActionApprovalState = {
+  approvalToken: string
+  summary: string
+  payloadType: string
+  payload: Record<string, unknown>
+  options: Array<{ label: string; value: string }>
+  riskTier: string
+  allowAmendment: boolean
+  resolve: (decision: { value: string; text?: string }) => void
 } | null
 
 function createAgentAdapter(agentId: number): ChatModelAdapter {
@@ -455,6 +466,7 @@ interface AgentChatProps {
 
 export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {} }: AgentChatProps) {
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
+  const [actionApproval, setActionApproval] = useState<ActionApprovalState>(null)
   const adapter = useRef(createAgentAdapter(agentId)).current
 
   // Persistent listener — stays open while on the chat page, receives
@@ -468,8 +480,15 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
     let consumer: { disconnect(): void } | null = null
     let mounted = true
 
+    const handleEvent = (data: any) => {
+      if (data.type === "command_approval") {
+        handleCommandApproval(data)
+      } else if (data.type === "action_approval") {
+        handleActionApproval(data)
+      }
+    }
+
     const handleCommandApproval = (data: any) => {
-      if (data.type !== "command_approval") return
       const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
       setCmdApproval({
         approvalId: data.approvalId,
@@ -479,7 +498,6 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         resolve: async (chosenLevel) => {
           setCmdApproval(null)
           if (GATEWAY_URL) {
-            // Local dev: resolve via direct engine WS
             const approvalWs = new WebSocket(GATEWAY_URL)
             approvalWs.onopen = () => {
               approvalWs.send(JSON.stringify({
@@ -491,7 +509,6 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
               setTimeout(() => approvalWs.close(), 500)
             }
           } else {
-            // Production: relay via Rails → Redis pub/sub → engine
             await fetch("/api/command_approvals", {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
@@ -507,26 +524,64 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       })
     }
 
+    // Item 4 — generic action approval card (LinkedIn post / email / spend / etc.)
+    // Surfaces inline in the chat thread via ActionApprovalContext, mirroring
+    // the cmd-approval flow. Decision routes through Rails pending_approvals
+    // which republishes to Redis where the engine resolves the paused promise.
+    const handleActionApproval = (data: any) => {
+      const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      setActionApproval({
+        approvalToken: data.approvalToken,
+        summary: data.summary,
+        payloadType: data.payloadType,
+        payload: data.payload || {},
+        options: Array.isArray(data.options) && data.options.length > 0
+          ? data.options
+          : [{ label: "Approve", value: "approve" }, { label: "Reject", value: "reject" }],
+        riskTier: data.riskTier || "medium",
+        allowAmendment: data.allowAmendment === true,
+        resolve: async (decision) => {
+          setActionApproval(null)
+          // Look up the DB row by approval_token, then PATCH /pending_approvals/:id
+          // with the user's decision. Rails publishes action_approval_response
+          // to Redis → engine's request_approval await unblocks.
+          const lookup = await fetch(`/api/action_approvals/by_token?token=${encodeURIComponent(data.approvalToken)}`, {
+            headers: { Accept: "application/json" },
+          })
+          if (!lookup.ok) return
+          const { id } = await lookup.json()
+          if (!id) return
+          await fetch(`/pending_approvals/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken },
+            body: JSON.stringify({
+              decision: decision.value,
+              decision_text: decision.text,
+              status: decision.value === "reject" || decision.value === "rejected" || decision.value === "cancel" ? "rejected" : "approved",
+            }),
+          })
+        },
+      })
+    }
+
     function connect() {
       if (!mounted) return
       if (GATEWAY_URL) {
-        // --- Local dev: direct engine WebSocket ---
         ws = new WebSocket(GATEWAY_URL)
         ws.onmessage = (event) => {
-          try { handleCommandApproval(JSON.parse(event.data)) } catch {}
+          try { handleEvent(JSON.parse(event.data)) } catch {}
         }
         ws.onclose = () => {
           if (mounted) reconnectTimer = setTimeout(connect, 5000)
         }
       } else {
-        // --- Production: ActionCable ---
         import("@rails/actioncable").then(({ createConsumer }) => {
           if (!mounted) return
           consumer = createConsumer()
           cableSub = consumer!.subscriptions.create(
             { channel: "AgentChatChannel", agent_id: agentId },
             {
-              received: handleCommandApproval,
+              received: handleEvent,
             },
           )
         }).catch(() => {})
@@ -599,9 +654,11 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
     <AssistantRuntimeProvider runtime={runtime}>
       <AgentStatusProvider value={agentStatus}>
         <CmdApprovalProvider value={cmdApproval}>
-          <div className="h-full overflow-hidden bg-background">
-            <Thread />
-          </div>
+          <ActionApprovalProvider value={actionApproval}>
+            <div className="h-full overflow-hidden bg-background">
+              <Thread />
+            </div>
+          </ActionApprovalProvider>
         </CmdApprovalProvider>
       </AgentStatusProvider>
     </AssistantRuntimeProvider>

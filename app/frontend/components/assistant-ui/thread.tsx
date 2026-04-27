@@ -53,6 +53,21 @@ type CmdApprovalData = {
 const CmdApprovalContext = createContext<CmdApprovalData>(null);
 export const CmdApprovalProvider = CmdApprovalContext.Provider;
 
+// Item 4 — generic action approval (LinkedIn post / spend / send batch / etc.)
+type ActionApprovalData = {
+  approvalToken: string
+  summary: string
+  payloadType: string
+  payload: Record<string, unknown>
+  options: Array<{ label: string; value: string }>
+  riskTier: string
+  allowAmendment: boolean
+  resolve: (decision: { value: string; text?: string }) => void
+} | null
+
+const ActionApprovalContext = createContext<ActionApprovalData>(null);
+export const ActionApprovalProvider = ActionApprovalContext.Provider;
+
 // Agent lifecycle status — set by AgentChat. The composer is disabled and
 // shows a "loading" state until the underlying agent reaches "running".
 const AgentStatusContext = createContext<string>("running");
@@ -101,6 +116,7 @@ export const Thread: FC = () => {
 
         <div className="flex-1" />
         <InlineCommandApproval />
+        <InlineActionApproval />
 
         <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
           <ThreadScrollToBottom />
@@ -171,6 +187,167 @@ const InlineCommandApproval: FC = () => {
     </div>
   );
 };
+
+const InlineActionApproval: FC = () => {
+  const approval = useContext(ActionApprovalContext);
+  const [done, setDone] = useState<string | null>(null);
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendText, setAmendText] = useState("");
+
+  if (!approval && !done) return null;
+
+  if (done) {
+    return (
+      <div className="mx-auto w-full max-w-(--thread-max-width) py-2">
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+          {done}
+        </div>
+      </div>
+    );
+  }
+  if (!approval) return null;
+
+  const handle = (value: string, text?: string, label?: string) => {
+    approval.resolve({ value, text });
+    setDone(text ? `Sent edit: ${label}` : `Sent: ${label || value}`);
+    setAmendOpen(false);
+    setAmendText("");
+    setTimeout(() => setDone(null), 3000);
+  };
+
+  const payload = approval.payload || {};
+  const cleanPayload: Record<string, unknown> = { ...payload };
+  delete cleanPayload._allow_amendment;
+  delete cleanPayload._origin;
+
+  return (
+    <div className="mx-auto w-full max-w-(--thread-max-width) pb-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+      <div className="rounded-xl border bg-card p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
+            <span className="text-xs font-medium">{approval.summary}</span>
+            <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              {approval.payloadType.replace(/_/g, " ")}
+            </span>
+          </div>
+          {approval.riskTier === "high" && (
+            <span className="rounded-sm bg-red-500/10 px-1.5 py-0.5 font-mono text-[10px] text-red-500">high risk</span>
+          )}
+        </div>
+
+        <ActionPreview payloadType={approval.payloadType} payload={cleanPayload} />
+
+        <div className="flex flex-wrap gap-2 pt-2 border-t">
+          {approval.options.map((opt) => {
+            const isReject = opt.value === "reject" || opt.value === "rejected" || opt.value === "cancel";
+            return (
+              <button
+                key={opt.value}
+                onClick={() => handle(opt.value, undefined, opt.label)}
+                className={
+                  isReject
+                    ? "px-3 py-1.5 rounded-md border border-red-300 text-red-600 dark:border-red-700 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                    : "px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors"
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+          {approval.allowAmendment && (
+            <button
+              onClick={() => setAmendOpen(!amendOpen)}
+              className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors"
+            >
+              ✎ Edit
+            </button>
+          )}
+        </div>
+
+        {amendOpen && (
+          <div className="space-y-2 pt-2 border-t">
+            <textarea
+              value={amendText}
+              onChange={(e) => setAmendText(e.target.value)}
+              placeholder="What should change? e.g. 'tighten the headline; drop paragraph 2'"
+              className="w-full min-h-[80px] rounded-md border bg-background p-2 text-xs"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setAmendOpen(false); setAmendText("") }}
+                className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!amendText.trim()}
+                onClick={() => handle("edit", amendText.trim(), amendText.trim().slice(0, 60))}
+                className="px-3 py-1.5 rounded-md bg-foreground text-background text-xs font-medium disabled:opacity-50"
+              >
+                Send edit
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+function ActionPreview({ payloadType, payload }: { payloadType: string; payload: Record<string, unknown> }) {
+  if (payloadType === "linkedin_post" || payloadType === "tweet") {
+    const text = String(payload.text || "");
+    return (
+      <div className="rounded-md border bg-muted/40 p-3 text-sm leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto">
+        {text}
+      </div>
+    );
+  }
+  if (payloadType === "email_draft") {
+    return (
+      <div className="space-y-1.5">
+        <div className="text-xs"><span className="text-muted-foreground">To: </span>{String(payload.to || "")}</div>
+        <div className="text-xs"><span className="text-muted-foreground">Subj: </span>{String(payload.subject || "")}</div>
+        <div className="text-sm whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border-t pt-2">
+          {String(payload.body || "")}
+        </div>
+      </div>
+    );
+  }
+  if (payloadType === "cold_email_bulk") {
+    const items = (payload.items as Array<Record<string, unknown>>) || [];
+    return (
+      <div className="space-y-2 max-h-72 overflow-y-auto">
+        <div className="text-xs text-muted-foreground">{items.length} email(s)</div>
+        {items.slice(0, 5).map((item, i) => (
+          <div key={i} className="rounded border bg-muted/30 p-2 text-xs">
+            <div className="flex justify-between font-medium">
+              <span>{String(item.to || "")}</span>
+              <span className="text-muted-foreground">{String(item.subject || "")}</span>
+            </div>
+            <div className="mt-1 text-muted-foreground line-clamp-2">{String(item.body || "")}</div>
+          </div>
+        ))}
+        {items.length > 5 && <div className="text-xs text-muted-foreground">+ {items.length - 5} more</div>}
+      </div>
+    );
+  }
+  if (payloadType === "spend_request") {
+    return (
+      <div className="space-y-1">
+        <div className="text-2xl font-semibold">${String(payload.amount_usd || "—")}</div>
+        <div className="text-xs text-muted-foreground">{String(payload.vendor || "")}</div>
+        {payload.purpose ? <div className="text-sm">{String(payload.purpose)}</div> : null}
+      </div>
+    );
+  }
+  return (
+    <pre className="text-xs bg-muted p-2.5 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap">
+      {JSON.stringify(payload, null, 2)}
+    </pre>
+  );
+}
 
 const ThreadScrollToBottom: FC = () => {
   return (

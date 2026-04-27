@@ -24,6 +24,9 @@ Rails.application.routes.draw do
     # User clicks Allow/Deny on a dangerous-command approval in the UI →
     # Rails relays the decision to the engine via Redis pub/sub.
     resources :command_approvals, only: [:create]
+    # Item 4 — frontend looks up an action approval by the engine-generated
+    # approval_token to PATCH /pending_approvals/:id with the user's decision.
+    get "action_approvals/by_token", to: "action_approvals#by_token"
     # cloud-init callback: engine posts when its container is up + healthy.
     post "agent_instances/ready", to: "agent_instances#ready"
   end
