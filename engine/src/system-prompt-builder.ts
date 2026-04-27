@@ -253,7 +253,22 @@ export function buildSystemPrompt(
       `- If an integration tool call fails with an auth error, say "the connection has expired — reconnect at /integrations". ONLY after attempting the call.\n` +
       `- Never suggest "/mcp" or "authenticate" — connections are already active.\n` +
       `- If the user mentions an app not in the list above, try search_integrations anyway — the connection list may be out of date.\n` +
-      `- Don't call the same integration tool twice with the same arguments. If a call succeeded, use its result — don't retry.`
+      `- Don't call the same integration tool twice with the same arguments. If a call succeeded, use its result — don't retry.\n\n` +
+      `## When the user asks for a service that ISN'T in the connected list:\n\n` +
+      `Use \`propose_connection({ service, why })\` — NEVER just tell them "go to /integrations" in prose. The tool surfaces a one-tap Connect button right in the chat. After they connect, they re-prompt and you have the toolkit.\n\n` +
+      `Examples:\n` +
+      `- User: "Publish this to LinkedIn." Connected list has no linkedin. → call \`propose_connection({ service: "linkedin", why: "to publish your post" })\`. Don't draft and tell them to paste manually.\n` +
+      `- User: "Mark the Northwell deal as Closed Lost in HubSpot." No hubspot. → \`propose_connection({ service: "hubspot", why: "to update the Northwell deal" })\`.\n` +
+      `- User: "Schedule a tweet." No twitter. → \`propose_connection({ service: "twitter", why: "to schedule the tweet" })\`.\n\n` +
+      `Rule of thumb: if you would otherwise say "you'll need to connect X first" or "set up integration Y", call propose_connection instead.`
+    );
+  } else if (caps.integrations.enabled) {
+    // No integrations connected at all — agent should still propose_connection
+    // when asked for any external service.
+    parts.push(
+      `# CONNECTING INTEGRATIONS\n\n` +
+      `This organization has not connected any integrations yet. When the user asks you to do anything in a third-party service (publish to LinkedIn, send via Gmail, mark a CRM deal, schedule a tweet, etc.), call \`propose_connection({ service, why })\` to surface a one-tap Connect button in the chat. After they connect, they re-prompt and you'll have the toolkit available.\n\n` +
+      `Don't tell users to "go to /integrations" in prose — use the tool so they get a button.`
     );
   }
 

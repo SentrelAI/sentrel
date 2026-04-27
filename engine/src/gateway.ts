@@ -611,6 +611,17 @@ export function emitActionApproval(data: {
   broadcast({ type: "action_approval", ...data, timestamp: Date.now() });
 }
 
+// Item 5 — auth-on-demand: push a Connect-<service> button into the chat
+// when an action needs an unconnected toolkit. Clicking opens the existing
+// /integrations/:service/connect Composio OAuth popup.
+export function emitConnectionProposal(data: {
+  service: string;
+  label: string;
+  why: string;
+}): void {
+  broadcast({ type: "connection_proposal", ...data, timestamp: Date.now() });
+}
+
 // Sprint 3 — media sent during the current agent run. Collected here so
 // agent-runner can persist them on the assistant message after the run.
 let pendingMedia: Array<{ url: string; filename: string; contentType: string; byteSize: number; signedId?: string }> = [];

@@ -14,6 +14,7 @@ import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
 import { buildApprovalsMcpServer } from "./tools/approvals.js";
+import { buildConnectionsMcpServer } from "./tools/connections.js";
 import { resolveActionApproval } from "./security/action-approval.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
@@ -822,6 +823,13 @@ async function buildQueryOptions(
     const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState);
     mcpServers.integrations = integrationsServer;
     baseMcpServers.integrations = integrationsServer;
+
+    // Item 5 — propose_connection. Lives next to integrations: same gating
+    // (a no-integrations agent doesn't need it), same purpose (let the agent
+    // ask the user to connect a service). Posts an inline "Connect <X>" card.
+    const connectionsServer = buildConnectionsMcpServer();
+    mcpServers.connections = connectionsServer;
+    baseMcpServers.connections = connectionsServer;
 
     // Step 2 — Context-aware tool loading (hybrid: pre-load + on-demand).
     // Layer 1 (pre-query): Audit log tool history — keep toolkits the agent
