@@ -88,12 +88,32 @@ class TasksController < ApplicationController
   # Step 5.5 — user-initiated cancel. Sets status; any in-flight agent run
   # keeps running to completion (engine-side interrupt comes in a follow-up).
   # Idempotent: cancelling an already-cancelled task is a no-op.
+  #
+  # Item 2 — propagates cancellation to descendants: any task with this one as
+  # parent_task_id (set when create_task delegates to a sub-agent) is also
+  # cancelled. One BFS pass covers any depth.
   def cancel
     @task = find_by_public_id!(current_tenant.tasks, params[:id])
     @task.update!(status: "cancelled")
+
+    # BFS through parent_task_id descendants and cancel everything not already
+    # in a terminal state.
+    frontier = [@task.id]
+    cancelled_descendants = 0
+    while frontier.any?
+      children = current_tenant.tasks
+                                .where(parent_task_id: frontier)
+                                .where.not(status: %w[done failed cancelled])
+      break if children.empty?
+      children.update_all(status: "cancelled", updated_at: Time.current, completed_at: Time.current)
+      cancelled_descendants += children.size
+      frontier = children.pluck(:id)
+    end
+    Rails.logger.info("Task #{@task.id} cancelled (#{cancelled_descendants} descendants)") if cancelled_descendants > 0
+
     respond_to do |format|
       format.json { render json: task_json(@task) }
-      format.html { redirect_to tasks_path, notice: "Task cancelled" }
+      format.html { redirect_to tasks_path, notice: "Task cancelled#{cancelled_descendants > 0 ? " (and #{cancelled_descendants} sub-task#{'s' if cancelled_descendants > 1})" : ''}" }
     end
   end
 

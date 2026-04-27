@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_24_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_27_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -402,6 +402,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_24_180000) do
     t.datetime "due_at"
     t.text "instruction"
     t.bigint "organization_id", null: false
+    t.bigint "parent_task_id"
     t.string "priority", default: "normal", null: false
     t.string "progress_summary"
     t.jsonb "result", default: {}
@@ -415,6 +416,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_24_180000) do
     t.index ["assigned_by_user_id"], name: "index_tasks_on_assigned_by_user_id"
     t.index ["conversation_id"], name: "index_tasks_on_conversation_id"
     t.index ["organization_id"], name: "index_tasks_on_organization_id"
+    t.index ["parent_task_id", "status"], name: "index_tasks_on_parent_and_status"
+    t.index ["parent_task_id"], name: "index_tasks_on_parent_task_id"
   end
 
   create_table "users", force: :cascade do |t|
@@ -467,6 +470,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_24_180000) do
   add_foreign_key "tasks", "agents", column: "assigned_by_agent_id"
   add_foreign_key "tasks", "conversations"
   add_foreign_key "tasks", "organizations"
+  add_foreign_key "tasks", "tasks", column: "parent_task_id"
   add_foreign_key "tasks", "users", column: "assigned_by_user_id"
   add_foreign_key "users", "organizations"
 end

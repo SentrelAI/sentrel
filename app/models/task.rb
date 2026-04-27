@@ -12,6 +12,11 @@ class Task < ApplicationRecord
   # Task's dedicated chat thread. Seeded by tasks_controller#create and
   # used by the engine for session resume.
   belongs_to :conversation, optional: true
+  # Cross-agent delegation hierarchy. Set when create_task / ask_agent /
+  # escalate enqueue a sub-task on another agent. Cancellation propagates down
+  # this tree (tasks_controller#cancel BFS).
+  belongs_to :parent_task, class_name: "Task", optional: true
+  has_many :child_tasks, class_name: "Task", foreign_key: :parent_task_id, dependent: :nullify
 
   validates :title, presence: true
   validates :status, presence: true, inclusion: { in: STATUSES }
