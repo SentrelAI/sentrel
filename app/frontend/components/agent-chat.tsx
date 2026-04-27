@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react"
+import { router } from "@inertiajs/react"
 import { Check, X, Loader2, Mail } from "lucide-react"
 import {
   AssistantRuntimeProvider,
@@ -560,6 +561,15 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
               status: decision.value === "reject" || decision.value === "rejected" || decision.value === "cancel" ? "rejected" : "approved",
             }),
           })
+          // After the agent resumes and writes its response, the per-message
+          // listener may have unsubscribed (5-min timeout, page focus loss,
+          // remount). Reload the conversation a few seconds later so the
+          // new assistant message renders without the user having to refresh.
+          // The exact delay matches a typical agent post-decision turn (~3s
+          // for short text, longer for additional tool calls — we land on
+          // the safer side and rely on the existing message list to show
+          // whatever was persisted by then).
+          setTimeout(() => router.reload({ only: ["initialMessages"], preserveScroll: true }), 3500)
         },
       })
     }
