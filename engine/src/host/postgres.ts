@@ -233,6 +233,48 @@ export class PostgresHost implements Host {
     return rows[0].id;
   }
 
+  // Generic action approvals (Item 4) — separate from email-only
+  // pending_approvals usage. Sets the new columns added by
+  // ExtendPendingApprovals migration.
+  async createPendingActionApproval(opts: {
+    orgId: number;
+    agentId: number;
+    summary: string;
+    payloadType: string;
+    payload: Record<string, unknown>;
+    options: Array<{ label: string; value: string }>;
+    riskTier: string;
+    approvalToken: string;
+    allowAmendment: boolean;
+    origin?: { channel: string; metadata: Record<string, unknown>; conversationId?: number | null };
+  }): Promise<{ id: number } | null> {
+    const toolName = `request_approval:${opts.payloadType}`;
+    const fullPayload = {
+      ...opts.payload,
+      _allow_amendment: opts.allowAmendment,
+      _origin: opts.origin ?? null,
+    };
+    const { rows } = await this.pool.query(
+      `INSERT INTO pending_approvals
+         (organization_id, agent_id, tool_name, tool_input, context, status,
+          summary, payload_type, options, risk_tier, approval_token,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, NOW(), NOW())
+       RETURNING id`,
+      [
+        opts.orgId, opts.agentId, toolName,
+        JSON.stringify(fullPayload),
+        opts.summary,
+        opts.summary,
+        opts.payloadType,
+        JSON.stringify(opts.options),
+        opts.riskTier,
+        opts.approvalToken,
+      ],
+    );
+    return rows[0] ? { id: rows[0].id } : null;
+  }
+
   async getLatestPendingApproval(agentId: number): Promise<PendingApproval | null> {
     const { rows } = await this.pool.query(
       `SELECT id, agent_id, tool_name, tool_input, status, context, message_id

@@ -13,6 +13,8 @@ import { buildRecallMcpServer } from "./tools/recall.js";
 import { buildSendMediaMcpServer } from "./tools/send-media.js";
 import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
+import { buildApprovalsMcpServer } from "./tools/approvals.js";
+import { resolveActionApproval } from "./security/action-approval.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
@@ -762,6 +764,17 @@ async function buildQueryOptions(
     const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id, taskOrigin, job.payload?.taskId);
     mcpServers.tasks = tasksServer;
     baseMcpServers.tasks = tasksServer;
+
+    // Item 4 — generic approval tool (request_approval). Lives next to tasks
+    // because it shares the same origin propagation: the user's channel needs
+    // to receive the approval card.
+    const approvalsServer = buildApprovalsMcpServer({
+      agentId: agent.id,
+      orgId: agent.organization_id,
+      origin: taskOrigin,
+    });
+    mcpServers.approvals = approvalsServer;
+    baseMcpServers.approvals = approvalsServer;
   }
 
   if (caps.knowledge_base.enabled) {

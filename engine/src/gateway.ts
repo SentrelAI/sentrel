@@ -382,14 +382,25 @@ function subscribeApprovalChannel(): void {
   sub.on("message", async (_ch, raw) => {
     try {
       const msg = JSON.parse(raw);
-      if (msg.type !== "command_approval_response") return;
-      const { resolveCommandApproval } = await import("./security/command-approval.js");
-      const { recordApproval } = await import("./security/approval-interceptor.js");
-      const resolved = resolveCommandApproval(msg.approvalId, msg.level);
-      if (resolved && msg.level !== "deny") {
-        await recordApproval(msg.command || "", msg.level, null as any);
+      if (msg.type === "command_approval_response") {
+        const { resolveCommandApproval } = await import("./security/command-approval.js");
+        const { recordApproval } = await import("./security/approval-interceptor.js");
+        const resolved = resolveCommandApproval(msg.approvalId, msg.level);
+        if (resolved && msg.level !== "deny") {
+          await recordApproval(msg.command || "", msg.level, null as any);
+        }
+        logger.info(`Approval sub: cmd ${msg.approvalId} → ${msg.level}`);
+        return;
       }
-      logger.info(`Approval sub: ${msg.approvalId} → ${msg.level}`);
+      if (msg.type === "action_approval_response") {
+        const { resolveActionApproval } = await import("./security/action-approval.js");
+        const resolved = resolveActionApproval(msg.approvalToken, {
+          value: msg.value,
+          text: msg.text,
+        });
+        logger.info(`Approval sub: action ${msg.approvalToken} → ${msg.value}${msg.text ? ` (amend: ${msg.text})` : ""} (resolved: ${resolved})`);
+        return;
+      }
     } catch (err) {
       logger.warn("Approval sub: bad payload", { error: (err as Error).message });
     }

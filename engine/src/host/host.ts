@@ -169,6 +169,19 @@ export interface Host {
   updateApprovalStatus(approvalId: number, status: "approved" | "rejected"): Promise<void>;
 
   // ── Audit + agent state ──
+  createPendingActionApproval(opts: {
+    orgId: number;
+    agentId: number;
+    summary: string;
+    payloadType: string;
+    payload: Record<string, unknown>;
+    options: Array<{ label: string; value: string }>;
+    riskTier: string;
+    approvalToken: string;
+    allowAmendment: boolean;
+    origin?: { channel: string; metadata: Record<string, unknown>; conversationId?: number | null };
+  }): Promise<{ id: number } | null>;
+
   saveAuditLog(
     orgId: number,
     agentId: number,
