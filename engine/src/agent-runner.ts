@@ -504,8 +504,37 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     spans.event("error", { message: (err as Error).message });
     spans.end(rootSpan, { status: "failed" });
     spans.finalize();
-    emitError(redactSecrets((err as Error).message));
-    logger.error(`Agent run failed`, { error: redactSecrets((err as Error).message) });
+    const errMsg = redactSecrets((err as Error).message);
+    logger.error(`Agent run failed`, { error: errMsg });
+
+    // 429 / rate-limit retry: the SDK gives up after a few internal retries
+    // when the provider returns 429 (OpenRouter / Anthropic / OpenAI all do
+    // this under load). Instead of failing the task, re-enqueue the same job
+    // for ~90 seconds later so the agent gets another shot once the bucket
+    // refills. Cap at 3 retries to avoid infinite loops on a hard rate cap.
+    const isRateLimit = /\b429\b|rate.?limit/i.test(errMsg);
+    const retryCount = (job as JobData & { _retryCount?: number })._retryCount ?? 0;
+    if (isRateLimit && retryCount < 3) {
+      const delaySec = 60 + retryCount * 60; // 60s, 120s, 180s
+      logger.warn(`Rate-limited (attempt ${retryCount + 1}/3); re-enqueueing job in ${delaySec}s`, { jobId });
+      const retryPayload = { ...job, _retryCount: retryCount + 1, jobId: `${jobId}-retry${retryCount + 1}` };
+      const { redis } = await import("./queue.js");
+      setTimeout(() => {
+        redis.lpush(`agent-inbox-${agent.id}`, JSON.stringify(retryPayload)).catch(() => {});
+      }, delaySec * 1000).unref();
+      // Leave task in_progress so the kanban shows the work is still
+      // happening rather than failed.
+      if (job.type === "task_assignment" && job.payload?.taskId) {
+        await host.updateTask(job.payload.taskId, { status: "in_progress" }).catch(() => {});
+      }
+      // Tell the user channel this is happening, but don't error-emit.
+      if (job.origin?.channel) {
+        await deliverToOrigin(job.origin, `⏳ Hit a ${isRateLimit ? "rate limit" : "transient error"} on this turn — retrying in ${delaySec}s.`).catch(() => {});
+      }
+      return; // skip the failed-status / error emit below
+    }
+
+    emitError(errMsg);
 
     // Mark task as failed
     if (job.type === "task_assignment" && job.payload?.taskId) {
