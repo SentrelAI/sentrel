@@ -24,9 +24,13 @@ class IntegrationsController < ApplicationController
           last_refreshed_at: cred&.last_refreshed_at,
         }
       },
+      # Self-identifying client model — we host our own metadata at
+      # /oauth/:provider/client-metadata. Always "configured" as long as the
+      # app has a base URL set (which it does, since email + invitations
+      # already need it).
       oauth_configured: {
-        "anthropic" => ENV["ANTHROPIC_OAUTH_CLIENT_ID"].present?,
-        "openai"    => ENV["OPENAI_OAUTH_CLIENT_ID"].present?,
+        "anthropic" => ENV["WEBHOOK_BASE_URL"].present?,
+        "openai"    => ENV["WEBHOOK_BASE_URL"].present?,
       },
     }
   end

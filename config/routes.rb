@@ -111,6 +111,17 @@ Rails.application.routes.draw do
            constraints: { provider: /anthropic|openai/ }
     delete "oauth/:provider/disconnect", to: "oauth#disconnect", as: :oauth_disconnect,
            constraints: { provider: /anthropic|openai/ }
+  end
+
+  # OAuth 2.0 self-identifying client metadata documents (RFC-style, public).
+  # Anthropic's claude.ai/oauth/authorize accepts any URL as client_id as long
+  # as it serves valid OAuth client metadata. Hosting our own here means we
+  # don't need a registered Anthropic client_id — we self-publish.
+  get "oauth/anthropic/client-metadata", to: "oauth#anthropic_client_metadata", as: :anthropic_client_metadata
+  get "oauth/openai/client-metadata",    to: "oauth#openai_client_metadata",    as: :openai_client_metadata
+
+  # Authenticated routes (close the block reopened above).
+  authenticate :user do
 
     resources :pending_approvals, only: [:index, :update]
     resources :audit_logs, only: [:index]

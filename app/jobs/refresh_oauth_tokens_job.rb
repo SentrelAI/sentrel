@@ -27,18 +27,19 @@ class RefreshOauthTokensJob < ApplicationJob
   def refresh_one(cred)
     return unless cred.refresh_token.present?
 
+    base = ENV.fetch("WEBHOOK_BASE_URL", "http://localhost:3000")
     tokens = case cred.provider
              when "anthropic"
                post_json("https://console.anthropic.com/v1/oauth/token", {
                  grant_type: "refresh_token",
                  refresh_token: cred.refresh_token,
-                 client_id: ENV.fetch("ANTHROPIC_OAUTH_CLIENT_ID", ""),
+                 client_id: "#{base}/oauth/anthropic/client-metadata",
                })
              when "openai"
                post_json("https://auth.openai.com/oauth/token", {
                  grant_type: "refresh_token",
                  refresh_token: cred.refresh_token,
-                 client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
+                 client_id: "#{base}/oauth/openai/client-metadata",
                })
              end
 

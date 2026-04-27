@@ -1,0 +1,152 @@
+═══════════════════════════════════════════════════════════════════════════════
+  ALCHEMY — Subscription OAuth setup commands
+  Anthropic Pro/Max + ChatGPT Plus/Pro via the existing CC + Codex client_ids.
+  Run these in order. Comments explain each step.
+═══════════════════════════════════════════════════════════════════════════════
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1) Extract Anthropic OAuth client_id from the bundled Claude Code binary
+# ──────────────────────────────────────────────────────────────────────────────
+# The Claude Agent SDK ships the same `claude` binary used by Claude Code CLI.
+# It contains the OAuth client_id Anthropic registered for Claude Code.
+
+# 1a) Find the client_id (first match is the one we want — UUID format)
+strings ~/Workspace/code/alchemy-ai/alchemy_engine/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude \
+  | grep -oE 'client_id["\x27=:]+[a-zA-Z0-9_\-]{16,}' \
+  | head -5
+
+# 1b) Confirm it's the Claude Code OAuth flow (you should see claude.ai/oauth)
+strings ~/Workspace/code/alchemy-ai/alchemy_engine/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude \
+  | grep -oE 'claude\.ai/oauth[^"\x27 ]*' \
+  | head -3
+
+# 1c) Confirm token endpoint (should be console.anthropic.com/v1/oauth/token)
+strings ~/Workspace/code/alchemy-ai/alchemy_engine/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude \
+  | grep -oE 'console\.anthropic\.com[^"\x27 ]*' \
+  | head -3
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2) Extract OpenAI / Codex OAuth client_id
+# ──────────────────────────────────────────────────────────────────────────────
+# Install Codex into a tmp dir so we don't pollute the project.
+
+npm install --prefix /tmp/codex @openai/codex
+
+# 2a) Find the app_xxx client_id
+grep -RhoE 'app_[A-Za-z0-9]{20,}' /tmp/codex/node_modules/@openai/codex/ 2>/dev/null \
+  | sort -u | head -5
+
+# Alternative if the npm package name has changed:
+ls /tmp/codex/node_modules/
+
+# 2b) Confirm OAuth endpoints (should be auth.openai.com/oauth/authorize|token)
+grep -RhoE 'auth\.openai\.com[^"\x27 ]*' /tmp/codex/node_modules/ 2>/dev/null \
+  | sort -u | head -5
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3) Set the values as Kamal secrets (run from the alchemy Rails repo)
+# ──────────────────────────────────────────────────────────────────────────────
+# Replace <ANTHROPIC_UUID> and <OPENAI_APP_ID> with the values you extracted.
+
+cd ~/Workspace/code/alchemy-ai/alchemy
+
+kamal secrets set ANTHROPIC_OAUTH_CLIENT_ID=<ANTHROPIC_UUID>
+kamal secrets set OPENAI_OAUTH_CLIENT_ID=<OPENAI_APP_ID>
+
+# Verify they're set:
+kamal secrets list | grep -E "OAUTH_CLIENT_ID"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 4) Update config/deploy.yml so Rails actually picks them up at boot
+# ──────────────────────────────────────────────────────────────────────────────
+# Add these two lines under env: > secret: in config/deploy.yml — same block
+# OPENROUTER_API_KEY is in. If you want me to do it, ask and I'll edit.
+
+#   env:
+#     secret:
+#       - ...
+#       - ANTHROPIC_OAUTH_CLIENT_ID
+#       - OPENAI_OAUTH_CLIENT_ID
+
+# Quick check that WEBHOOK_BASE_URL is correct (callback URLs are built from it):
+grep -nE "WEBHOOK_BASE_URL" config/deploy.yml
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5) Push code + deploy + run the migration
+# ──────────────────────────────────────────────────────────────────────────────
+
+# 5a) Push Rails (alchemy) — has the OAuth controller, model, migration, UI
+cd ~/Workspace/code/alchemy-ai/alchemy
+git push origin main
+
+# 5b) Push engine (alchemy_engine) — has the billing + translator proxies
+cd ~/Workspace/code/alchemy-ai/alchemy_engine
+git push origin main
+# (wait ~3 min for the GHA workflow to publish ghcr.io/parsedev/alchemy-engine:latest)
+
+# 5c) Deploy Rails
+cd ~/Workspace/code/alchemy-ai/alchemy
+kamal deploy
+
+# 5d) Run the new migrations on prod
+kamal app exec 'bin/rails db:migrate'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 6) Connect via the UI
+# ──────────────────────────────────────────────────────────────────────────────
+# Open  https://app.parsehq.com/integrations  (or your prod hostname)
+# - "NOT CONFIGURED" badges should now be replaced with Connect buttons.
+# - Click Connect → redirected to claude.ai → approve → redirected back.
+# - Card flips to green check + your account email.
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 7) Switch an agent to use the subscription
+# ──────────────────────────────────────────────────────────────────────────────
+# Open the agent page (e.g. Casper). Top-bar Brain dropdown:
+#   "Claude Sonnet 4.6 (your subscription)"  ← pick this
+# Save. Then Ops → Redeploy on that agent so the new env reaches Fly.
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 8) Verify in the engine logs
+# ──────────────────────────────────────────────────────────────────────────────
+
+flyctl logs -a alchemy-prod-agent-1 | tail -40
+
+# Look for:
+#   Anthropic billing proxy listening on http://127.0.0.1:18801 (CC 2.1.97, betas 8)
+#   Cache: read=...   ← means a real run succeeded against api.anthropic.com
+
+# If you see [proxy] #N DETECTION HIT — body Xb:
+#   Anthropic rejected our fingerprint. Update CC_VERSION constant in
+#   alchemy_engine/src/proxy/anthropic-billing-proxy.ts to a newer value
+#   (whatever `claude --version` reports on a fresh install) and re-deploy.
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Troubleshooting cheat sheet
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Token expired / 401:
+#   - RefreshOauthTokensJob runs every 30 min; check Sidekiq.
+#   - Manual refresh: open /integrations, click Disconnect, click Connect again.
+
+# Engine can't bind port 18801:
+#   - Check log for "Anthropic billing proxy already running"
+#   - Restart the Machine: flyctl machine restart -a alchemy-prod-agent-1
+
+# OAuth redirect 404 / "state mismatch":
+#   - WEBHOOK_BASE_URL doesn't match the host you opened. Confirm it equals
+#     the URL bar hostname (not a Rails internal URL).
+
+# OpenAI run hangs:
+#   - Translator proxy is non-streaming. Brain picker entries for OpenAI are
+#     marked clearly. If the SDK requests stream=true, you'll see 501 in the
+#     proxy log. Switch the agent's model_id to a Claude one as a workaround.

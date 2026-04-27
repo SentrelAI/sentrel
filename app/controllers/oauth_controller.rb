@@ -5,15 +5,48 @@ require "base64"
 require "digest"
 
 # OAuth flows for AI provider subscriptions (Anthropic Pro/Max/Team, ChatGPT
-# Plus/Pro/Business). PKCE-based — matches what Claude Code and Codex CLI use,
-# which is what Anthropic / OpenAI sanction for third-party clients.
+# Plus/Pro/Business). PKCE + OAuth 2.0 self-identifying client (the client_id
+# is the URL of a published metadata document we host).
 #
-# The shape (Anthropic specifically) is fragile — Anthropic has tightened
-# server-side validation on third-party OAuth multiple times. If billing-pool
-# weirdness shows up, the engine-side billing proxy injects the Claude Code
-# identifier header to keep usage on the right pool.
+# claude.ai/oauth/authorize accepts any URL as client_id as long as that URL
+# returns valid OAuth client metadata (RFC 7591-ish). We host our own at
+# /oauth/anthropic/client-metadata, so we don't need a registered client_id
+# from Anthropic. Same pattern for OpenAI.
+#
+# Engine-side billing proxy still injects the Claude Code identifier header so
+# the resulting OAuth token routes to the user's subscription pool.
 class OauthController < ApplicationController
-  before_action :authenticate_user!
+  # client metadata + callback are public (Anthropic's authorize redirect can't
+  # carry our session). connect/disconnect remain user-gated.
+  before_action :authenticate_user!, except: [:anthropic_client_metadata, :openai_client_metadata, :callback]
+
+  # OAuth client metadata documents. The URL of each is the client_id we use
+  # in the OAuth authorize call — the self-identifying-client pattern.
+  def anthropic_client_metadata
+    base = oauth_base_url
+    render json: {
+      client_id: "#{base}/oauth/anthropic/client-metadata",
+      client_name: "Alchemy",
+      client_uri: base,
+      redirect_uris: ["#{base}/oauth/anthropic/callback"],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    }
+  end
+
+  def openai_client_metadata
+    base = oauth_base_url
+    render json: {
+      client_id: "#{base}/oauth/openai/client-metadata",
+      client_name: "Alchemy",
+      client_uri: base,
+      redirect_uris: ["#{base}/oauth/openai/callback"],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    }
+  end
 
   # GET /oauth/:provider/connect → redirect user to provider's authorize URL.
   def connect
@@ -94,7 +127,7 @@ class OauthController < ApplicationController
     case provider
     when "anthropic"
       params = {
-        client_id: ENV.fetch("ANTHROPIC_OAUTH_CLIENT_ID", ""),
+        client_id: client_metadata_url(provider),
         response_type: "code",
         redirect_uri: callback_url(provider),
         scope: "org:create_api_key user:profile user:inference",
@@ -105,7 +138,7 @@ class OauthController < ApplicationController
       "https://claude.ai/oauth/authorize?#{params.to_query}"
     when "openai"
       params = {
-        client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
+        client_id: client_metadata_url(provider),
         response_type: "code",
         redirect_uri: callback_url(provider),
         scope: "openid profile email offline_access",
@@ -117,9 +150,16 @@ class OauthController < ApplicationController
     end
   end
 
+  def client_metadata_url(provider)
+    "#{oauth_base_url}/oauth/#{provider}/client-metadata"
+  end
+
   def callback_url(provider)
-    base = ENV.fetch("WEBHOOK_BASE_URL", "http://localhost:3000")
-    "#{base}/oauth/#{provider}/callback"
+    "#{oauth_base_url}/oauth/#{provider}/callback"
+  end
+
+  def oauth_base_url
+    ENV.fetch("WEBHOOK_BASE_URL", "http://localhost:3000")
   end
 
   def exchange_code(provider, code:, code_verifier:)
@@ -128,7 +168,7 @@ class OauthController < ApplicationController
       post_json("https://console.anthropic.com/v1/oauth/token", {
         grant_type: "authorization_code",
         code: code,
-        client_id: ENV.fetch("ANTHROPIC_OAUTH_CLIENT_ID", ""),
+        client_id: client_metadata_url("anthropic"),
         redirect_uri: callback_url("anthropic"),
         code_verifier: code_verifier,
       })
@@ -136,7 +176,7 @@ class OauthController < ApplicationController
       post_json("https://auth.openai.com/oauth/token", {
         grant_type: "authorization_code",
         code: code,
-        client_id: ENV.fetch("OPENAI_OAUTH_CLIENT_ID", ""),
+        client_id: client_metadata_url("openai"),
         redirect_uri: callback_url("openai"),
         code_verifier: code_verifier,
       })
