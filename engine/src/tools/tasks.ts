@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 import { scanForInjection } from "../security/injection-scanner.js";
+import { deliverToOrigin, type Origin } from "../channels/origin-delivery.js";
 
 // Origin context — propagated from the user's first inbound through every
 // downstream cross-agent delegation so report-backs can find their way home.
@@ -11,6 +12,13 @@ export interface TaskOriginContext {
   channel?: string;
   metadata?: Record<string, unknown>;
   conversationId?: number | null;
+}
+
+// Helper — coerce a TaskOriginContext into the canonical Origin shape used by
+// channel renderers. Returns undefined if the context lacks a channel.
+function asOrigin(ctx?: TaskOriginContext): Origin | undefined {
+  if (!ctx?.channel) return undefined;
+  return { channel: ctx.channel, metadata: ctx.metadata || {}, conversationId: ctx.conversationId ?? null };
 }
 
 export function buildTasksMcpServer(agentId: number, orgId: number, origin?: TaskOriginContext) {
@@ -235,6 +243,165 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
     },
   );
 
+  // ── Multi-agent collaboration primitives ──
+  // (1) progress_update: live status pings without ending the turn.
+  // (2) ask_agent: question another agent and wait for their reply.
+  // (3) escalate: pause a task and ping a manager with a blocker.
+
+  const progressUpdateTool = tool(
+    "progress_update",
+    "Post a progress update on a long-running task without ending your turn. Writes a comment to the task AND, if the user is watching this work on a channel (Telegram/web/etc.), sends them a quick status note. Call this every few minutes on tasks that take longer than 5 minutes — keeps the user informed without making them ask.",
+    {
+      task_id: z.number().describe("Task ID being worked on"),
+      message: z.string().describe("Short status — what you're doing now and roughly how far along you are. One or two sentences."),
+    },
+    async (args) => {
+      try {
+        await host.addTaskComment(args.task_id, agentId, `[progress] ${args.message}`);
+        const o = asOrigin(origin);
+        if (o) {
+          // Best-effort live ping; failures don't abort the agent loop.
+          await deliverToOrigin(o, `🛠️  ${args.message}`).catch((err) => {
+            logger.warn("progress_update: origin delivery failed", { error: (err as Error).message });
+          });
+        }
+        return { content: [{ type: "text", text: `Progress update posted on task ${args.task_id}.` }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Failed: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+
+  const askAgentTool = tool(
+    "ask_agent",
+    "Ask another agent in the org a clarifying question and pause until they answer. Use when you need expertise or info from a teammate (e.g. SDR asks Marketing 'should we emphasize price or specialty?'). Internally creates a sub-task assigned to them — when they finish, their answer is reported back to you and you'll be re-engaged on the parent task.",
+    {
+      target_slug: z.string().optional().describe("Teammate by slug (e.g. 'marketing-lead', 'casper'). Either slug OR role required."),
+      target_role: z.string().optional().describe("Teammate by role (e.g. 'Marketing', 'CEO'). Used if slug not given."),
+      question: z.string().describe("The question to ask. Be specific — they don't have your context."),
+      task_id: z.number().optional().describe("Parent task ID, if this question relates to one. Sets parent to awaiting_input."),
+      context: z.string().optional().describe("Optional context: what you're working on, what you've tried, what you need to decide."),
+    },
+    async (args) => {
+      try {
+        if (!args.target_slug && !args.target_role) {
+          return { content: [{ type: "text", text: "Provide target_slug or target_role." }], isError: true };
+        }
+        const target = await host.findAgentBySlugOrRole(orgId, args.target_slug ?? null, args.target_role ?? null);
+        if (!target) {
+          return { content: [{ type: "text", text: `No teammate found with slug=${args.target_slug || "-"} or role=${args.target_role || "-"}.` }], isError: true };
+        }
+        if (target.id === agentId) {
+          return { content: [{ type: "text", text: "Cannot ask yourself." }], isError: true };
+        }
+
+        const title = `Question from ${target.name === target.role ? "a teammate" : agentId}`.slice(0, 100);
+        const instruction = [
+          `Question:\n${args.question}`,
+          args.context ? `Context:\n${args.context}` : null,
+          `Reply with your answer — it will be reported back to the asker automatically.`,
+        ].filter(Boolean).join("\n\n");
+
+        const newTaskId = await host.createTask(orgId, target.id, `Q: ${args.question.slice(0, 80)}`, {
+          description: args.context,
+          instruction,
+          priority: "high",
+          assignedByAgentId: agentId,
+        });
+
+        await host.publishInboundToAgent(target.id, {
+          type: "task_assignment",
+          jobId: `agent-question-${newTaskId}`,
+          orgId,
+          origin: asOrigin(origin),
+          payload: {
+            taskId: newTaskId,
+            instruction,
+          },
+        });
+
+        if (args.task_id) {
+          await host.addTaskComment(args.task_id, agentId, `[ask] Asked ${target.name} (${target.role}): ${args.question}`);
+          await host.updateTask(args.task_id, { status: "awaiting_input" });
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `Question sent to ${target.name} (${target.role}). Their reply will re-engage you on this task. Wait — do not continue with the original work until they answer.`,
+          }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Failed: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+
+  const escalateTool = tool(
+    "escalate",
+    "Escalate a blocker to your manager (or a specified role). Use when something is preventing you from completing a task and you can't resolve it yourself: missing access, ambiguous direction, ethical concern, scope change. Pauses the task and pings the manager.",
+    {
+      task_id: z.number().describe("Task ID that's blocked"),
+      blocker: z.string().describe("What's blocking you. Be concrete — what did you try, what failed, what do you need."),
+      escalate_to_role: z.string().optional().describe("Specific role to escalate to (e.g. 'CEO'). Defaults to your manager."),
+    },
+    async (args) => {
+      try {
+        // Find the manager. If escalate_to_role is given, route there; else
+        // look up agent's manager_id from DB.
+        let target: { id: number; name: string; role: string } | null = null;
+        if (args.escalate_to_role) {
+          target = await host.findAgentBySlugOrRole(orgId, null, args.escalate_to_role);
+        } else {
+          const me = await host.getAgent(String(agentId));
+          if (me.manager_id) {
+            const allTeammates = await host.getTeammates(orgId, agentId);
+            const manager = allTeammates.find((t) => t.id === me.manager_id);
+            if (manager) target = { id: manager.id, name: manager.name, role: manager.role };
+          }
+        }
+        if (!target) {
+          return {
+            content: [{
+              type: "text",
+              text: "No manager found to escalate to. The task is now awaiting_input — the user will see the blocker on the dashboard.",
+            }],
+          };
+        }
+
+        await host.addTaskComment(args.task_id, agentId, `🚨 ESCALATION: ${args.blocker}`);
+        await host.updateTask(args.task_id, { status: "awaiting_input" });
+
+        const escalationTaskId = await host.createTask(orgId, target.id, `Escalation: blocker on task ${args.task_id}`, {
+          description: args.blocker,
+          instruction: `One of your teammates is blocked on task ${args.task_id} and needs your help.\n\nBlocker:\n${args.blocker}\n\nDecide what to do: unblock them with a directive, reassign, or cancel. Reply with what you've decided — it will be reported back automatically.`,
+          priority: "urgent",
+          assignedByAgentId: agentId,
+        });
+
+        await host.publishInboundToAgent(target.id, {
+          type: "task_assignment",
+          jobId: `escalation-${escalationTaskId}`,
+          orgId,
+          origin: asOrigin(origin),
+          payload: {
+            taskId: escalationTaskId,
+            instruction: `URGENT — escalation from a teammate.\n\nTask ${args.task_id} is blocked.\n\nBlocker:\n${args.blocker}`,
+          },
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: `Escalated to ${target.name} (${target.role}). Task ${args.task_id} is now awaiting_input. They'll get back to you.`,
+          }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Failed: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+
   return createSdkMcpServer({
     name: "tasks",
     version: "0.1.0",
@@ -246,6 +413,9 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
       writeCheckpointTool,
       askUserTool,
       cancelSelfTool,
+      progressUpdateTool,
+      askAgentTool,
+      escalateTool,
     ],
   });
 }

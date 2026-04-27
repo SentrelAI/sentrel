@@ -36,6 +36,7 @@ import {
   consumePendingMedia,
 } from "./gateway.js";
 import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
+import { deliverToOrigin } from "./channels/origin-delivery.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
 
@@ -1054,65 +1055,6 @@ async function deliverScheduledResponse(agent: Agent, job: JobData, content: str
   }
 
   logger.warn(`Scheduled delivery: unsupported channel "${channel}" — message dropped`);
-}
-
-// Auto-deliver a downstream report-back response to the user channel that
-// originated the delegation chain. Same shape as deliverScheduledResponse but
-// reads from job.origin (carried by the cross-agent task plumbing) instead of
-// job.channel/payload.metadata. Called when a report-back run finishes and no
-// native channel listener exists for the synthetic task-reportback-* jobId.
-async function deliverToOrigin(
-  origin: NonNullable<JobData["origin"]>,
-  content: string,
-): Promise<void> {
-  const meta = origin.metadata || {};
-  const channel = origin.channel;
-
-  if (channel === "telegram") {
-    const botToken = meta.bot_token as string | undefined;
-    const chatId = meta.chat_id as string | number | undefined;
-    if (!botToken || !chatId) {
-      logger.warn("Origin delivery: telegram missing bot_token or chat_id");
-      return;
-    }
-    const { sendMessage } = await import("./channels/telegram.js");
-    await sendMessage(botToken, Number(chatId), content);
-    logger.info(`Origin delivery: report-back sent to Telegram chat ${chatId} (${content.length} chars)`);
-    return;
-  }
-
-  if (channel === "whatsapp") {
-    const from = meta.from as string | undefined;
-    if (!from) {
-      logger.warn("Origin delivery: whatsapp missing `from`");
-      return;
-    }
-    const { sendMessage } = await import("./channels/whatsapp.js");
-    await sendMessage(from, content);
-    logger.info(`Origin delivery: report-back sent to WhatsApp ${from} (${content.length} chars)`);
-    return;
-  }
-
-  if (channel === "web") {
-    const convId = origin.conversationId;
-    if (!convId) {
-      logger.warn("Origin delivery: web channel missing conversationId");
-      return;
-    }
-    const msg = await host.saveMessage(
-      convId,
-      "assistant",
-      content,
-      "outbound",
-      "web",
-      [],
-      { source: "report_back" },
-    );
-    logger.info(`Origin delivery: report-back saved as message ${msg.id} on web conversation ${convId}`);
-    return;
-  }
-
-  logger.warn(`Origin delivery: unsupported channel "${channel}" — report-back dropped`);
 }
 
 // Step 6 — notify Rails to broadcast via ActionCable when a task conversation
