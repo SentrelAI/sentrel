@@ -68,6 +68,18 @@ type ActionApprovalData = {
 const ActionApprovalContext = createContext<ActionApprovalData>(null);
 export const ActionApprovalProvider = ActionApprovalContext.Provider;
 
+// Item 5 — propose_connection: agent asks the user to connect an unconnected
+// toolkit (LinkedIn, HubSpot, etc.). Inline card with a Connect button.
+type ConnectionProposalData = {
+  service: string
+  label: string
+  why: string
+  dismiss: () => void
+} | null
+
+const ConnectionProposalContext = createContext<ConnectionProposalData>(null);
+export const ConnectionProposalProvider = ConnectionProposalContext.Provider;
+
 // Agent lifecycle status — set by AgentChat. The composer is disabled and
 // shows a "loading" state until the underlying agent reaches "running".
 const AgentStatusContext = createContext<string>("running");
@@ -117,6 +129,7 @@ export const Thread: FC = () => {
         <div className="flex-1" />
         <InlineCommandApproval />
         <InlineActionApproval />
+        <InlineConnectionProposal />
 
         <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
           <ThreadScrollToBottom />
@@ -372,6 +385,66 @@ function ActionPreview({ payloadType, payload }: { payloadType: string; payload:
     </div>
   );
 }
+
+const InlineConnectionProposal: FC = () => {
+  const proposal = useContext(ConnectionProposalContext);
+  const [busy, setBusy] = useState(false);
+  if (!proposal) return null;
+
+  const onConnect = async () => {
+    setBusy(true);
+    try {
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
+      const res = await fetch(`/integrations/${proposal.service}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.redirect_url) {
+        const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100");
+        const timer = setInterval(() => {
+          if (popup?.closed) {
+            clearInterval(timer);
+            proposal.dismiss();
+            // Light page reload so the connected list updates and the agent
+            // sees the new toolkit on the next message.
+            setTimeout(() => window.location.reload(), 500);
+          }
+        }, 500);
+      } else if (data.error) {
+        alert(data.error);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-(--thread-max-width) pb-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+      <div className="rounded-xl border bg-card p-3 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium">
+          <ShieldAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
+          <span>Connect <strong>{proposal.label}</strong> {proposal.why ? `— ${proposal.why}` : ""}</span>
+        </div>
+        <div className="flex justify-end gap-2 pt-1 border-t">
+          <button
+            onClick={proposal.dismiss}
+            className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors"
+          >
+            Not now
+          </button>
+          <button
+            onClick={onConnect}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+          >
+            {busy ? "Opening…" : `Connect ${proposal.label}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 function PreviewMarkdown({ text }: { text: string }) {
   // Lazy-import react-markdown so we don't bloat the chat bundle.

@@ -11,7 +11,7 @@ import {
 } from "@assistant-ui/react"
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
-import { Thread, CmdApprovalProvider, ActionApprovalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
+import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
 
 // The engine gateway lives on Fly's private 6pn network in production, so
 // the browser can't reach it directly. Only connect when we're on localhost
@@ -215,6 +215,13 @@ type ActionApprovalState = {
   riskTier: string
   allowAmendment: boolean
   resolve: (decision: { value: string; text?: string }) => void
+} | null
+
+type ConnectionProposalState = {
+  service: string
+  label: string
+  why: string
+  dismiss: () => void
 } | null
 
 function createAgentAdapter(agentId: number): ChatModelAdapter {
@@ -480,6 +487,7 @@ interface AgentChatProps {
 
 export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [] }: AgentChatProps) {
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
+  const [connectionProposal, setConnectionProposal] = useState<ConnectionProposalState>(null)
   // Item 4 — hydrate the inline approval card from server-side state on mount
   // so a page refresh (or coming back to the tab later) still shows pending
   // approvals. Without this, the card was driven only by the live ActionCable
@@ -529,7 +537,22 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         handleCommandApproval(data)
       } else if (data.type === "action_approval") {
         handleActionApproval(data)
+      } else if (data.type === "connection_proposal") {
+        handleConnectionProposal(data)
       }
+    }
+
+    // Item 5 — agent surfaces a 'Connect <service>' card when an action
+    // requires an unconnected toolkit. Click opens the existing
+    // /integrations/:service/connect Composio OAuth popup; on close,
+    // refresh the page so the connected list updates.
+    const handleConnectionProposal = (data: any) => {
+      setConnectionProposal({
+        service: data.service,
+        label: data.label || data.service,
+        why: data.why || "",
+        dismiss: () => setConnectionProposal(null),
+      })
     }
 
     const handleCommandApproval = (data: any) => {
@@ -708,9 +731,11 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       <AgentStatusProvider value={agentStatus}>
         <CmdApprovalProvider value={cmdApproval}>
           <ActionApprovalProvider value={actionApproval}>
-            <div className="h-full overflow-hidden bg-background">
-              <Thread />
-            </div>
+            <ConnectionProposalProvider value={connectionProposal}>
+              <div className="h-full overflow-hidden bg-background">
+                <Thread />
+              </div>
+            </ConnectionProposalProvider>
           </ActionApprovalProvider>
         </CmdApprovalProvider>
       </AgentStatusProvider>
