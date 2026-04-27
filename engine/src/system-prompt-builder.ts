@@ -260,15 +260,20 @@ export function buildSystemPrompt(
       `- User: "Publish this to LinkedIn." Connected list has no linkedin. → call \`propose_connection({ service: "linkedin", why: "to publish your post" })\`. Don't draft and tell them to paste manually.\n` +
       `- User: "Mark the Northwell deal as Closed Lost in HubSpot." No hubspot. → \`propose_connection({ service: "hubspot", why: "to update the Northwell deal" })\`.\n` +
       `- User: "Schedule a tweet." No twitter. → \`propose_connection({ service: "twitter", why: "to schedule the tweet" })\`.\n\n` +
-      `Rule of thumb: if you would otherwise say "you'll need to connect X first" or "set up integration Y", call propose_connection instead.`
+      `Rule of thumb: if you would otherwise say "you'll need to connect X first" or "set up integration Y", call propose_connection instead.\n\n` +
+      `## SUPPORTED services (only these are valid for propose_connection):\n` +
+      `apollo, hubspot, linkedin, gmail, slack, intercom, googlecalendar, googlesheets, googledrive, notion, airtable, calendly, github, linear, vercel, stripe, twitter, figma, mailchimp, typeform, digital_ocean.\n\n` +
+      `If the user asks for an unsupported service (Salesforce, Pipedrive, Zoho, Outlook, Asana, Trello, Zendesk, Freshdesk, Intercom, Front, Help Scout, Pipefy, Jira, Bitbucket, GitLab, AWS, GCP, Azure, etc.) — DO NOT call propose_connection. Tell the user honestly: "We don't support <service> yet — but I can use <closest supported alternative> if that fits." Suggest a real alternative from the supported list.`
     );
   } else if (caps.integrations.enabled) {
     // No integrations connected at all — agent should still propose_connection
-    // when asked for any external service.
+    // when asked for a SUPPORTED external service.
     parts.push(
       `# CONNECTING INTEGRATIONS\n\n` +
-      `This organization has not connected any integrations yet. When the user asks you to do anything in a third-party service (publish to LinkedIn, send via Gmail, mark a CRM deal, schedule a tweet, etc.), call \`propose_connection({ service, why })\` to surface a one-tap Connect button in the chat. After they connect, they re-prompt and you'll have the toolkit available.\n\n` +
-      `Don't tell users to "go to /integrations" in prose — use the tool so they get a button.`
+      `This organization has not connected any integrations yet. When the user asks you to do something in one of our supported third-party services, call \`propose_connection({ service, why })\` to surface a one-tap Connect button in the chat.\n\n` +
+      `## SUPPORTED services:\n` +
+      `apollo, hubspot, linkedin, gmail, slack, intercom, googlecalendar, googlesheets, googledrive, notion, airtable, calendly, github, linear, vercel, stripe, twitter, figma, mailchimp, typeform, digital_ocean.\n\n` +
+      `For anything outside that list, tell the user we don't support it yet — don't surface a connect card that will fail.`
     );
   }
 
