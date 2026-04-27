@@ -46,27 +46,27 @@ function translateMessagesRequest(body: AnthropicRequest): Record<string, unknow
   const input: Array<Record<string, unknown>> = [];
 
   for (const msg of body.messages) {
-    const blocks = typeof msg.content === "string"
+    const blocks: Array<Record<string, unknown>> = typeof msg.content === "string"
       ? [{ type: "text", text: msg.content }]
-      : msg.content;
+      : (msg.content as unknown as Array<Record<string, unknown>>);
 
     for (const block of blocks) {
-      if (block.type === "text") {
-        input.push({ role: msg.role, content: [{ type: "input_text", text: block.text }] });
-      } else if (block.type === "tool_use") {
+      const t = block.type as string;
+      if (t === "text") {
+        input.push({ role: msg.role, content: [{ type: "input_text", text: block.text as string }] });
+      } else if (t === "tool_use") {
         input.push({
           type: "function_call",
-          call_id: block.id,
-          name: block.name,
-          arguments: JSON.stringify(block.input),
+          call_id: block.id as string,
+          name: block.name as string,
+          arguments: JSON.stringify(block.input ?? {}),
         });
-      } else if (block.type === "tool_result") {
-        const text = typeof block.content === "string"
-          ? block.content
-          : JSON.stringify(block.content);
+      } else if (t === "tool_result") {
+        const c = block.content;
+        const text = typeof c === "string" ? c : JSON.stringify(c);
         input.push({
           type: "function_call_output",
-          call_id: block.tool_use_id,
+          call_id: block.tool_use_id as string,
           output: text,
         });
       }
