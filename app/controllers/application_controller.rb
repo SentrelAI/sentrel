@@ -8,13 +8,14 @@ class ApplicationController < ActionController::Base
 
   before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :consume_pending_invitation, if: :user_signed_in?
+  before_action :redirect_to_onboarding, if: :user_signed_in?
 
   # Share current user and org with all Inertia pages
   inertia_share do
     {
       auth: {
         user: current_user&.as_json(only: [:id, :name, :email, :role]),
-        organization: current_tenant&.as_json(only: [:id, :name, :slug])
+        organization: current_tenant&.as_json(only: [:id, :name, :slug, :onboarding_completed_at])
       },
       flash: {
         success: flash[:notice],
@@ -63,6 +64,15 @@ class ApplicationController < ActionController::Base
     flash[:notice] = "Joined #{inv.organization.name}"
   rescue => e
     Rails.logger.warn "Invitation consume failed: #{e.message}"
+  end
+
+  def redirect_to_onboarding
+    return if devise_controller?
+    return if self.is_a?(OnboardingController)
+    return if request.path.start_with?("/onboarding", "/api", "/webhooks")
+    return if current_tenant&.onboarding_completed_at.present?
+
+    redirect_to onboarding_path
   end
 
   def configure_permitted_parameters

@@ -290,6 +290,12 @@
   }
 
   /* ── Buttons ── */
+  button,
+  a[data-slot="button"],
+  [role="button"] {
+    cursor: pointer;
+  }
+
   button[data-slot="button"] {
     font-family: var(--font-sans);
     font-weight: 500;

@@ -42,6 +42,12 @@ Rails.application.routes.draw do
 
   # Authenticated routes
   authenticate :user do
+    get "onboarding", to: "onboarding#show", as: :onboarding
+    post "onboarding/analyze", to: "onboarding#analyze", as: :onboarding_analyze
+    get "onboarding/status", to: "onboarding#status", as: :onboarding_status
+    post "onboarding/complete", to: "onboarding#complete", as: :onboarding_complete
+    post "onboarding/skip", to: "onboarding#skip", as: :onboarding_skip
+
     get "dashboard", to: "dashboard#index", as: :dashboard
 
     get "agents/tree", to: "agents#tree", as: :agents_tree

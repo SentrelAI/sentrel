@@ -323,6 +323,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_130000) do
   end
 
   create_table "organizations", force: :cascade do |t|
+    t.text "company_summary"
     t.text "composio_api_key_encrypted"
     t.text "context_md"
     t.datetime "created_at", null: false
@@ -334,8 +335,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_27_130000) do
     t.string "email_provider", default: "ses_managed"
     t.string "email_sns_topic_arn"
     t.string "name", null: false
+    t.datetime "onboarding_completed_at"
     t.string "slug", null: false
     t.datetime "updated_at", null: false
+    t.text "website_analysis_error"
+    t.string "website_url"
     t.index ["slug"], name: "index_organizations_on_slug", unique: true
   end
 
