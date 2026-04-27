@@ -1,4 +1,5 @@
 require "net/http"
+require "resolv"
 
 # Crawls a company's website via Cloudflare Browser Rendering and uses AI
 # to generate a structured company summary.
@@ -14,6 +15,9 @@ class WebsiteAnalysisJob < ApplicationJob
     return unless org&.website_url.present?
 
     org.update!(website_analysis_error: nil)
+
+    detected_provider = detect_email_provider(org.website_url)
+    org.update!(detected_email_provider: detected_provider) if detected_provider.present?
 
     pages = crawl_site(org.website_url)
 
@@ -36,6 +40,50 @@ class WebsiteAnalysisJob < ApplicationJob
   end
 
   private
+
+  # ── Email provider detection via MX records ────────────────────────────
+
+  # Maps an MX hostname suffix to the human-readable email provider name.
+  EMAIL_PROVIDER_MX_PATTERNS = {
+    "google.com" => "Google Workspace",
+    "googlemail.com" => "Google Workspace",
+    "outlook.com" => "Microsoft 365",
+    "protection.outlook.com" => "Microsoft 365",
+    "office365.com" => "Microsoft 365",
+    "zoho.com" => "Zoho Mail",
+    "zohomail.com" => "Zoho Mail",
+    "icloud.com" => "Apple iCloud",
+    "fastmail.com" => "Fastmail",
+    "messagingengine.com" => "Fastmail",
+    "protonmail.ch" => "Proton Mail",
+    "proton.me" => "Proton Mail",
+    "amazonses.com" => "Amazon SES",
+    "mailgun.org" => "Mailgun",
+    "sendgrid.net" => "SendGrid",
+    "yandex.net" => "Yandex Mail",
+    "mail.ru" => "Mail.ru",
+    "mimecast.com" => "Mimecast",
+    "pphosted.com" => "Proofpoint",
+  }.freeze
+
+  def detect_email_provider(url)
+    host = URI.parse(url).host.to_s.downcase.sub(/\Awww\./, "")
+    return nil if host.blank?
+
+    exchanges = Resolv::DNS.open(timeout: 4) do |dns|
+      dns.getresources(host, Resolv::DNS::Resource::IN::MX).map { |r| r.exchange.to_s.downcase }
+    end
+    return nil if exchanges.empty?
+
+    EMAIL_PROVIDER_MX_PATTERNS.each do |suffix, provider|
+      return provider if exchanges.any? { |ex| ex.end_with?(suffix) }
+    end
+
+    "Custom (#{exchanges.first})"
+  rescue => e
+    Rails.logger.warn("[WebsiteAnalysisJob] MX lookup failed for #{url}: #{e.message}")
+    nil
+  end
 
   # ── Crawling via Cloudflare Browser Rendering ──────────────────────────
 

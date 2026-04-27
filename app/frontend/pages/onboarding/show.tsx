@@ -2,12 +2,14 @@ import { Head, router } from "@inertiajs/react"
 import {
   AlertTriangle,
   ArrowRight,
-  Bot,
   Briefcase,
   Check,
+  Clock,
   Code,
+  Copy,
   Cpu,
   Layers,
+  Mail,
   RefreshCw,
   Search,
   Shield,
@@ -26,8 +28,10 @@ import { Input } from "@/components/ui/input"
 import {
   onboardingAnalyzePath,
   onboardingCompletePath,
+  onboardingSetupMailboxPath,
   onboardingSkipPath,
   onboardingStatusPath,
+  onboardingVerifyMailboxPath,
 } from "@/routes"
 
 interface Props {
@@ -38,11 +42,46 @@ interface Props {
     website_url: string | null
     company_summary: string | null
     onboarding_completed_at: string | null
+    detected_email_provider: string | null
+    email_domain: string | null
+    email_domain_verified: boolean
   }
   suggested_website: string | null
 }
 
-type Step = "website" | "analyzing" | "summary" | "error" | "agents"
+type Step =
+  | "website"
+  | "analyzing"
+  | "summary"
+  | "error"
+  | "mailbox_intro"
+  | "mailbox_subdomain"
+  | "mailbox_dns"
+  | "agents"
+
+interface DnsRecord {
+  type: string
+  name: string
+  value: string
+  purpose: string
+}
+
+function csrfToken(): string {
+  return (
+    document
+      .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+      ?.getAttribute("content") || ""
+  )
+}
+
+function baseDomainFromUrl(url: string | null): string {
+  if (!url) return ""
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0]
+  }
+}
 
 interface CompanySummary {
   summary: string
@@ -251,7 +290,22 @@ export default function OnboardingShow({
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [agentsVisible, setAgentsVisible] = useState(false)
+  const [detectedProvider, setDetectedProvider] = useState<string | null>(
+    organization.detected_email_provider
+  )
+  const [subdomainPrefix, setSubdomainPrefix] = useState("agents")
+  const [mailboxDomain, setMailboxDomain] = useState<string | null>(
+    organization.email_domain
+  )
+  const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([])
+  const [mailboxError, setMailboxError] = useState<string | null>(null)
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(
+    organization.email_domain_verified ? "Success" : null
+  )
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const baseDomain = baseDomainFromUrl(organization.website_url || (website ? `https://${website}` : null))
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -269,6 +323,9 @@ export default function OnboardingShow({
           headers: { Accept: "application/json" },
         })
         const data = await res.json()
+        if (data.detected_email_provider) {
+          setDetectedProvider(data.detected_email_provider)
+        }
         if (data.error) {
           stopPolling()
           setAnalysisError(data.error)
@@ -326,10 +383,75 @@ export default function OnboardingShow({
     setStep("website")
   }
 
+  function handleShowMailbox() {
+    setStep("mailbox_intro")
+  }
+
   function handleShowAgents() {
     setStep("agents")
     // Stagger agent cards in
     setTimeout(() => setAgentsVisible(true), 100)
+  }
+
+  function handleSkipMailbox() {
+    handleShowAgents()
+  }
+
+  async function handleSetupMailbox(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!subdomainPrefix.trim()) return
+    setSubmitting(true)
+    setMailboxError(null)
+    try {
+      const res = await fetch(onboardingSetupMailboxPath(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-Token": csrfToken(),
+        },
+        body: JSON.stringify({ subdomain_prefix: subdomainPrefix.trim().toLowerCase() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMailboxError(data.error || "Could not set up mailbox")
+      } else {
+        setMailboxDomain(data.domain)
+        setDnsRecords(data.records || [])
+        setVerificationStatus(null)
+        setStep("mailbox_dns")
+      }
+    } catch {
+      setMailboxError("Network error — please try again")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleVerifyMailbox() {
+    setSubmitting(true)
+    try {
+      const res = await fetch(onboardingVerifyMailboxPath(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-Token": csrfToken(),
+        },
+      })
+      const data = await res.json()
+      setVerificationStatus(data.status || (data.verified ? "Success" : "Pending"))
+    } catch {
+      setVerificationStatus("error")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function copyDnsValue(value: string, idx: number) {
+    navigator.clipboard.writeText(value)
+    setCopiedIdx(idx)
+    setTimeout(() => setCopiedIdx(null), 2000)
   }
 
   function handleComplete() {
@@ -377,47 +499,57 @@ export default function OnboardingShow({
 
             {/* Step indicators */}
             <div className="max-w-xs space-y-3 pt-4">
-              {[
-                { key: "website", label: "Company website" },
-                { key: "analyzing", label: "AI analysis" },
-                { key: "agents", label: "Meet your team" },
-              ].map((s, i) => {
-                const steps: Step[] = ["website", "analyzing", "summary", "agents"]
-                const currentIdx = steps.indexOf(step)
-                const stepIdx = i === 2 ? 3 : i // "agents" is index 3
-                const isError = step === "error" && s.key === "analyzing"
-                const isDone = !isError && (currentIdx > stepIdx || (s.key === "analyzing" && (step === "summary" || step === "agents")))
-                const isCurrent = s.key === step || (s.key === "analyzing" && (step === "summary" || step === "error"))
+              {(() => {
+                const stages: { label: string; matches: Step[] }[] = [
+                  { label: "Company website", matches: ["website"] },
+                  { label: "AI analysis", matches: ["analyzing", "summary", "error"] },
+                  { label: "Email mailbox", matches: ["mailbox_intro", "mailbox_subdomain", "mailbox_dns"] },
+                  { label: "Meet your team", matches: ["agents"] },
+                ]
+                const order: Step[] = [
+                  "website",
+                  "analyzing",
+                  "summary",
+                  "error",
+                  "mailbox_intro",
+                  "mailbox_subdomain",
+                  "mailbox_dns",
+                  "agents",
+                ]
+                const currentRank = order.indexOf(step)
+                return stages.map((s, i) => {
+                  const stageRank = Math.max(...s.matches.map((m) => order.indexOf(m)))
+                  const isCurrent = s.matches.includes(step)
+                  const isError = step === "error" && s.label === "AI analysis"
+                  const isDone = !isError && !isCurrent && currentRank > stageRank
 
-                return (
-                  <div key={s.key} className="flex items-center gap-3">
-                    <div
-                      className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-all duration-300"
-                      style={{
-                        background: isError
-                          ? "var(--destructive)"
-                          : isDone
-                          ? "var(--cyan)"
-                          : isCurrent
-                            ? "var(--color-indigo)"
-                            : "transparent",
-                        color: isError || isDone || isCurrent ? "white" : "var(--muted-foreground)",
-                        border:
-                          isDone || isCurrent
-                            ? "none"
-                            : "1.5px solid var(--border)",
-                      }}
-                    >
-                      {isError ? "!" : isDone ? <Check className="size-3.5" /> : i + 1}
+                  return (
+                    <div key={s.label} className="flex items-center gap-3">
+                      <div
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-all duration-300"
+                        style={{
+                          background: isError
+                            ? "var(--destructive)"
+                            : isDone
+                              ? "var(--cyan)"
+                              : isCurrent
+                                ? "var(--color-indigo)"
+                                : "transparent",
+                          color: isError || isDone || isCurrent ? "white" : "var(--muted-foreground)",
+                          border: isDone || isCurrent ? "none" : "1.5px solid var(--border)",
+                        }}
+                      >
+                        {isError ? "!" : isDone ? <Check className="size-3.5" /> : i + 1}
+                      </div>
+                      <span
+                        className={`text-sm transition-colors ${isCurrent ? "font-medium text-foreground" : "text-muted-foreground"}`}
+                      >
+                        {s.label}
+                      </span>
                     </div>
-                    <span
-                      className={`text-sm transition-colors ${isCurrent ? "font-medium text-foreground" : "text-muted-foreground"}`}
-                    >
-                      {s.label}
-                    </span>
-                  </div>
-                )
-              })}
+                  )
+                })
+              })()}
             </div>
           </div>
 
@@ -655,10 +787,10 @@ export default function OnboardingShow({
                   )}
 
                   <Button
-                    onClick={handleShowAgents}
+                    onClick={handleShowMailbox}
                     className="h-10 w-full gap-1.5"
                   >
-                    Generate my AI team <Bot className="size-3.5" />
+                    Continue <ArrowRight className="size-3.5" />
                   </Button>
 
                   <div className="border-t pt-4">
@@ -674,11 +806,265 @@ export default function OnboardingShow({
               )
             })()}
 
+            {/* Step: Mailbox intro — provider detection + opt-in */}
+            {step === "mailbox_intro" && (
+              <div className="animate-fade-in space-y-6">
+                <div className="space-y-2">
+                  <Overline>Step 3</Overline>
+                  <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
+                    Give your agents an email
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Your agents can send and receive email from a dedicated
+                    mailbox on a subdomain you own. Replies thread back to them
+                    automatically.
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+                      style={{
+                        background: "linear-gradient(135deg, var(--color-indigo) 0%, var(--cyan) 100%)",
+                        color: "white",
+                      }}
+                    >
+                      <Mail className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Your current email provider
+                      </p>
+                      <p className="mt-0.5 text-sm font-medium text-foreground">
+                        {detectedProvider || "We couldn't detect your provider"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {detectedProvider
+                          ? "Your existing inboxes won't change. Agent mail lives on its own subdomain so it never collides with your team's mail."
+                          : "No problem — agent mail uses a separate subdomain, so it works alongside whatever you use."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => setStep("mailbox_subdomain")}
+                    className="h-10 flex-1 gap-1.5"
+                  >
+                    Set up a mailbox <ArrowRight className="size-3.5" />
+                  </Button>
+                  <Button
+                    onClick={handleSkipMailbox}
+                    variant="outline"
+                    className="h-10 flex-1"
+                  >
+                    Skip for now
+                  </Button>
+                </div>
+
+                <div className="border-t pt-4">
+                  <button
+                    onClick={handleSkip}
+                    className="flex w-full items-center justify-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <SkipForward className="size-3.5" />
+                    Skip onboarding entirely
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: Subdomain input */}
+            {step === "mailbox_subdomain" && (
+              <div className="animate-fade-in space-y-6">
+                <div className="space-y-2">
+                  <Overline>Step 3 · Subdomain</Overline>
+                  <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
+                    Pick a subdomain
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Choose a short label — this becomes the address your agents
+                    send and receive mail from.
+                  </p>
+                </div>
+
+                <form onSubmit={handleSetupMailbox} className="space-y-4">
+                  <div className="flex h-11 items-center rounded-md border bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                    <input
+                      type="text"
+                      placeholder="agents"
+                      value={subdomainPrefix}
+                      onChange={(e) =>
+                        setSubdomainPrefix(
+                          e.target.value
+                            .toLowerCase()
+                            .replace(/[^a-z0-9-]/g, "")
+                            .slice(0, 32)
+                        )
+                      }
+                      required
+                      autoFocus
+                      className="h-full w-full bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
+                    />
+                    <span className="flex h-full shrink-0 items-center border-l bg-muted/50 px-3 text-sm text-muted-foreground">
+                      .{baseDomain || "yourdomain.com"}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Preview: <span className="font-mono text-foreground">team@{subdomainPrefix || "agents"}.{baseDomain || "yourdomain.com"}</span>
+                  </p>
+
+                  {mailboxError && (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                      {mailboxError}
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    className="h-10 w-full gap-1.5"
+                    disabled={submitting || !subdomainPrefix.trim()}
+                  >
+                    {submitting ? "Setting up..." : (
+                      <>
+                        Continue <ArrowRight className="size-3.5" />
+                      </>
+                    )}
+                  </Button>
+                </form>
+
+                <div className="border-t pt-4">
+                  <button
+                    onClick={handleSkipMailbox}
+                    className="flex w-full items-center justify-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <SkipForward className="size-3.5" />
+                    Skip — set this up later
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: DNS records + verify */}
+            {step === "mailbox_dns" && (
+              <div className="animate-fade-in space-y-5">
+                <div className="space-y-2">
+                  <Overline>Step 3 · DNS</Overline>
+                  <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
+                    Add these records
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Add the records below in your DNS provider for{" "}
+                    <span className="font-mono text-foreground">{mailboxDomain}</span>,
+                    then hit Verify.
+                  </p>
+                </div>
+
+                <div className="rounded-md border border-border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="text-left px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Type</th>
+                        <th className="text-left px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Name</th>
+                        <th className="text-left px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Value</th>
+                        <th className="w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dnsRecords.map((record, idx) => (
+                        <tr key={idx} className="border-b border-border last:border-0">
+                          <td className="px-3 py-2 align-top">
+                            <span className="inline-block rounded border px-1.5 py-0.5 font-mono text-[10px]">
+                              {record.type}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-mono break-all align-top">{record.name}</td>
+                          <td className="px-3 py-2 font-mono break-all align-top max-w-[180px]">{record.value}</td>
+                          <td className="px-2 py-2 align-top">
+                            <button
+                              onClick={() => copyDnsValue(record.value, idx)}
+                              className="rounded p-1 hover:bg-muted"
+                              type="button"
+                              aria-label="Copy value"
+                            >
+                              {copiedIdx === idx ? (
+                                <Check className="size-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="size-3 text-muted-foreground" />
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-start gap-2 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  <Clock className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    DNS changes can take up to 5 minutes to propagate. If
+                    Verify says pending, wait a moment and try again.
+                  </span>
+                </div>
+
+                {verificationStatus && (
+                  <div
+                    className={`rounded-md border p-3 text-xs ${
+                      verificationStatus === "Success"
+                        ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-600"
+                        : "border-amber-500/30 bg-amber-500/5 text-amber-600"
+                    }`}
+                  >
+                    {verificationStatus === "Success"
+                      ? `Verified! ${mailboxDomain} is ready to send and receive mail.`
+                      : `Status: ${verificationStatus}. Records aren't visible yet — give it a minute and try again.`}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleVerifyMailbox}
+                    className="h-10 flex-1 gap-1.5"
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      "Checking..."
+                    ) : (
+                      <>
+                        <RefreshCw className="size-3.5" />
+                        Verify
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleShowAgents}
+                    variant="outline"
+                    className="h-10 flex-1"
+                  >
+                    {verificationStatus === "Success" ? "Continue" : "Verify later"}
+                  </Button>
+                </div>
+
+                <div className="border-t pt-4">
+                  <button
+                    onClick={() => setStep("mailbox_subdomain")}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    ← Pick a different subdomain
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Step: Agent preview */}
             {step === "agents" && (
               <div className="animate-fade-in space-y-6">
                 <div className="space-y-2">
-                  <Overline>Step 3</Overline>
+                  <Overline>Step 4</Overline>
                   <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
                     Meet your AI team
                   </h2>

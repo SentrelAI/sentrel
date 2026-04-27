@@ -783,6 +783,16 @@ export const onboardingCompletePath: ((
 
 /**
  * Generates rails route to
+ * /onboarding/setup_mailbox(.:format)
+ * @param {object | undefined} options
+ * @returns {string} route path
+ */
+export const onboardingSetupMailboxPath: ((
+  options?: {format?: OptionalRouteParameter} & RouteOptions
+) => string) & RouteHelperExtras;
+
+/**
+ * Generates rails route to
  * /onboarding/skip(.:format)
  * @param {object | undefined} options
  * @returns {string} route path
@@ -798,6 +808,16 @@ export const onboardingSkipPath: ((
  * @returns {string} route path
  */
 export const onboardingStatusPath: ((
+  options?: {format?: OptionalRouteParameter} & RouteOptions
+) => string) & RouteHelperExtras;
+
+/**
+ * Generates rails route to
+ * /onboarding/verify_mailbox(.:format)
+ * @param {object | undefined} options
+ * @returns {string} route path
+ */
+export const onboardingVerifyMailboxPath: ((
   options?: {format?: OptionalRouteParameter} & RouteOptions
 ) => string) & RouteHelperExtras;
 

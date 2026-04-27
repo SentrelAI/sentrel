@@ -1078,6 +1078,14 @@ export const onboardingCompletePath = /*#__PURE__*/ __jsr.r({"format":{}}, [2,[7
 
 /**
  * Generates rails route to
+ * /onboarding/setup_mailbox(.:format)
+ * @param {object | undefined} options
+ * @returns {string} route path
+ */
+export const onboardingSetupMailboxPath = /*#__PURE__*/ __jsr.r({"format":{}}, [2,[7,"/"],[2,[6,"onboarding"],[2,[7,"/"],[2,[6,"setup_mailbox"],[1,[2,[8,"."],[3,"format"]]]]]]]);
+
+/**
+ * Generates rails route to
  * /onboarding/skip(.:format)
  * @param {object | undefined} options
  * @returns {string} route path
@@ -1091,6 +1099,14 @@ export const onboardingSkipPath = /*#__PURE__*/ __jsr.r({"format":{}}, [2,[7,"/"
  * @returns {string} route path
  */
 export const onboardingStatusPath = /*#__PURE__*/ __jsr.r({"format":{}}, [2,[7,"/"],[2,[6,"onboarding"],[2,[7,"/"],[2,[6,"status"],[1,[2,[8,"."],[3,"format"]]]]]]]);
+
+/**
+ * Generates rails route to
+ * /onboarding/verify_mailbox(.:format)
+ * @param {object | undefined} options
+ * @returns {string} route path
+ */
+export const onboardingVerifyMailboxPath = /*#__PURE__*/ __jsr.r({"format":{}}, [2,[7,"/"],[2,[6,"onboarding"],[2,[7,"/"],[2,[6,"verify_mailbox"],[1,[2,[8,"."],[3,"format"]]]]]]]);
 
 /**
  * Generates rails route to
