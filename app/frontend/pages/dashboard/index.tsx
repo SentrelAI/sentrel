@@ -90,34 +90,36 @@ export default function DashboardIndex({ agents, stats }: Props) {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatTile
-              label="Total agents"
-              value={stats.total_agents}
-              icon={<Bot className="size-4" />}
-            />
-            <StatTile
-              label="Running"
-              value={stats.running_agents}
-              icon={<Activity className="size-4" />}
-              accent={stats.running_agents > 0}
-            />
-            <StatTile
-              label="Approvals"
-              value={stats.pending_approvals}
-              icon={<ShieldCheck className="size-4" />}
-              delta={
-                stats.pending_approvals > 0
-                  ? { value: "awaiting you", direction: "flat" }
-                  : undefined
-              }
-            />
-            <StatTile
-              label="Active tasks"
-              value={stats.tasks_in_progress}
-              icon={<CheckSquare className="size-4" />}
-            />
-          </div>
+          {agents.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StatTile
+                label="Total agents"
+                value={stats.total_agents}
+                icon={<Bot className="size-4" />}
+              />
+              <StatTile
+                label="Running"
+                value={stats.running_agents}
+                icon={<Activity className="size-4" />}
+                accent={stats.running_agents > 0}
+              />
+              <StatTile
+                label="Approvals"
+                value={stats.pending_approvals}
+                icon={<ShieldCheck className="size-4" />}
+                delta={
+                  stats.pending_approvals > 0
+                    ? { value: "awaiting you", direction: "flat" }
+                    : undefined
+                }
+              />
+              <StatTile
+                label="Active tasks"
+                value={stats.tasks_in_progress}
+                icon={<CheckSquare className="size-4" />}
+              />
+            </div>
+          )}
         </div>
       </section>
 
