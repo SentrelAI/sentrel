@@ -5,7 +5,15 @@ import { host } from "../host/index.js";
 import { logger } from "../logger.js";
 import { scanForInjection } from "../security/injection-scanner.js";
 
-export function buildTasksMcpServer(agentId: number, orgId: number) {
+// Origin context — propagated from the user's first inbound through every
+// downstream cross-agent delegation so report-backs can find their way home.
+export interface TaskOriginContext {
+  channel?: string;
+  metadata?: Record<string, unknown>;
+  conversationId?: number | null;
+}
+
+export function buildTasksMcpServer(agentId: number, orgId: number, origin?: TaskOriginContext) {
   const createTaskTool = tool(
     "create_task",
     "Create a task. By default it's assigned to you. To delegate to another agent in the org, pass `assign_to_slug` or `assign_to_role` — they'll be notified and start immediately.",
@@ -52,16 +60,21 @@ export function buildTasksMcpServer(agentId: number, orgId: number) {
 
         // Cross-agent delegation: wake the assignee's engine immediately via
         // its inbox. Idempotency key = task-assign-<task_id> — double-calls
-        // are a BullMQ no-op.
+        // are a BullMQ no-op. Origin (the original user channel) is propagated
+        // so the report-back chain can deliver the final answer back to the
+        // user without anyone calling a send_* tool explicitly.
         if (targetAgentId !== agentId) {
           const assignerInstruction = [
             args.instruction || args.description || args.title,
-            `\n\n(This task was assigned to you by another agent — when you complete it, your response will be reported back to the assigner automatically.)`,
+            `\n\n(This task was assigned to you by another agent — when you complete it, your response will be reported back to the assigner automatically, who will then deliver it to the user on the channel they originally asked from.)`,
           ].filter(Boolean).join("\n\n");
           await host.publishInboundToAgent(targetAgentId, {
             type: "task_assignment",
             jobId: `task-assign-${id}`,
             orgId,
+            origin: origin?.channel
+              ? { channel: origin.channel, metadata: origin.metadata || {}, conversationId: origin.conversationId ?? null }
+              : undefined,
             payload: {
               taskId: id,
               instruction: assignerInstruction,

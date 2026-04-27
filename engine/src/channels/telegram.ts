@@ -521,7 +521,7 @@ async function sendTyping(botToken: string, chatId: number): Promise<void> {
   } catch {}
 }
 
-async function sendMessage(botToken: string, chatId: number, text: string): Promise<void> {
+export async function sendMessage(botToken: string, chatId: number, text: string): Promise<void> {
   try {
     // Telegram max message length is 4096
     const chunks = splitMessage(text, 4096);

@@ -550,6 +550,11 @@ export class PostgresHost implements Host {
     jobId: string;
     orgId?: number;
     conversationId?: number | null;
+    origin?: {
+      channel: string;
+      metadata: Record<string, unknown>;
+      conversationId?: number | null;
+    };
     payload: Record<string, unknown>;
   }): Promise<void> {
     const body = {
@@ -558,6 +563,7 @@ export class PostgresHost implements Host {
       agentId: String(targetAgentId),
       orgId: payload.orgId,
       conversationId: payload.conversationId,
+      origin: payload.origin,
       payload: payload.payload,
     };
     const { redis } = await import("../queue.js");

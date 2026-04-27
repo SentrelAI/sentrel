@@ -206,6 +206,14 @@ export interface Host {
     jobId: string;
     orgId?: number;
     conversationId?: number | null;
+    // Origin of the user inbound that started this delegation chain. Forwarded
+    // verbatim so a multi-hop report-back can route back to the original
+    // channel (Telegram chat, web conversation, etc.).
+    origin?: {
+      channel: string;
+      metadata: Record<string, unknown>;
+      conversationId?: number | null;
+    };
     payload: Record<string, unknown>;
   }): Promise<void>;
   listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>>;

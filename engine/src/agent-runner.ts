@@ -457,7 +457,9 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     // Cross-agent report-back: if another agent assigned this task, push a
     // follow-up into THEIR inbox summarizing the result. Assigner gets woken
-    // immediately instead of discovering completion on next poll.
+    // immediately instead of discovering completion on next poll. Origin is
+    // forwarded so when the assigner finishes processing, the engine can
+    // auto-deliver back to the user's original channel (Telegram chat, etc.).
     if (isTaskAssignment && job.payload?.taskId && finalResponse) {
       try {
         const task = await host.getTask(job.payload.taskId);
@@ -467,9 +469,10 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
             type: "task_assignment",
             jobId: `task-reportback-${task.id}`,
             orgId: agent.organization_id,
+            origin: job.origin,
             payload: {
               taskId: task.id,
-              instruction: `Task completed by ${agent.name} (${agent.role}): "${task.title}"\n\nResult:\n${summary}\n\nThis is a report-back on work you delegated. Two things to decide:\n1. Does anything else need to happen on your end? If yes, do it (or delegate it further).\n2. Did the original requester (the user on Telegram/WhatsApp/email, or your own manager) ask about this? If yes, **message them on the same channel they used** with a concise status update. Don't leave them hanging.`,
+              instruction: `Task completed by ${agent.name} (${agent.role}): "${task.title}"\n\nResult:\n${summary}\n\nThis is a report-back on work you delegated. Decide if anything else needs to happen on your end (do it or delegate further). The user who originally requested this will be notified automatically — your final response to this prompt will be delivered to them as the status update, so write it directly to the user.`,
               skipAutoComplete: true,
             },
           });
@@ -478,6 +481,18 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       } catch (err) {
         logger.warn("Cross-agent report-back failed", { error: (err as Error).message });
       }
+    }
+
+    // Origin auto-delivery: a "task-reportback-*" jobId means the engine just
+    // told this agent "your downstream report is in" — their response on this
+    // run IS the user-facing status update. Deliver it straight to the origin
+    // channel that started the delegation chain so the user hears back without
+    // anyone needing to call a send_* tool. Inbound messages keep using their
+    // existing native listener path; only synthetic report-back jobs need this.
+    if (isTaskAssignment && finalResponse && !isSilent && job.origin?.channel && job.jobId?.startsWith("task-reportback-")) {
+      await deliverToOrigin(job.origin, finalResponse).catch((err) => {
+        logger.warn("Origin auto-delivery failed", { error: (err as Error).message, channel: job.origin?.channel });
+      });
     }
 
     await syncMemoryToDb(agent.id);
@@ -734,7 +749,16 @@ async function buildQueryOptions(
   }
 
   if (caps.tasks.enabled) {
-    const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id);
+    // Compute the origin context for cross-agent delegation. If this job
+    // already carries an origin (because it's itself a delegated task), keep
+    // forwarding that origin. Otherwise this is the first hop — capture the
+    // current channel + metadata so subsequent delegations can route home.
+    const taskOrigin = job.origin
+      ? job.origin
+      : job.channel
+        ? { channel: job.channel, metadata: job.payload?.metadata || {}, conversationId: job.conversationId ?? null }
+        : undefined;
+    const tasksServer = buildTasksMcpServer(agent.id, agent.organization_id, taskOrigin);
     mcpServers.tasks = tasksServer;
     baseMcpServers.tasks = tasksServer;
   }
@@ -1030,6 +1054,65 @@ async function deliverScheduledResponse(agent: Agent, job: JobData, content: str
   }
 
   logger.warn(`Scheduled delivery: unsupported channel "${channel}" — message dropped`);
+}
+
+// Auto-deliver a downstream report-back response to the user channel that
+// originated the delegation chain. Same shape as deliverScheduledResponse but
+// reads from job.origin (carried by the cross-agent task plumbing) instead of
+// job.channel/payload.metadata. Called when a report-back run finishes and no
+// native channel listener exists for the synthetic task-reportback-* jobId.
+async function deliverToOrigin(
+  origin: NonNullable<JobData["origin"]>,
+  content: string,
+): Promise<void> {
+  const meta = origin.metadata || {};
+  const channel = origin.channel;
+
+  if (channel === "telegram") {
+    const botToken = meta.bot_token as string | undefined;
+    const chatId = meta.chat_id as string | number | undefined;
+    if (!botToken || !chatId) {
+      logger.warn("Origin delivery: telegram missing bot_token or chat_id");
+      return;
+    }
+    const { sendMessage } = await import("./channels/telegram.js");
+    await sendMessage(botToken, Number(chatId), content);
+    logger.info(`Origin delivery: report-back sent to Telegram chat ${chatId} (${content.length} chars)`);
+    return;
+  }
+
+  if (channel === "whatsapp") {
+    const from = meta.from as string | undefined;
+    if (!from) {
+      logger.warn("Origin delivery: whatsapp missing `from`");
+      return;
+    }
+    const { sendMessage } = await import("./channels/whatsapp.js");
+    await sendMessage(from, content);
+    logger.info(`Origin delivery: report-back sent to WhatsApp ${from} (${content.length} chars)`);
+    return;
+  }
+
+  if (channel === "web") {
+    const convId = origin.conversationId;
+    if (!convId) {
+      logger.warn("Origin delivery: web channel missing conversationId");
+      return;
+    }
+    const msg = await host.saveMessage(
+      convId,
+      "assistant",
+      content,
+      "outbound",
+      "web",
+      [],
+      { source: "report_back" },
+    );
+    logger.info(`Origin delivery: report-back saved as message ${msg.id} on web conversation ${convId}`);
+    return;
+  }
+
+  logger.warn(`Origin delivery: unsupported channel "${channel}" — report-back dropped`);
 }
 
 // Step 6 — notify Rails to broadcast via ActionCable when a task conversation

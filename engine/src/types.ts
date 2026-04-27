@@ -128,6 +128,17 @@ export interface JobData {
   agentId: string;
   orgId?: number;
   channel?: string;
+  // The channel + metadata of the *original* user inbound that started this
+  // delegation chain. Set by the channel poller on first inbound, propagated
+  // unchanged through every cross-agent delegation and report-back. When a
+  // report-back lands and there's no native listener for the synthetic jobId,
+  // the engine auto-delivers the agent's response to this origin so the user
+  // hears back without the agent needing to explicitly call a send_* tool.
+  origin?: {
+    channel: string;                         // "telegram" | "web" | "whatsapp" | ...
+    metadata: Record<string, unknown>;       // chat_id+bot_token, conversation_id, etc.
+    conversationId?: number | null;
+  };
   payload?: {
     from?: string;
     from_name?: string;
