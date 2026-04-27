@@ -54,7 +54,10 @@ class IntegrationsController < ApplicationController
     api_key = ENV["COMPOSIO_API_KEY"]
 
     unless api_key.present?
-      redirect_to integrations_path, alert: "Composio API key not configured"
+      respond_to do |format|
+        format.json { render json: { error: "Composio API key is not configured on the server." }, status: :unprocessable_entity }
+        format.html { redirect_to integrations_path, alert: "Composio API key not configured" }
+      end
       return
     end
 
@@ -65,7 +68,11 @@ class IntegrationsController < ApplicationController
       # Step 1: Find the auth config ID for this app
       auth_config_id = find_composio_auth_config(api_key, service)
       unless auth_config_id
-        redirect_to integrations_path, alert: "No auth config found for #{service}. Set it up in the Composio dashboard first."
+        msg = "#{service.titleize} isn't set up in the Composio dashboard yet. Add it at composio.dev → Auth configs, then try Connect again."
+        respond_to do |format|
+          format.json { render json: { error: msg }, status: :unprocessable_entity }
+          format.html { redirect_to integrations_path, alert: msg }
+        end
         return
       end
 

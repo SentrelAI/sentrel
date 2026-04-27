@@ -389,31 +389,43 @@ function ActionPreview({ payloadType, payload }: { payloadType: string; payload:
 const InlineConnectionProposal: FC = () => {
   const proposal = useContext(ConnectionProposalContext);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   if (!proposal) return null;
 
   const onConnect = async () => {
     setBusy(true);
+    setError(null);
     try {
       const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
       const res = await fetch(`/integrations/${proposal.service}/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf },
       });
-      const data = await res.json().catch(() => ({}));
+
+      // Server may have returned an HTML redirect (legacy path) — treat that
+      // as failure and surface a useful message instead of crashing on JSON
+      // parse. Successful path always returns Content-Type: application/json.
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        setError(`Couldn't reach Composio for ${proposal.label}. Check the integration is set up at composio.dev → Auth configs.`);
+        return;
+      }
+
+      const data = await res.json().catch(() => ({} as { redirect_url?: string; error?: string }));
       if (data.redirect_url) {
         const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100");
         const timer = setInterval(() => {
           if (popup?.closed) {
             clearInterval(timer);
             proposal.dismiss();
-            // Light page reload so the connected list updates and the agent
-            // sees the new toolkit on the next message.
             setTimeout(() => window.location.reload(), 500);
           }
         }, 500);
-      } else if (data.error) {
-        alert(data.error);
+      } else {
+        setError(data.error || `Composio rejected the ${proposal.label} connect request.`);
       }
+    } catch (err) {
+      setError(`Network error: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -426,6 +438,11 @@ const InlineConnectionProposal: FC = () => {
           <ShieldAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
           <span>Connect <strong>{proposal.label}</strong> {proposal.why ? `— ${proposal.why}` : ""}</span>
         </div>
+        {error && (
+          <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-2 text-xs text-red-700 dark:text-red-400">
+            {error}
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-1 border-t">
           <button
             onClick={proposal.dismiss}
