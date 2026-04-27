@@ -654,13 +654,13 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label>Model</Label>
                 <Select
                   value={data.ai_config.model_id}
                   onValueChange={(v) => setData("ai_config", { ...data.ai_config, model_id: v })}
                 >
-                  <SelectTrigger><SelectValue placeholder="Pick a model" /></SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0 [&>span]:truncate"><SelectValue placeholder="Pick a model" /></SelectTrigger>
                   <SelectContent>
                     {(MODELS_BY_PROVIDER[data.ai_config.provider] || []).map((m) => (
                       <SelectItem key={m.value} value={m.value}>
