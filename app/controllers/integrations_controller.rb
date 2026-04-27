@@ -5,10 +5,29 @@ class IntegrationsController < ApplicationController
     # Sync connection state from Composio on every page load
     sync_composio_connections if ENV["COMPOSIO_API_KEY"].present?
 
+    # Subscription OAuth credentials (Anthropic Pro/Max, ChatGPT Plus/Pro).
+    # Separate from tool integrations — these never get loaded as MCP servers.
+    ai_accounts = OauthCredential.where(organization_id: current_tenant.id, kind: "ai_provider")
+                                  .index_by(&:provider)
+
     render inertia: "integrations/index", props: {
       integrations: current_tenant.integrations.order(:service_name).as_json(
         only: [:id, :service_name, :status, :composio_connection_id, :created_at]
-      )
+      ),
+      ai_accounts: OauthCredential::PROVIDERS.map { |provider|
+        cred = ai_accounts[provider]
+        {
+          provider: provider,
+          connected: cred.present?,
+          account_email: cred&.account_email,
+          expires_at: cred&.expires_at,
+          last_refreshed_at: cred&.last_refreshed_at,
+        }
+      },
+      oauth_configured: {
+        "anthropic" => ENV["ANTHROPIC_OAUTH_CLIENT_ID"].present?,
+        "openai"    => ENV["OPENAI_OAUTH_CLIENT_ID"].present?,
+      },
     }
   end
 

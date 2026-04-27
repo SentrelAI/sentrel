@@ -1,5 +1,5 @@
 import { Head, router } from "@inertiajs/react"
-import { Plug, Trash2, Check } from "lucide-react"
+import { Plug, Trash2, Check, Sparkles, AlertTriangle } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -39,7 +39,34 @@ interface Integration {
   created_at: string
 }
 
-export default function IntegrationsIndex({ integrations }: { integrations: Integration[] }) {
+interface AiAccount {
+  provider: "anthropic" | "openai"
+  connected: boolean
+  account_email: string | null
+  expires_at: string | null
+  last_refreshed_at: string | null
+}
+
+interface Props {
+  integrations: Integration[]
+  ai_accounts: AiAccount[]
+  oauth_configured: { anthropic: boolean; openai: boolean }
+}
+
+const AI_PROVIDER_META: Record<string, { label: string; description: string; rateLimit: string }> = {
+  anthropic: {
+    label: "Anthropic Account",
+    description: "Connect your Claude Pro / Max / Team subscription. Agents use your existing quota instead of metered API.",
+    rateLimit: "~250 msgs / 5h on Pro · 5× on Max",
+  },
+  openai: {
+    label: "OpenAI Account",
+    description: "Connect your ChatGPT Plus / Pro / Business subscription. Same auth that Codex CLI uses.",
+    rateLimit: "~80 msgs / 3h on Plus",
+  },
+}
+
+export default function IntegrationsIndex({ integrations, ai_accounts = [], oauth_configured = { anthropic: false, openai: false } }: Props) {
   async function connect(serviceName: string) {
     // Get the Composio OAuth URL from Rails, then open in a popup
     const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
@@ -84,6 +111,82 @@ export default function IntegrationsIndex({ integrations }: { integrations: Inte
       />
 
       <div className="space-y-8">
+        <div>
+          <Overline className="mb-3 flex items-center gap-2">
+            <Sparkles className="size-3.5" /> AI accounts (subscription auth)
+          </Overline>
+          <p className="text-xs text-muted-foreground mb-3">
+            Run agents on your Claude Pro / ChatGPT Plus subscription instead of paying per token.
+            Subject to subscription rate limits — best for hands-on use, not autonomous fleets.
+          </p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {ai_accounts.map((acc) => {
+              const meta = AI_PROVIDER_META[acc.provider]
+              const configured = oauth_configured[acc.provider]
+              return (
+                <div
+                  key={acc.provider}
+                  className={`group relative flex items-start gap-3 rounded-lg border px-3.5 py-3 transition-all ${
+                    acc.connected
+                      ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/[0.04]"
+                      : "hover:border-[var(--border-strong)]"
+                  }`}
+                >
+                  <div
+                    className={`relative flex size-9 shrink-0 items-center justify-center rounded-md border ${
+                      acc.connected
+                        ? "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-success)]"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    <Sparkles className="size-4" />
+                    {acc.connected && (
+                      <span className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-[var(--color-success)] text-white ring-2 ring-background">
+                        <Check className="size-2.5" strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">{meta.label}</p>
+                    <p className="text-[11px] text-muted-foreground mb-1">{meta.description}</p>
+                    <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground/80">
+                      Limit: {meta.rateLimit}
+                    </p>
+                    {acc.connected && acc.account_email && (
+                      <p className="text-[11px] mt-1 font-mono text-[var(--color-success)]">
+                        {acc.account_email}
+                      </p>
+                    )}
+                  </div>
+                  {!configured ? (
+                    <Badge variant="outline" className="text-[10px] gap-1">
+                      <AlertTriangle className="size-3" /> Not configured
+                    </Badge>
+                  ) : acc.connected ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 text-xs"
+                      onClick={() => router.delete(`/oauth/${acc.provider}/disconnect`)}
+                    >
+                      Disconnect
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 text-xs"
+                      onClick={() => (window.location.href = `/oauth/${acc.provider}/connect`)}
+                    >
+                      Connect
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
         {categories.map((category) => (
           <div key={category}>
             <Overline className="mb-3">{category}</Overline>

@@ -105,10 +105,12 @@ Rails.application.routes.draw do
     # OAuth flows for AI provider subscriptions (Anthropic Pro/Max/Team,
     # ChatGPT Plus/Pro/Business). NOT loaded into agents as MCP tools —
     # these configure the engine's LLM provider auth instead.
-    get "oauth/:provider/connect",  to: "oauth#connect",  as: :oauth_connect,
-        constraints: { provider: /anthropic|openai/ }
-    get "oauth/:provider/callback", to: "oauth#callback", as: :oauth_callback,
-        constraints: { provider: /anthropic|openai/ }
+    get    "oauth/:provider/connect",    to: "oauth#connect",    as: :oauth_connect,
+           constraints: { provider: /anthropic|openai/ }
+    get    "oauth/:provider/callback",   to: "oauth#callback",   as: :oauth_callback,
+           constraints: { provider: /anthropic|openai/ }
+    delete "oauth/:provider/disconnect", to: "oauth#disconnect", as: :oauth_disconnect,
+           constraints: { provider: /anthropic|openai/ }
 
     resources :pending_approvals, only: [:index, :update]
     resources :audit_logs, only: [:index]

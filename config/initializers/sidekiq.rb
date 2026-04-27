@@ -51,6 +51,18 @@ Sidekiq.configure_server do |config|
         Sidekiq.logger.error "Archive scheduler error: #{e.message}"
       end
     end
+
+    # Refresh subscription OAuth tokens (Anthropic/OpenAI accounts) every
+    # 30 min — handles ones expiring inside the next hour. After refresh the
+    # job pushes the new env to Fly Machines so engines pick it up live.
+    Thread.new do
+      loop do
+        sleep 30 * 60
+        RefreshOauthTokensJob.perform_later
+      rescue => e
+        Sidekiq.logger.error "OAuth refresh scheduler error: #{e.message}"
+      end
+    end
   end
 end
 

@@ -65,6 +65,24 @@ class OauthController < ApplicationController
     redirect_to integrations_path, alert: "OAuth failed: #{e.message}"
   end
 
+  # DELETE /oauth/:provider/disconnect — remove the credential and roll any
+  # agents currently using it so the next run doesn't 401.
+  def disconnect
+    provider = sanitize_provider(params[:provider])
+    cred = OauthCredential.find_by(organization_id: current_user.organization_id, provider: provider, kind: "ai_provider")
+    cred&.destroy
+
+    # Reload affected agents — they'll fall back to the default provider env.
+    Agent
+      .where(organization_id: current_user.organization_id)
+      .find_each do |agent|
+        next unless agent.ai_config&.provider == "#{provider}_account"
+        AgentMachineOps.reload(agent) rescue nil
+      end
+
+    redirect_to integrations_path, notice: "Disconnected #{provider.titleize} account"
+  end
+
   private
 
   def sanitize_provider(p)
