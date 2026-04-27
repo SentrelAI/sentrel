@@ -29,6 +29,9 @@ Rails.application.routes.draw do
     get "action_approvals/by_token", to: "action_approvals#by_token"
     # cloud-init callback: engine posts when its container is up + healthy.
     post "agent_instances/ready", to: "agent_instances#ready"
+    # Engine fetches the canonical supported-integrations list from Composio
+    # at boot + every 30 min. Source of truth — no hard-coded list to drift.
+    get "integrations/supported", to: "integrations#supported"
   end
 
   # Webhook gateway (external services + dashboard chat)
