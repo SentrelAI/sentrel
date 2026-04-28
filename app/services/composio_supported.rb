@@ -136,7 +136,8 @@ class ComposioSupported
       req = Net::HTTP::Get.new(uri)
       req["x-api-key"] = api_key
       req["Content-Type"] = "application/json"
-      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 15) { |http| http.request(req) }
+      # Tight timeouts; let the cache-fallback path absorb misses.
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 6) { |http| http.request(req) }
       raise "Composio /toolkits #{res.code}" unless res.is_a?(Net::HTTPSuccess)
 
       data = JSON.parse(res.body)
@@ -161,25 +162,27 @@ class ComposioSupported
     api_key = ENV["COMPOSIO_API_KEY"]
     return [] if api_key.blank?
 
-    uri = URI("#{COMPOSIO_BASE}/api/v3/auth_configs?limit=200")
-    req = Net::HTTP::Get.new(uri)
-    req["x-api-key"] = api_key
-    req["Content-Type"] = "application/json"
-    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
-    return [] unless res.is_a?(Net::HTTPSuccess)
+    Rails.cache.fetch("composio:auth_configs", expires_in: 5.minutes) do
+      uri = URI("#{COMPOSIO_BASE}/api/v3/auth_configs?limit=200")
+      req = Net::HTTP::Get.new(uri)
+      req["x-api-key"] = api_key
+      req["Content-Type"] = "application/json"
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 6) { |http| http.request(req) }
+      next [] unless res.is_a?(Net::HTTPSuccess)
 
-    data = JSON.parse(res.body)
-    raw = data["items"] || data || []
-    seen = {}
-    Array(raw).each do |cfg|
-      slug = (cfg.dig("toolkit", "slug") || "").downcase
-      next if slug.blank?
-      seen[slug] ||= { slug: slug }
+      data = JSON.parse(res.body)
+      raw = data["items"] || data || []
+      seen = {}
+      Array(raw).each do |cfg|
+        slug = (cfg.dig("toolkit", "slug") || "").downcase
+        next if slug.blank?
+        seen[slug] ||= { slug: slug }
+      end
+      seen.values
     end
-    seen.values
   rescue => e
     Rails.logger.warn "ComposioSupported.fetch_auth_configs failed: #{e.class}: #{e.message}"
-    []
+    Rails.cache.read("composio:auth_configs") || []
   end
 
   def self.fetch_tools(toolkit_slug)
@@ -190,7 +193,7 @@ class ComposioSupported
     req = Net::HTTP::Get.new(uri)
     req["x-api-key"] = api_key
     req["Content-Type"] = "application/json"
-    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 6) { |http| http.request(req) }
     return [] unless res.is_a?(Net::HTTPSuccess)
 
     data = JSON.parse(res.body)

@@ -6,8 +6,18 @@ class IntegrationsController < ApplicationController
   AI_PROVIDERS = %w[anthropic openai].freeze
 
   def index
-    # Sync connection state from Composio on every page load
-    sync_composio_connections if ENV["COMPOSIO_API_KEY"].present?
+    # Sync connection state from Composio — but rate-limit to once every 60s
+    # per user so a slow Composio API doesn't block every page render. The
+    # local integrations table is fine to render in the gap.
+    sync_key = "composio:sync:org_#{current_tenant.id}:user_#{current_user.id}"
+    if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(sync_key).blank?
+      Rails.cache.write(sync_key, Time.current, expires_in: 60.seconds)
+      begin
+        sync_composio_connections
+      rescue => e
+        Rails.logger.warn "sync_composio_connections skipped (#{e.class}: #{e.message})"
+      end
+    end
 
     # Subscription OAuth credentials (Anthropic Pro/Max, ChatGPT Plus/Pro).
     # Wrapped in rescue: until db:migrate has created oauth_credentials on this
@@ -233,7 +243,9 @@ class IntegrationsController < ApplicationController
     req = Net::HTTP::Get.new(uri)
     req["x-api-key"] = api_key
     req["Content-Type"] = "application/json"
-    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 5, read_timeout: 10) { |http| http.request(req) }
+    # Tight timeouts — when Composio is degraded we'd rather render the page
+    # with stale data than block for 30+ seconds.
+    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 5) { |http| http.request(req) }
   end
 
   # Fetch active Composio connections and sync to our DB. Pulls both the
