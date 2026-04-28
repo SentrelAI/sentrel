@@ -9,7 +9,15 @@
 class RefreshComposioCacheJob < ApplicationJob
   queue_as :default
 
-  def perform(organization_id)
+  # Sidekiq 8's periodic jobs don't take args. Calling without an argument
+  # refreshes every org; on-demand callers (e.g. /integrations) pass an
+  # org_id to refresh just that one.
+  def perform(organization_id = nil)
+    if organization_id.nil?
+      Organization.find_each { |o| RefreshComposioCacheJob.perform_later(o.id) }
+      return
+    end
+
     org = Organization.find_by(id: organization_id)
     return unless org
 
