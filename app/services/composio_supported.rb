@@ -88,32 +88,48 @@ class ComposioSupported
   HIDDEN_SLUGS = Set.new(%w[]).freeze
 
   # ── Public API ────────────────────────────────────────────────────────────
+  #
+  # All hot-path reads come from composio_toolkit_caches (org-scoped). The
+  # cache is populated by RefreshComposioCacheJob (hourly cron + on-demand
+  # from /integrations). If the cache is empty (fresh install / job hasn't
+  # run yet) we fall back to a synchronous Composio fetch + immediate cache
+  # write so the user sees something instead of an empty page.
 
   # Full list for the integrations page.
   # Returns: [{ slug, label, category, description, logo, available }]
-  def self.list
-    toolkits = fetch_toolkits
-    available = fetch_auth_configs.map { |c| c[:slug] }.to_set
+  def self.list(organization_id)
+    rows = ComposioToolkitCache.where(organization_id: organization_id).order(:label)
+    rows = backfill_sync(organization_id) if rows.empty?
 
-    rows = toolkits.reject { |t| HIDDEN_SLUGS.include?(t[:slug]) }.map do |t|
-      {
-        slug:        t[:slug],
-        label:       prettify_label(t[:label]),
-        category:    CATEGORY_MAP[t[:slug]] || "Other",
-        description: t[:description],
-        logo:        t[:logo],
-        available:   available.include?(t[:slug]),
+    rows
+      .reject { |r| HIDDEN_SLUGS.include?(r.slug) }
+      .map { |r|
+        {
+          slug:        r.slug,
+          label:       r.label,
+          category:    r.category || "Other",
+          description: r.description,
+          logo:        r.logo,
+          available:   r.available,
+        }
       }
-    end
-
-    # Sort: connected first, then alphabetical within category. Page groups
-    # by category later so this sort is mostly cosmetic for that grouping.
-    rows.sort_by { |r| [r[:available] ? 0 : 1, r[:label].to_s.downcase] }
+      .sort_by { |r| [r[:available] ? 0 : 1, r[:label].to_s.downcase] }
   end
 
   # Slim list for the engine — only services with a working auth_config.
-  def self.list_for_engine
-    list.select { |s| s[:available] }.map { |s| s.slice(:slug, :label) }
+  def self.list_for_engine(organization_id)
+    rows = ComposioToolkitCache.where(organization_id: organization_id, available: true).order(:label)
+    rows = backfill_sync(organization_id).select(&:available) if rows.empty?
+    rows.map { |r| { slug: r.slug, label: r.label } }
+  end
+
+  # First-call backfill: populates the cache synchronously for an org with
+  # no rows yet. Returns the freshly-inserted ActiveRecord rows so callers
+  # don't need a second query.
+  def self.backfill_sync(organization_id)
+    Rails.logger.info "ComposioSupported.backfill_sync: empty cache for org=#{organization_id}, syncing now"
+    RefreshComposioCacheJob.new.perform(organization_id)
+    ComposioToolkitCache.where(organization_id: organization_id).order(:label).to_a
   end
 
   # Tools (actions) a toolkit exposes. Cached for the future privilege system

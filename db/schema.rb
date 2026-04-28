@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_28_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_28_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -197,6 +197,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_190000) do
     t.datetime "updated_at", null: false
     t.index ["agent_id", "channel_type"], name: "index_channel_configs_on_agent_id_and_channel_type", unique: true
     t.index ["agent_id"], name: "index_channel_configs_on_agent_id"
+  end
+
+  create_table "composio_toolkit_caches", force: :cascade do |t|
+    t.boolean "available", default: false, null: false
+    t.string "category"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.string "label"
+    t.string "logo"
+    t.bigint "organization_id", null: false
+    t.datetime "refreshed_at", null: false
+    t.string "slug", null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "available"], name: "index_composio_toolkit_caches_on_organization_id_and_available"
+    t.index ["organization_id", "slug"], name: "idx_composio_toolkit_caches_org_slug", unique: true
+    t.index ["organization_id"], name: "index_composio_toolkit_caches_on_organization_id"
   end
 
   create_table "conversations", force: :cascade do |t|
@@ -504,6 +520,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_28_190000) do
   add_foreign_key "audit_logs", "organizations"
   add_foreign_key "audit_logs", "tasks"
   add_foreign_key "channel_configs", "agents"
+  add_foreign_key "composio_toolkit_caches", "organizations"
   add_foreign_key "conversations", "agents"
   add_foreign_key "conversations", "organizations"
   add_foreign_key "conversations", "users"

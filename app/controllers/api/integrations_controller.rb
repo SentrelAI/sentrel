@@ -9,9 +9,13 @@ require "json"
 class Api::IntegrationsController < ActionController::API
   before_action :authenticate_engine!
 
-  # GET /api/integrations/supported
+  # GET /api/integrations/supported?organization_id=N
+  # Engine passes the agent's org_id; we read the org-scoped toolkit cache.
   def supported
-    render json: { items: ComposioSupported.list_for_engine }
+    org_id = params[:organization_id].to_i
+    return render(json: { items: [] }) if org_id <= 0
+
+    render json: { items: ComposioSupported.list_for_engine(org_id) }
   rescue => e
     Rails.logger.warn "GET /api/integrations/supported failed: #{e.class}: #{e.message}"
     render json: { items: [], error: e.message }, status: :ok # don't break engine boot

@@ -5,10 +5,17 @@ class IntegrationsController < ApplicationController
   # constant fails to autoload (encryption-keys not configured yet, etc.).
   AI_PROVIDERS = %w[anthropic openai].freeze
 
-  def index
-    # Sync connection state from Composio — but rate-limit to once every 60s
-    # per user so a slow Composio API doesn't block every page render. The
-    # local integrations table is fine to render in the gap.
+    # Background-refresh the toolkit cache for this org — debounced to once
+    # per 5 min. Runs as a Sidekiq job so the page render doesn't wait.
+    cache_key = "composio:refresh_enq:org_#{current_tenant.id}"
+    if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(cache_key).blank?
+      Rails.cache.write(cache_key, Time.current, expires_in: 5.minutes)
+      RefreshComposioCacheJob.perform_later(current_tenant.id)
+    end
+
+    # Connection state sync (which auth tokens are active) is still per-user
+    # because it touches Composio's connected_accounts endpoint. Debounced
+    # to once per 60s per (org, user).
     sync_key = "composio:sync:org_#{current_tenant.id}:user_#{current_user.id}"
     if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(sync_key).blank?
       Rails.cache.write(sync_key, Time.current, expires_in: 60.seconds)
@@ -48,9 +55,10 @@ class IntegrationsController < ApplicationController
       ).map { |i|
         i.merge("is_mine" => i["scope"] == "user" && i["owner_user_id"] == current_user.id)
       },
-      # Single source of truth — fetched from Composio + curated catalog.
-      # Each row: { slug, label, category, description, available, logo }.
-      supported_services: ComposioSupported.list,
+      # Single source of truth — durable per-org cache populated by
+      # RefreshComposioCacheJob (hourly + on-demand). Read straight from
+      # Postgres on the hot path; no Composio HTTP call here.
+      supported_services: ComposioSupported.list(current_tenant.id),
       ai_accounts: AI_PROVIDERS.map { |provider|
         cred = ai_accounts_by_provider[provider]
         {

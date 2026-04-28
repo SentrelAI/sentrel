@@ -9,12 +9,9 @@ class Agents::ToolPoliciesController < ApplicationController
   def index
     policies = @agent.agent_tool_policies.includes(:agent).index_by(&:toolkit_slug)
 
-    # Source of truth = Composio's auth_configs (proxied through
-    # ComposioSupported). Same data the engine uses, so the UI can't drift.
-    # Avoids the "no connected integrations" trap when the local
-    # integrations table hasn't been hydrated yet (sync only runs on the
-    # /integrations page render).
-    available = ComposioSupported.list_for_engine
+    # Source of truth = composio_toolkit_caches (durable per-org cache,
+    # populated by RefreshComposioCacheJob). Same data the engine uses.
+    available = ComposioSupported.list_for_engine(@agent.organization_id)
 
     render json: {
       policies: available.map { |svc|

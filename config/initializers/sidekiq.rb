@@ -63,6 +63,18 @@ Sidekiq.configure_server do |config|
         Sidekiq.logger.error "OAuth refresh scheduler error: #{e.message}"
       end
     end
+
+    # Refresh composio_toolkit_caches once per hour for every org so the
+    # /integrations + tool-policies pages render straight from Postgres,
+    # never blocking on Composio's API.
+    Thread.new do
+      loop do
+        sleep 60 * 60
+        Organization.find_each { |o| RefreshComposioCacheJob.perform_later(o.id) }
+      rescue => e
+        Sidekiq.logger.error "Composio cache scheduler error: #{e.message}"
+      end
+    end
   end
 end
 
