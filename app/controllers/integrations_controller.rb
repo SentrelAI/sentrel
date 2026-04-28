@@ -5,6 +5,7 @@ class IntegrationsController < ApplicationController
   # constant fails to autoload (encryption-keys not configured yet, etc.).
   AI_PROVIDERS = %w[anthropic openai].freeze
 
+  def index
     # Background-refresh the toolkit cache for this org — debounced to once
     # per 5 min. Runs as a Sidekiq job so the page render doesn't wait.
     cache_key = "composio:refresh_enq:org_#{current_tenant.id}"
