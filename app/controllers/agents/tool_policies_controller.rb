@@ -19,8 +19,18 @@ class Agents::ToolPoliciesController < ApplicationController
       .uniq
 
     # Look up labels from the toolkit cache when available; fall back to a
-    # title-cased slug when the cache is cold.
-    labels = ComposioToolkitCache.where(organization_id: @agent.organization_id, slug: visible).pluck(:slug, :label).to_h
+    # title-cased slug when the cache is cold OR the table doesn't exist
+    # (db:migrate hasn't run yet on this environment).
+    labels = begin
+      if ActiveRecord::Base.connection.table_exists?("composio_toolkit_caches")
+        ComposioToolkitCache.where(organization_id: @agent.organization_id, slug: visible).pluck(:slug, :label).to_h
+      else
+        {}
+      end
+    rescue StandardError => e
+      Rails.logger.warn "ToolPolicies labels lookup skipped: #{e.class}: #{e.message}"
+      {}
+    end
 
     render json: {
       policies: visible.map { |slug|
