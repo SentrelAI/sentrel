@@ -327,6 +327,27 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       if (isTaskAssignment && job.payload?.taskId && savedMessageId) {
         notifyTaskEvent(job.payload.taskId, savedMessageId).catch(() => {});
       }
+
+      // Engine inserts via raw SQL, so Message.after_create_commit doesn't
+      // fire and the browser would only learn about this row via the `done`
+      // event — which gets dropped when no listener is registered (cable
+      // dropped, tab closed, engine restart). Always emit a `message` event
+      // so AgentChatChannel pushes the row to anyone subscribed, regardless
+      // of jobId-listener state.
+      try {
+        const { broadcast } = await import("./gateway.js");
+        broadcast({
+          type: "message",
+          id: savedMessageId,
+          role: "assistant",
+          content: result.responseContent,
+          created_at: new Date().toISOString(),
+          metadata: { conversation_id: conversationId },
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        logger.warn("Failed to broadcast message event", { error: (err as Error).message });
+      }
     }
 
     // Process any emails the agent drafted (outbox files + intercepted Write calls)
