@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
+import { ChevronRight, Check } from "lucide-react"
 import { Overline } from "@/components/brand"
+import { cn } from "@/lib/utils"
 
 interface Policy {
   toolkit_slug: string
@@ -16,17 +18,20 @@ interface Tool {
   description?: string | null
 }
 
-const PRESETS: Array<{ value: string; label: string; hint: string }> = [
-  { value: "read_only",  label: "Read-only",  hint: "GET / LIST / FETCH only — no writes" },
-  { value: "read_write", label: "Read + write", hint: "Read + create / update / send (default)" },
-  { value: "full",       label: "Full",        hint: "All tools, including delete + admin" },
-  { value: "custom",     label: "Custom",      hint: "Pick individual tools below" },
+const PRESETS: Array<{ value: string; label: string; description: string }> = [
+  { value: "read_only",  label: "View only",   description: "Search, list, and fetch — no changes" },
+  { value: "read_write", label: "Read + write", description: "View, create, update, and send" },
+  { value: "full",       label: "Full access",  description: "Everything, including delete and admin" },
+  { value: "custom",     label: "Custom",       description: "Pick exactly which tools to allow" },
 ]
 
-// Per-toolkit ACL matrix. Lists every connected toolkit with a preset
-// dropdown; if 'custom' is picked, shows individual tool checkboxes (lazy-
-// fetched from /tool_policies/tools/:slug). Save batches all changes in
-// one PATCH.
+function presetMeta(value: string) {
+  return PRESETS.find((p) => p.value === value) || PRESETS[1]
+}
+
+// Per-toolkit ACL editor. Each toolkit is a collapsible row; expanding
+// reveals the preset picker and (when 'custom') the per-tool checklist.
+// Save batches all changes in one PATCH.
 export function ToolPoliciesSection({ agentId }: { agentId: number }) {
   const [policies, setPolicies] = useState<Policy[] | null>(null)
   const [openSlug, setOpenSlug] = useState<string | null>(null)
@@ -53,6 +58,12 @@ export function ToolPoliciesSection({ agentId }: { agentId: number }) {
     setTools((prev) => ({ ...prev, [slug]: data.items || [] }))
   }
 
+  function toggleOpen(slug: string) {
+    const next = openSlug === slug ? null : slug
+    setOpenSlug(next)
+    if (next) loadTools(slug)
+  }
+
   function setPreset(slug: string, preset: string) {
     setPolicies((prev) =>
       (prev || []).map((p) => (p.toolkit_slug === slug ? { ...p, preset } : p)),
@@ -64,19 +75,10 @@ export function ToolPoliciesSection({ agentId }: { agentId: number }) {
       (prev || []).map((p) => {
         if (p.toolkit_slug !== slug) return p
         const set = new Set(p.allowed_tools)
-        set.has(toolName) ? set.delete(toolName) : set.add(toolName)
-        return { ...p, allowed_tools: Array.from(set) }
-      }),
-    )
-  }
-
-  function toggleDenied(slug: string, toolName: string) {
-    setPolicies((prev) =>
-      (prev || []).map((p) => {
-        if (p.toolkit_slug !== slug) return p
-        const set = new Set(p.denied_tools)
-        set.has(toolName) ? set.delete(toolName) : set.add(toolName)
-        return { ...p, denied_tools: Array.from(set) }
+        if (set.has(toolName)) set.delete(toolName)
+        else set.add(toolName)
+        // Toggling individual tools implies custom mode
+        return { ...p, allowed_tools: Array.from(set), preset: "custom" }
       }),
     )
   }
@@ -113,77 +115,131 @@ export function ToolPoliciesSection({ agentId }: { agentId: number }) {
   return (
     <div className="mt-6">
       <div className="mb-3 flex items-center justify-between">
-        <Overline>Per-tool permissions</Overline>
+        <div>
+          <Overline>Per-tool permissions</Overline>
+          <p className="text-xs text-muted-foreground mt-1">
+            Click a service to change what this agent is allowed to do with it.
+          </p>
+        </div>
         <button
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-md bg-foreground px-3 py-1 text-xs font-medium text-background disabled:opacity-50"
+          className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
         >
-          {saving ? "Saving…" : saved ? "Saved" : "Save permissions"}
+          {saving ? "Saving…" : saved ? "Saved" : "Save changes"}
         </button>
       </div>
-      <div className="rounded-lg border border-border divide-y divide-border">
-        {policies.map((p) => (
-          <div key={p.toolkit_slug} className="p-3">
-            <div className="flex items-center justify-between">
-              <div className="font-medium text-sm">{p.label || p.toolkit_slug}</div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={p.preset}
-                  onChange={(e) => setPreset(p.toolkit_slug, e.target.value)}
-                  className="h-7 rounded-md border bg-card px-2 text-xs"
-                >
-                  {PRESETS.map((pp) => (
-                    <option key={pp.value} value={pp.value}>{pp.label}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = openSlug === p.toolkit_slug ? null : p.toolkit_slug
-                    setOpenSlug(next)
-                    if (next) loadTools(p.toolkit_slug)
-                  }}
-                  className="text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  {openSlug === p.toolkit_slug ? "Hide tools" : "Tools…"}
-                </button>
-              </div>
-            </div>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
-              {PRESETS.find((pp) => pp.value === p.preset)?.hint}
-            </p>
 
-            {openSlug === p.toolkit_slug && (
-              <div className="mt-3 max-h-64 overflow-y-auto space-y-1 text-xs">
-                {(tools[p.toolkit_slug] || []).map((t) => {
-                  const isAllowed = p.allowed_tools.includes(t.slug)
-                  const isDenied = p.denied_tools.includes(t.slug)
-                  return (
-                    <div key={t.slug} className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-mono text-[10px] truncate">{t.slug}</div>
-                        {t.description && <div className="text-[10px] text-muted-foreground truncate">{t.description}</div>}
+      <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+        {policies.map((p) => {
+          const isOpen = openSlug === p.toolkit_slug
+          const meta = presetMeta(p.preset)
+          const customCount = p.preset === "custom" ? p.allowed_tools.length : null
+          return (
+            <div key={p.toolkit_slug}>
+              <button
+                type="button"
+                onClick={() => toggleOpen(p.toolkit_slug)}
+                className="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/40 transition"
+              >
+                <ChevronRight
+                  className={cn(
+                    "h-4 w-4 text-muted-foreground transition-transform shrink-0",
+                    isOpen && "rotate-90",
+                  )}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm">{p.label || p.toolkit_slug}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {customCount !== null
+                      ? `Custom · ${customCount} tool${customCount === 1 ? "" : "s"} allowed`
+                      : meta.description}
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium">
+                  {meta.label}
+                </span>
+              </button>
+
+              {isOpen && (
+                <div className="border-t border-border bg-muted/20 px-4 py-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {PRESETS.map((preset) => {
+                      const active = p.preset === preset.value
+                      return (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => setPreset(p.toolkit_slug, preset.value)}
+                          className={cn(
+                            "rounded-md border p-3 text-left transition",
+                            active
+                              ? "border-foreground bg-card shadow-sm"
+                              : "border-border bg-card/50 hover:bg-card",
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium">{preset.label}</span>
+                            {active && <Check className="h-3.5 w-3.5" />}
+                          </div>
+                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            {preset.description}
+                          </p>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {p.preset === "custom" && (
+                    <div>
+                      <div className="text-[11px] font-medium text-muted-foreground mb-2">
+                        Choose which tools this agent can call
                       </div>
-                      <label className="flex items-center gap-1 text-[10px]">
-                        <input type="checkbox" checked={isAllowed} onChange={() => toggleAllowed(p.toolkit_slug, t.slug)} />
-                        allow
-                      </label>
-                      <label className="flex items-center gap-1 text-[10px] text-red-500">
-                        <input type="checkbox" checked={isDenied} onChange={() => toggleDenied(p.toolkit_slug, t.slug)} />
-                        deny
-                      </label>
+                      <div className="max-h-72 overflow-y-auto space-y-1 rounded-md border border-border bg-card p-2">
+                        {(tools[p.toolkit_slug] || []).map((t) => {
+                          const isAllowed = p.allowed_tools.includes(t.slug)
+                          return (
+                            <label
+                              key={t.slug}
+                              className={cn(
+                                "flex items-start gap-2 rounded p-2 cursor-pointer hover:bg-muted/50",
+                                isAllowed && "bg-muted/30",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isAllowed}
+                                onChange={() => toggleAllowed(p.toolkit_slug, t.slug)}
+                                className="mt-0.5"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-medium truncate">{t.name || t.slug}</div>
+                                {t.description && (
+                                  <div className="text-[11px] text-muted-foreground line-clamp-2">
+                                    {t.description}
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                          )
+                        })}
+                        {(tools[p.toolkit_slug]?.length === 0) && (
+                          <p className="text-[11px] text-muted-foreground p-2">
+                            No individual tools available for this service.
+                          </p>
+                        )}
+                        {!tools[p.toolkit_slug] && (
+                          <p className="text-[11px] text-muted-foreground p-2">Loading tools…</p>
+                        )}
+                      </div>
                     </div>
-                  )
-                })}
-                {(tools[p.toolkit_slug]?.length === 0) && (
-                  <p className="text-[10px] text-muted-foreground">No tools fetched yet.</p>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
