@@ -487,13 +487,27 @@ interface AgentChatProps {
 
 export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [] }: AgentChatProps) {
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
-  const [connectionProposal, setConnectionProposal] = useState<ConnectionProposalState>(null)
-  // Item 4 — hydrate the inline approval card from server-side state on mount
-  // so a page refresh (or coming back to the tab later) still shows pending
-  // approvals. Without this, the card was driven only by the live ActionCable
-  // event and disappeared on reload.
-  const [actionApproval, setActionApproval] = useState<ActionApprovalState>(() => {
-    const seed = pendingActionApprovals[0]
+
+  // Hydrate inline cards from server state on mount so a page refresh still
+  // shows pending approvals + connection proposals. The first pending row of
+  // each kind seeds its respective context. Source of truth = pending_approvals
+  // table; this just rebuilds the in-memory promise plumbing the live events
+  // would otherwise install.
+  const seedConnection: ConnectionProposalState = (() => {
+    const seed = pendingActionApprovals.find((p) => p.payload_type === "connection_proposal")
+    if (!seed) return null
+    const payload = (seed.payload || {}) as Record<string, unknown>
+    return {
+      service: String(payload.service || ""),
+      label: String(payload.label || seed.payload_type),
+      why: String(payload.why || ""),
+      dismiss: () => setConnectionProposal(null),
+    }
+  })()
+  const [connectionProposal, setConnectionProposal] = useState<ConnectionProposalState>(seedConnection)
+
+  const seedActionApproval: ActionApprovalState = (() => {
+    const seed = pendingActionApprovals.find((p) => p.payload_type !== "connection_proposal")
     if (!seed) return null
     return {
       approvalToken: seed.approval_token,
@@ -518,7 +532,8 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
       },
     }
-  })
+  })()
+  const [actionApproval, setActionApproval] = useState<ActionApprovalState>(seedActionApproval)
   const adapter = useRef(createAgentAdapter(agentId)).current
 
   // Persistent listener — stays open while on the chat page, receives
