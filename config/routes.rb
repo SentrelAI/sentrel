@@ -83,6 +83,13 @@ Rails.application.routes.draw do
       get  "ops/logs",        to: "agents/ops#logs",        as: :agent_ops_logs
       # Quick model switch from the agent page top bar (AgentModelPicker).
       resource :ai_config, only: [:update], module: :agents, controller: :ai_configs
+      # Per-agent ACL on third-party tool calls. The Permissions tab on the
+      # agent edit page reads + writes these.
+      resources :tool_policies, only: [:index, :update], module: :agents do
+        collection do
+          get "tools/:toolkit_slug", action: :tools, as: :tools
+        end
+      end
     end
 
     resources :tasks do

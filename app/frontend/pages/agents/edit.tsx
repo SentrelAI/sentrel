@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { agentPath, agentsPath, dashboardPath } from "@/routes"
+import { ToolPoliciesSection } from "@/components/tool-policies-section"
 import type { Agent } from "@/types"
 
 const CAPABILITIES: Array<{ key: string; label: string; description: string }> = [
@@ -264,7 +265,7 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
         {/* Permissions */}
         <section>
           <Overline className="mb-3">Permissions</Overline>
-          <div className="rounded-lg border border-border p-4">
+          <div className="rounded-lg border border-border p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <Label>Send Email</Label>
@@ -285,6 +286,8 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
               </Select>
             </div>
           </div>
+
+          <ToolPoliciesSection agentId={agent.id} />
         </section>
 
         <div className="flex justify-end gap-2 pb-8">
