@@ -7,8 +7,8 @@
         "@anthropic-ai/claude-agent-sdk": "0.2.118",
         "@anthropic-ai/claude-agent-sdk-linux-arm64": "0.2.118",
         "@anthropic-ai/claude-agent-sdk-linux-x64": "0.2.118",
-        "@composio/claude-agent-sdk": "^0.6.10",
-        "@composio/core": "^0.6.10",
+        "@composio/claude-agent-sdk": "^0.8.0",
+        "@composio/core": "^0.8.0",
         "@huggingface/transformers": "^4.1.0",
         "@libsql/client": "^0.17.2",
         "@logtail/node": "^0.5.8",
@@ -58,11 +58,11 @@
 
     "@colors/colors": ["@colors/colors@1.6.0", "", {}, "sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA=="],
 
-    "@composio/claude-agent-sdk": ["@composio/claude-agent-sdk@0.6.10", "", { "dependencies": { "zod": "^3.25.76" }, "peerDependencies": { "@anthropic-ai/claude-agent-sdk": ">=0.1.0", "@composio/core": "0.6.10" } }, "sha512-oLv6ZhSZgqgm2WMEkYBbag69iHsgHDyhdlP8P56tvbFxuj83g/iRxHbn7Xf5GBbhiutRROLI6q8MVycjU5S1TQ=="],
+    "@composio/claude-agent-sdk": ["@composio/claude-agent-sdk@0.8.0", "", { "dependencies": { "zod": "^3.25.76" }, "peerDependencies": { "@anthropic-ai/claude-agent-sdk": ">=0.1.0", "@composio/core": "0.8.0" } }, "sha512-rw/pShnFM9dY4fgO+ItUeygfGcUdhQokELmI41IEpfbgzajeCvCZy5CDHg88m28qZKP+b7COiXA3xzpp8RunZQ=="],
 
     "@composio/client": ["@composio/client@0.1.0-alpha.66", "", {}, "sha512-SDHcTWzz2dgdYAew/gQsRpjHpEzHKm6sW7KM4wCoJWNJuuMuey9Ahje91ZucNjfaqpI8CFW+pXY4nWkZf5LD7Q=="],
 
-    "@composio/core": ["@composio/core@0.6.10", "", { "dependencies": { "@composio/client": "0.1.0-alpha.66", "@composio/json-schema-to-zod": "0.1.20", "@types/json-schema": "^7.0.15", "chalk": "^4.1.2", "openai": "^6.16.0", "pusher-js": "^8.4.0", "semver": "^7.7.2", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-T/9MfYcmPs2EcSXhrJWvm0UFTfa79FcTo1L8vO13d5C5kX8/I4hLYLu+1wc4n7WGBSE9hq7o1g9L3FXJrOrlSQ=="],
+    "@composio/core": ["@composio/core@0.8.0", "", { "dependencies": { "@composio/client": "0.1.0-alpha.66", "@composio/json-schema-to-zod": "0.1.20", "@types/json-schema": "^7.0.15", "chalk": "^4.1.2", "openai": "^6.16.0", "pusher-js": "^8.4.0", "semver": "^7.7.2", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-0wquulDnkJf+3FtoVdIAiwWzf4elOx9CzW4Z5mUe1crFDHf5qX7pwJrUvmw6gNfDRmYnAaweUZJjxMxrIUHPNw=="],
 
     "@composio/json-schema-to-zod": ["@composio/json-schema-to-zod@0.1.20", "", { "peerDependencies": { "zod": ">=3.25.76 <5" } }, "sha512-d4V34itLrUWG/VBh7ciznKcxF/T22MBLHmuEzHoX0zsBOHsUmjYz5qtDh20S2p3FE+HHvLZxpXiv8yfdd4yI+Q=="],
 

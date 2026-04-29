@@ -16,10 +16,10 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.118",
-    "@anthropic-ai/claude-agent-sdk-linux-x64": "0.2.118",
     "@anthropic-ai/claude-agent-sdk-linux-arm64": "0.2.118",
-    "@composio/claude-agent-sdk": "^0.6.10",
-    "@composio/core": "^0.6.10",
+    "@anthropic-ai/claude-agent-sdk-linux-x64": "0.2.118",
+    "@composio/claude-agent-sdk": "^0.8.0",
+    "@composio/core": "^0.8.0",
     "@huggingface/transformers": "^4.1.0",
     "@libsql/client": "^0.17.2",
     "@logtail/node": "^0.5.8",

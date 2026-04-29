@@ -210,25 +210,30 @@ export async function getComposioMcpServer(
           }
           return { content: [{ type: "text", text: JSON.stringify(result?.data ?? result, null, 2) }] };
         } catch (err: any) {
-          // Composio SDK errors surface upstream details in different shapes
-          // depending on the failure mode. Capture every field we know of so
-          // the agent's observation includes "401 invalid token" / "404 project
-          // not found" instead of the useless "Error executing the tool".
-          const upstream = err?.response?.data || err?.data || err?.body;
-          const upstreamStr = upstream
-            ? (typeof upstream === "string" ? upstream : JSON.stringify(upstream)).slice(0, 800)
-            : null;
-          const status = err?.response?.status || err?.status;
-          const richErr = [err?.message, status && `status=${status}`, upstreamStr && `upstream=${upstreamStr}`]
-            .filter(Boolean).join(" | ");
+          // Composio wraps the actual upstream error in ComposioToolExecutionError
+          // with the real APIError on `cause`. Walk the chain to pull out
+          // status / response body so the agent sees "401 invalid_token" instead
+          // of the useless top-level "Error executing the tool".
+          const collect = (e: any, depth = 0): Record<string, unknown> => {
+            if (!e || depth > 4) return {};
+            const out: Record<string, unknown> = {};
+            if (e.message) out.message = e.message;
+            if (e.status || e.response?.status) out.status = e.status || e.response?.status;
+            const body = e.error || e.response?.data || e.body || e.data;
+            if (body) out.body = typeof body === "string" ? body.slice(0, 800) : JSON.stringify(body).slice(0, 800);
+            const inner = e.cause ? collect(e.cause, depth + 1) : {};
+            return { ...out, ...Object.fromEntries(Object.entries(inner).map(([k, v]) => [`cause_${k}`, v])) };
+          };
+          const detail = collect(err);
+          const richErr = Object.entries(detail)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(" | ") || "unknown error";
           logger.error(`Composio tool ${t.name} failed`, {
-            error: err?.message,
-            status,
-            upstream: upstreamStr,
+            ...detail,
             stack: err?.stack?.split("\n").slice(0, 3).join(" | "),
           });
           return {
-            content: [{ type: "text", text: `Tool ${t.name} failed: ${richErr || "unknown error"}` }],
+            content: [{ type: "text", text: `Tool ${t.name} failed: ${richErr}` }],
             isError: true,
           };
         }
