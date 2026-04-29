@@ -3,7 +3,7 @@ import { host } from "./host/index.js";
 import { createWorker } from "./queue.js";
 import { runAgent } from "./agent-runner.js";
 import { syncWorkspace } from "./memory.js";
-import { provisionSkills } from "./skills.js";
+import { provisionSkills, syncSkillsFromDb } from "./skills.js";
 import { startWorkScheduler } from "./work-scheduler.js";
 import { initToolEmbeddings } from "./integrations/tool-embeddings.js";
 import { startSupportedIntegrationsCache, stopSupportedIntegrationsCache } from "./integrations/supported-cache.js";
@@ -99,6 +99,13 @@ async function main() {
     const freshAgent = await host.getAgent(config.employeeId);
     syncWorkspace(freshAgent);
     provisionSkills(freshAgent);
+    // DB-installed skills (the ones a user enables on /agents/:id/edit) need
+    // to be re-projected to /data/skills now, not on the next inbound run —
+    // otherwise the install button feels broken until the user pings the
+    // agent. Same logic the agent-runner uses per-job, just fired on demand.
+    await syncSkillsFromDb(Number(config.employeeId)).catch((err) => {
+      logger.error("Sync handler: syncSkillsFromDb failed", { error: (err as Error).message });
+    });
 
     // Restart channel pollers so rotated Telegram tokens / changed WhatsApp
     // numbers take effect without a full engine restart. Telegram's long-poll
