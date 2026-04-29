@@ -78,24 +78,25 @@ export async function getToolkitOwners(orgId: number, userId?: number | null): P
   const client = getClient();
   if (!client) return new Map();
   try {
-    const userIds = composioUserIds(orgId, userId);
-    const connections: any = await composioBreaker.call(() =>
-      (client as any).connectedAccounts.list({ userIds }),
-    );
+    const buckets = composioUserIds(orgId, userId); // ["org_X", "user_Y"]
     const owners = new Map<string, string>();
-    for (const c of connections.items || []) {
-      if (c.status !== "ACTIVE") continue;
-      const slug = c.toolkit?.slug;
-      const ownerEntity = c.user_id || c.userId || c.entity_id || c.entityId;
-      if (!slug || !ownerEntity) continue;
-      const existing = owners.get(slug);
-      // Prefer the personal (user_*) bucket when both org_ and user_ have a
-      // connection — personal accounts override workspace ones.
-      if (!existing || (ownerEntity.startsWith("user_") && existing.startsWith("org_"))) {
-        owners.set(slug, ownerEntity);
+
+    // Composio 0.8's connectedAccounts.list response doesn't echo back the
+    // user_id on each item, so we can't infer which bucket owns a connection
+    // from a single call. List per bucket and tag accordingly. Personal
+    // (user_*) buckets are queried last so they overwrite the org-shared
+    // bucket entry — personal accounts win when both exist.
+    for (const bucket of buckets) {
+      const connections: any = await composioBreaker.call(() =>
+        (client as any).connectedAccounts.list({ userIds: [bucket] }),
+      );
+      for (const c of connections.items || []) {
+        if (c.status !== "ACTIVE") continue;
+        const slug = c.toolkit?.slug;
+        if (!slug) continue;
+        owners.set(slug, bucket);
       }
     }
-    // Fallback toolkits cache stays compatible with anything still calling it.
     toolkitsCache.set(cacheKey, { toolkits: Array.from(owners.keys()), expiresAt: Date.now() + TOOLKITS_TTL_MS });
     ownersCache.set(cacheKey, { owners, expiresAt: Date.now() + TOOLKITS_TTL_MS });
     return owners;
