@@ -58,33 +58,54 @@ function composioUserIds(orgId: number, userId?: number | null): string[] {
   return ids;
 }
 
+// Cache key: same as toolkits but stores the per-toolkit owner mapping so
+// tools.execute knows which user_id holds the connection. A toolkit can be
+// connected as org-shared (owner = "org_<id>") OR personal (owner = "user_<id>").
+// We prefer the user bucket when both exist so personal Gmail wins over a
+// shared one, but Vercel-as-org-only correctly resolves to the org bucket.
+const ownersCache = new Map<string, { owners: Map<string, string>; expiresAt: number }>();
+
 export async function getActiveToolkits(orgId: number, userId?: number | null): Promise<string[]> {
+  const owners = await getToolkitOwners(orgId, userId);
+  return Array.from(owners.keys());
+}
+
+export async function getToolkitOwners(orgId: number, userId?: number | null): Promise<Map<string, string>> {
   const cacheKey = userId ? `org_${orgId}+user_${userId}` : `org_${orgId}`;
-  const cached = toolkitsCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.toolkits;
+  const cached = ownersCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.owners;
 
   const client = getClient();
-  if (!client) return [];
+  if (!client) return new Map();
   try {
     const userIds = composioUserIds(orgId, userId);
     const connections: any = await composioBreaker.call(() =>
       (client as any).connectedAccounts.list({ userIds }),
     );
-    const toolkits = Array.from(new Set(
-      (connections.items || [])
-        .filter((c: any) => c.status === "ACTIVE")
-        .map((c: any) => c.toolkit?.slug)
-        .filter(Boolean),
-    )) as string[];
-    toolkitsCache.set(cacheKey, { toolkits, expiresAt: Date.now() + TOOLKITS_TTL_MS });
-    return toolkits;
+    const owners = new Map<string, string>();
+    for (const c of connections.items || []) {
+      if (c.status !== "ACTIVE") continue;
+      const slug = c.toolkit?.slug;
+      const ownerEntity = c.user_id || c.userId || c.entity_id || c.entityId;
+      if (!slug || !ownerEntity) continue;
+      const existing = owners.get(slug);
+      // Prefer the personal (user_*) bucket when both org_ and user_ have a
+      // connection — personal accounts override workspace ones.
+      if (!existing || (ownerEntity.startsWith("user_") && existing.startsWith("org_"))) {
+        owners.set(slug, ownerEntity);
+      }
+    }
+    // Fallback toolkits cache stays compatible with anything still calling it.
+    toolkitsCache.set(cacheKey, { toolkits: Array.from(owners.keys()), expiresAt: Date.now() + TOOLKITS_TTL_MS });
+    ownersCache.set(cacheKey, { owners, expiresAt: Date.now() + TOOLKITS_TTL_MS });
+    return owners;
   } catch (err) {
     if (err instanceof CircuitOpenError) {
       logger.warn("Composio: circuit OPEN, returning empty toolkits");
     } else {
       logger.error("Composio: failed to list toolkits", { error: (err as Error).message });
     }
-    return [];
+    return new Map();
   }
 }
 
@@ -115,12 +136,9 @@ export async function getComposioMcpServer(
 
   try {
     const composioUserIdList = composioUserIds(orgId, userId);
-    // The SDK's tools.get takes a single user_id; we pass the personal one if
-    // present (which Composio interprets as "this user's connections + the
-    // org-shared ones if Composio supports inheritance"). For tool-level dispatch
-    // we may need to widen later to per-toolkit user_id selection.
     const primaryUserId = composioUserIdList[composioUserIdList.length - 1] ?? `org_${orgId}`;
-    const activeToolkits = await getActiveToolkits(orgId, userId);
+    const owners = await getToolkitOwners(orgId, userId);
+    const activeToolkits = Array.from(owners.keys());
 
     if (activeToolkits.length === 0) {
       logger.info(`Composio: no active connections for ${composioUserIdList.join(", ")}`);
@@ -133,20 +151,27 @@ export async function getComposioMcpServer(
       : activeToolkits;
 
     const toolsArr: any[] = [];
+    // Track tool → owner so the per-tool execute handler can dispatch under
+    // the same Composio entity that owns the connection (org_X vs user_X).
+    const toolNameToOwner = new Map<string, string>();
+    const ownerFor = (slug: string) => owners.get(slug) || primaryUserId;
 
     if (toolkitsToLoad.length === 0) {
       // Search-only mode: load meta-tool so agent can find integrations on demand
       try {
         const raw = await (client as any).tools.get(primaryUserId, { tools: ["COMPOSIO_SEARCH_TOOLS"] });
         const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
+        for (const tool of arr) toolNameToOwner.set(tool.name, primaryUserId);
         toolsArr.push(...arr);
       } catch (err) {
         logger.warn("Composio: failed to load COMPOSIO_SEARCH_TOOLS meta-tool", { error: (err as Error).message });
       }
     } else {
-      // Context-aware mode: load curated tools for matched toolkits
+      // Context-aware mode: load curated tools for matched toolkits, each
+      // under the entity (org_X / user_X) that holds the toolkit's connection.
       for (const toolkit of toolkitsToLoad) {
         const curated = curatedToolsFor(toolkit);
+        const tkOwner = ownerFor(toolkit);
         try {
           // Composio v3 rejects requests with BOTH `tools` and `toolkits`.
           // If we have curated tool names → use `tools` only (precise).
@@ -154,11 +179,12 @@ export async function getComposioMcpServer(
           const params: any = curated.length > 0
             ? { tools: curated, limit: 20 }
             : { toolkits: [toolkit], limit: 20 };
-          const raw = await (client as any).tools.get(primaryUserId, params);
+          const raw = await (client as any).tools.get(tkOwner, params);
           const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
+          for (const tool of arr) toolNameToOwner.set(tool.name, tkOwner);
           toolsArr.push(...arr);
         } catch (err) {
-          logger.warn(`Composio: failed to load tools for ${toolkit}`, { error: (err as Error).message });
+          logger.warn(`Composio: failed to load tools for ${toolkit} (owner=${tkOwner})`, { error: (err as Error).message });
         }
       }
     }
@@ -190,9 +216,13 @@ export async function getComposioMcpServer(
     const tools = (filteredToolsArr as any[]).map((t) => ({
       ...t,
       handler: async (args: any) => {
+        // Use the Composio entity that owns this toolkit's connection. Calling
+        // tools.execute under the wrong entity (e.g. user_X when the connection
+        // is on org_X) returns "ActionExecute_ConnectedAccountNotFound".
+        const ownerEntity = toolNameToOwner.get(t.name) || primaryUserId;
         try {
           const result = await (client as any).tools.execute(t.name, {
-            userId: primaryUserId,
+            userId: ownerEntity,
             arguments: args,
             dangerouslySkipVersionCheck: true,
           });
@@ -247,8 +277,12 @@ export async function getComposioMcpServer(
     });
 
     const toolNames = tools.map((t) => t.name).filter(Boolean);
+    const ownerSummary = Array.from(owners.entries())
+      .filter(([slug]) => toolkitsToLoad.includes(slug))
+      .map(([slug, e]) => `${slug}@${e}`)
+      .join(", ");
     logger.info(
-      `Composio: ${tools.length} tools loaded for ${composioUserIdList.join(", ")} (active: ${activeToolkits.join(", ")}; loaded: ${toolkitsToLoad.join(", ") || "search-only"})`,
+      `Composio: ${tools.length} tools loaded for ${composioUserIdList.join(", ")} (active: ${activeToolkits.join(", ")}; loaded: ${ownerSummary || "search-only"})`,
     );
     return { server, toolkits: activeToolkits, toolNames };
   } catch (err) {
