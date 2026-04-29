@@ -1,32 +1,36 @@
-require "net/http"
+require "redis"
 
 # Tells a running agent engine to reload its filesystem-projected state
 # (soul.md, skills/, channel handlers). Per-job state — capabilities,
 # identity prose, ai_config, command_allowlist — already syncs because
 # the engine refreshes the agent row on every job in main.ts.
 #
-# Transport: HTTPS to the per-agent Fly app's shared-v4 endpoint. The
-# X-Engine-Secret header is the existing engine auth token. Fly wakes
-# stopped Machines automatically on inbound HTTP, so this works even
-# against scale-to-zero agents — the engine syncs and the response
-# returns after the cold boot completes.
+# Transport: Redis pub/sub on `agent-<id>-sync`. The engine subscribes at
+# boot ("Sync sub: listening on agent-<id>-sync") and runs the same
+# handler the HTTPS /sync path runs. We use pub/sub instead of HTTPS
+# because per-agent Fly apps aren't always provisioned with a public
+# IPv4/IPv6 — DNS lookups for alchemy-<env>-agent-<id>.fly.dev fail with
+# 'No address associated with hostname' when no public IP is allocated.
+# Redis is the existing shared transport (Rails already uses it for the
+# BullMQ inbox), so it's reachable from both sides without DNS / TLS.
+#
+# Trade-off: this only delivers if the engine process is running. A
+# stopped Machine won't auto-wake on a Redis publish (HTTPS would have).
+# That's fine because Rails ALSO publishes inbox jobs on Redis which
+# DOES wake Machines via the same BullMQ + Fly auto_start path; for
+# config sync we just queue up and the change is picked up the moment
+# the engine boots for its next message — same behaviour as the rescue
+# path on the HTTPS version.
 module EngineSync
   module_function
 
   def trigger(agent)
     return unless agent&.id
 
-    env_prefix = ENV.fetch("DEPLOY_ENV", Rails.env.production? ? "prod" : "dev")
-    host = "alchemy-#{env_prefix}-agent-#{agent.id}.fly.dev"
-    uri = URI.parse("https://#{host}/sync")
-
-    req = Net::HTTP::Post.new(uri)
-    req["X-Engine-Secret"] = ENV.fetch("ENGINE_API_SECRET")
-    req["Content-Type"] = "application/json"
-    req.body = "{}"
-
-    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 30, open_timeout: 10) { |http| http.request(req) }
-    Rails.logger.info "EngineSync: #{host} → #{res.code}"
+    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+    channel = "agent-#{agent.id}-sync"
+    receivers = redis.publish(channel, "{}")
+    Rails.logger.info "EngineSync: published to #{channel} (#{receivers} subscribers)"
   rescue => e
     # Non-fatal. Engine re-reads agent config on every job anyway, so the
     # next inbound message picks up any change if this sync fails.
