@@ -593,7 +593,12 @@ export function emitCommandApproval(data: {
   explanation: string;
   suggestedFix?: string;
 }): void {
-  broadcast({ type: "command_approval", ...data, timestamp: Date.now() });
+  // Include the running agent's ID so the chat-side resolver knows which
+  // pubsub channel to publish the user's decision to, even when the user
+  // is viewing a different agent's chat (e.g. dangerous command surfaces
+  // on Sam mid-delegation but user is on Casper).
+  const agentId = process.env.EMPLOYEE_ID ? Number(process.env.EMPLOYEE_ID) : null;
+  broadcast({ type: "command_approval", agentId, ...data, timestamp: Date.now() });
 }
 
 // Item 4 — generic action approval (LinkedIn post, email batch, spend, etc.)
