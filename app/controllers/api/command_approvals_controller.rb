@@ -15,13 +15,27 @@ class Api::CommandApprovalsController < ApplicationController
     return head :not_found unless agent
     return head :forbidden unless current_user.organization_id == agent.organization_id
 
+    level = params[:level].to_s.presence_in(%w[once session always deny]) || "deny"
+
+    # "always" persists into agent.command_allowlist so the same dangerous
+    # command pattern doesn't prompt again. The engine still receives the
+    # decision over pubsub so the in-flight call resumes immediately.
+    if level == "always" && params[:command].present?
+      pattern = params[:command].to_s.split(/\s+/).first.to_s
+      if pattern.present?
+        list = Array(agent.command_allowlist) + [pattern]
+        agent.update!(command_allowlist: list.uniq)
+      end
+    end
+
     payload = {
       type: "command_approval_response",
       approvalId: params[:approval_id],
       command: params[:command].to_s,
-      level: params[:level].to_s.presence_in(%w[once session deny]) || "deny",
+      level: level,
     }
-    redis.publish("agent-#{agent.id}-approvals", payload.to_json)
+    receivers = redis.publish("agent-#{agent.id}-approvals", payload.to_json)
+    Rails.logger.info "CommandApproval: agent=#{agent.id} approval_id=#{params[:approval_id]} level=#{level} → #{receivers} subscribers"
     head :ok
   end
 

@@ -591,11 +591,15 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
               setTimeout(() => approvalWs.close(), 500)
             }
           } else {
+            // Use the running-agent id from the event payload when present —
+            // a delegated run ("Casper assigns to Sam, Sam runs the command")
+            // surfaces approvals tied to Sam's pubsub channel, not Casper's.
+            // Fall back to the chat's agent_id for non-delegated runs.
             await fetch("/api/command_approvals", {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
               body: JSON.stringify({
-                agent_id: agentId,
+                agent_id: data.agentId || agentId,
                 approval_id: data.approvalId,
                 command: data.command,
                 level: chosenLevel,
