@@ -74,6 +74,21 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   // not new prompts. Handle them and skip the agent run entirely.
   if (await maybeHandleApprovalResponse(agent, job, jobId)) return;
 
+  // ── Task cancellation: short-circuit. Rails publishes this when the user
+  // hits Cancel on a task; the engine just acknowledges in logs and exits.
+  // The agent_loop running in another worker will see status=cancelled in DB
+  // on its next polled state read and stop on its own.
+  if (job.type === "task_cancelled") {
+    const ids: number[] = (job.payload as { taskIds?: number[] } | undefined)?.taskIds || [];
+    const root = (job.payload as { rootTaskId?: number } | undefined)?.rootTaskId;
+    logger.info(`Task cancelled signal: agent=${agent.id} root=${root} affected=${ids.join(",")}`);
+    await host.saveAuditLog(
+      agent.organization_id, agent.id, "task_cancelled", undefined,
+      { rootTaskId: root, taskIds: ids }, { response: "ack" }, "success",
+    ).catch(() => {});
+    return;
+  }
+
   // ── Task assignment: mark as in_progress immediately (unless explicitly skipped) ──
   if (job.type === "task_assignment" && job.payload?.taskId && !job.payload?.skipAutoComplete) {
     await host.updateTask(job.payload.taskId, { status: "in_progress" }).catch(() => {});
@@ -987,6 +1002,10 @@ async function buildQueryOptions(
         "mcp__tasks__write_checkpoint",
         "mcp__tasks__ask_user",
         "mcp__tasks__cancel_self",
+        // Item 2 — mid-task collaboration primitives
+        "mcp__tasks__progress_update",
+        "mcp__tasks__ask_agent",
+        "mcp__tasks__escalate",
       ] : []),
     ],
     permissionMode: "bypassPermissions",

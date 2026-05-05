@@ -119,7 +119,7 @@ export interface ScheduledWorkItem {
 }
 
 export interface JobData {
-  type: "inbound_message" | "heartbeat" | "scheduled_task" | "task_assignment";
+  type: "inbound_message" | "heartbeat" | "scheduled_task" | "task_assignment" | "task_cancelled";
   // Correlation ID for routing the agent's emitDone back to the right channel
   // handler. Generated at enqueue time (Telegram poller / Rails AgentEventBus).
   // If missing, engine synthesizes one and logs a warning.
