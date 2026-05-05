@@ -195,11 +195,28 @@ export async function getComposioMcpServer(
       return null;
     }
 
+    // De-duplicate by tool name. Same tool can come back from multiple
+    // tools.get() calls when curated lists overlap or when Composio echoes a
+    // shared tool under multiple toolkits. Anthropic's Messages API rejects
+    // the request with `tools: Tool names must be unique` if any duplicates
+    // make it into the final tool list.
+    const seen = new Set<string>();
+    const dedupedToolsArr: any[] = [];
+    for (const t of toolsArr as any[]) {
+      const name = t?.name;
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      dedupedToolsArr.push(t);
+    }
+    if (dedupedToolsArr.length !== toolsArr.length) {
+      logger.info(`Composio: dropped ${toolsArr.length - dedupedToolsArr.length} duplicate tool(s) before sending to model`);
+    }
+
     // ACL pass: drop tools that this agent's policy rejects. The agent never
     // sees denied tools — cleaner than runtime PreToolUse blocks because the
     // agent can't even attempt the call.
-    const beforeFilter = toolsArr.length;
-    const filteredToolsArr = (toolsArr as any[]).filter((t) => {
+    const beforeFilter = dedupedToolsArr.length;
+    const filteredToolsArr = dedupedToolsArr.filter((t) => {
       const slug = toolkitSlugFor(t.name || "");
       const policy = policyByToolkit.get(slug);
       return policyAllows(policy, t.name || "");
