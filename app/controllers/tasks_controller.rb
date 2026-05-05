@@ -97,19 +97,39 @@ class TasksController < ApplicationController
     @task.update!(status: "cancelled")
 
     # BFS through parent_task_id descendants and cancel everything not already
-    # in a terminal state.
+    # in a terminal state. Track the agent_id on each cancelled task so we can
+    # ping all affected engines below — an in-flight run that started before
+    # the cancel needs the heads-up so it can short-circuit instead of
+    # finishing the now-irrelevant work.
+    cancelled_task_ids = [@task.id]
+    affected_agent_ids = Set.new([@task.agent_id])
     frontier = [@task.id]
-    cancelled_descendants = 0
     while frontier.any?
       children = current_tenant.tasks
                                 .where(parent_task_id: frontier)
                                 .where.not(status: %w[done failed cancelled])
       break if children.empty?
+      children.each { |c| affected_agent_ids << c.agent_id }
+      cancelled_task_ids.concat(children.pluck(:id))
       children.update_all(status: "cancelled", updated_at: Time.current, completed_at: Time.current)
-      cancelled_descendants += children.size
       frontier = children.pluck(:id)
     end
+    cancelled_descendants = cancelled_task_ids.size - 1
     Rails.logger.info("Task #{@task.id} cancelled (#{cancelled_descendants} descendants)") if cancelled_descendants > 0
+
+    # Item 2 — fire a task_cancelled inbox event to every affected agent so
+    # in-flight runs can short-circuit. The engine treats this as a normal
+    # inbox job; the next agent loop iteration sees status=cancelled in DB and
+    # exits early.
+    affected_agent_ids.each do |aid|
+      agent = current_tenant.agents.find_by(id: aid)
+      next unless agent
+      AgentEventBus.publish(
+        type: "task_cancelled",
+        agent: agent,
+        payload: { taskIds: cancelled_task_ids, rootTaskId: @task.id, reason: "user_cancel" },
+      )
+    end
 
     respond_to do |format|
       format.json { render json: task_json(@task) }
