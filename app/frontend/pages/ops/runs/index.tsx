@@ -83,9 +83,14 @@ export default function OpsRunsIndex({ runs, totals, agents, filters }: Props) {
         { label: "Runs" },
       ]}
       topBarActions={
-        <Button variant="outline" size="sm" asChild className="h-8">
-          <Link href="/ops/cost">Cost dashboard</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="h-8">
+            <Link href="/ops/traces">Trace tree</Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild className="h-8">
+            <Link href="/ops/cost">Cost dashboard</Link>
+          </Button>
+        </div>
       }
     >
       <Head title="Runs — Ops" />

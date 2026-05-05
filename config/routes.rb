@@ -156,6 +156,9 @@ Rails.application.routes.draw do
     namespace :ops do
       resources :runs, only: [:index, :show]
       get "cost", to: "cost#index"
+      # Item 7 — delegation tree view: one row per top-level user request,
+      # expandable to show every spawned task across agents.
+      resources :traces, only: [:index, :show]
     end
 
     resource :settings, only: [:show, :update] do
