@@ -121,7 +121,9 @@ export function buildSystemPrompt(
     if (caps.recall.enabled) {
       memSection += `3. search_messages tool — for older context from previous conversations.\n`;
     }
-    memSection += `\nYour identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.`;
+    memSection +=
+      `\nYour identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.\n` +
+      `\nAt session rotation (every 30 turns), the engine extracts durable facts from the just-completed session and folds them into memory.md, then merges if the file is over budget. The audit trail lives at memories/dreams.md (read-only) — read it if you want to know what got remembered or dropped.`;
     if (caps.recall.enabled) {
       memSection +=
         `\n\n# Tool: search_messages\n` +

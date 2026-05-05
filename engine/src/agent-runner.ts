@@ -7,6 +7,7 @@ import { buildSubAgentDefinitions } from "./subagents.js";
 import { buildPrompt } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
+import { consolidateAtRotation } from "./memory-consolidation.js";
 import { processAttachments } from "./media/pipeline.js";
 import { syncSkillsFromDb } from "./skills.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
@@ -187,6 +188,22 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         logger.info(
           `Conversation ${conversation.id} summarized (${summary.summary.length} chars, range ${summary.turn_range})`
         );
+      }
+
+      // Item 8 — also extract durable facts and fold them into MEMORY.md.
+      // summarizeConversation gives us a per-conversation_summaries snapshot
+      // (visible to the engine on the next resume); consolidateAtRotation
+      // compresses to the cross-conversation MEMORY.md the agent reads on
+      // every turn, with a DREAMS.md audit trail for human review.
+      try {
+        const messages = await host.getConversationHistory(conversation.id, 100);
+        const turnRange = `1-${conversation.claude_session_turn_count ?? 0}`;
+        const updatedMemory = await consolidateAtRotation(agent, messages, turnRange);
+        if (updatedMemory) {
+          await host.updateAgentMemory(agent.id, updatedMemory).catch(() => {});
+        }
+      } catch (err) {
+        logger.warn("Memory consolidation during rotation failed", { error: (err as Error).message });
       }
     }
   }
