@@ -8,6 +8,7 @@ import { buildPrompt } from "./prompt-builder.js";
 import { buildSystemPrompt } from "./system-prompt-builder.js";
 import { summarizeConversation } from "./summarizer.js";
 import { consolidateAtRotation } from "./memory-consolidation.js";
+import { decideRotation, contextWindowFor, DEFAULT_ROTATION } from "./session-rotation.js";
 import { processAttachments } from "./media/pipeline.js";
 import { syncSkillsFromDb } from "./skills.js";
 import { buildRecallMcpServer } from "./tools/recall.js";
@@ -44,9 +45,11 @@ import { deliverToOrigin } from "./channels/origin-delivery.js";
 import type { Agent, Conversation, JobData, Message } from "./types.js";
 import { logger } from "./logger.js";
 
-// Sprint 0b — session rotation thresholds
-const SESSION_TURN_CAP = 30;
-const SESSION_TIME_GAP_HOURS = 24;
+// Item 8 (rotation rebuild) — session rotation now uses Hermes/OpenClaw-style
+// token-utilization triggers. The old turn-count cap is kept as a hard fail-
+// safe at 200 (≫ typical conversation length) so a runaway loop can't bypass
+// rotation entirely. See session-rotation.ts for the actual policy.
+const SESSION_TURN_HARD_CAP = 200;
 
 // Top-level orchestrator: routes a job to the right handler and runs the
 // Claude Agent SDK loop. Heavy lifting (prompt, outbox, approvals, summarization)
@@ -159,23 +162,39 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   const usesConversation = (isInbound || isTaskAssignment) && !!conversation;
 
   if (usesConversation && conversation) {
-    if (shouldResumeSession(conversation)) {
-      // Session is still valid (within turn cap + time gap) — continue it
+    // Item 8 — token-utilization-based rotation (Hermes-style threshold +
+    // OpenClaw-style hygiene cap). Pull the most recent run's actual input
+    // tokens for an accurate "how full is this session" signal.
+    const lastRun = await host.getMostRecentAuditLog?.(agent.id, conversation.id) ?? null;
+    const messagesForRotation = await host.getConversationHistory(conversation.id, 500);
+    const totalCharsFallback = messagesForRotation.reduce((s, m) => s + (m.content?.length || 0), 0);
+    const decision = decideRotation(agent, {
+      hasSessionId: !!conversation.claude_session_id,
+      lastMessageAt: conversation.last_message_at ?? null,
+      messageCount: messagesForRotation.length,
+      lastRunInputTokens: lastRun?.input_tokens ?? null,
+      totalCharsFallback,
+    });
+    const stillUnderHardCap = (conversation.claude_session_turn_count ?? 0) < SESSION_TURN_HARD_CAP;
+
+    if (decision.resume && stillUnderHardCap) {
       priorTurnCount = conversation.claude_session_turn_count ?? 0;
       if (RESUME_ENABLED) {
         resumeSessionId = conversation.claude_session_id ?? null;
+        const pct = decision.details.thresholdTokens
+          ? Math.round((decision.details.estimatedTokens / decision.details.thresholdTokens) * 100)
+          : 0;
         logger.info(
-          `Resuming session for conversation ${conversation.id} (turn ${priorTurnCount + 1}/${SESSION_TURN_CAP})`
+          `Resuming session for conversation ${conversation.id} (turn ${priorTurnCount + 1}, ` +
+          `~${decision.details.estimatedTokens.toLocaleString()} tok / ${decision.details.thresholdTokens.toLocaleString()} threshold = ${pct}%)`
         );
       }
     } else if (conversation.claude_session_id) {
-      // Session expired (turn cap OR time gap) — summarize before rotating
-      const reason =
-        (conversation.claude_session_turn_count ?? 0) >= SESSION_TURN_CAP
-          ? "turn cap"
-          : "time gap";
+      const reason = !stillUnderHardCap ? "turn-hard-cap" : decision.reason;
       logger.info(
-        `Rotating session for conversation ${conversation.id} (reason: ${reason})`
+        `Rotating session for conversation ${conversation.id} (reason: ${reason}, ` +
+        `tokens ~${decision.details.estimatedTokens.toLocaleString()}/${decision.details.thresholdTokens.toLocaleString()}, ` +
+        `messages=${decision.details.messageCount}, context_window=${decision.details.contextTokens.toLocaleString()})`
       );
       const summary = await summarizeConversation(
         agent,
@@ -624,15 +643,17 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   }
 }
 
-// Decide whether to resume the existing Claude session for a conversation,
-// or rotate to a fresh one. Rotation triggers on EITHER turn cap OR time gap.
+// Legacy quick-check kept for callers that haven't been migrated to the full
+// token-based decideRotation policy. Returns the conservative answer: only
+// resume if there's a session, it's under the hard cap, and we haven't been
+// idle longer than the time-gap threshold.
 function shouldResumeSession(conversation: Conversation): boolean {
   if (!conversation.claude_session_id) return false;
-  if ((conversation.claude_session_turn_count ?? 0) >= SESSION_TURN_CAP) return false;
+  if ((conversation.claude_session_turn_count ?? 0) >= SESSION_TURN_HARD_CAP) return false;
   if (conversation.last_message_at) {
     const hoursSince =
       (Date.now() - new Date(conversation.last_message_at).getTime()) / 3_600_000;
-    if (hoursSince > SESSION_TIME_GAP_HOURS) return false;
+    if (hoursSince > DEFAULT_ROTATION.timeGapHours) return false;
   }
   return true;
 }

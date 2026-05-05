@@ -213,6 +213,10 @@ export interface Host {
   // Layer 1 tool routing: recent Composio tool names from audit logs
   getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]>;
 
+  // Item 8 rotation — most recent run for an agent+conversation, used to read
+  // the actual prompt token count for token-utilization-based rotation.
+  getMostRecentAuditLog?(agentId: number, conversationId: number | null): Promise<{ input_tokens: number | null } | null>;
+
   // ── Scheduling (unified — scheduled_work) ──
   getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]>;
   createScheduledWork(orgId: number, agentId: number, item: Omit<ScheduledWorkItem, "id" | "last_run_at" | "next_run_at">): Promise<number>;

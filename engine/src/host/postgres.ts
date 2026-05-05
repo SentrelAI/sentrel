@@ -461,6 +461,24 @@ export class PostgresHost implements Host {
   // ── Scheduling ──
 
   // Layer 1 tool routing: extract tool names from recent audit log output.tool_calls
+  async getMostRecentAuditLog(agentId: number, conversationId: number | null): Promise<{ input_tokens: number | null } | null> {
+    let q: string;
+    let params: unknown[];
+    if (conversationId == null) {
+      q = `SELECT input_tokens FROM audit_logs WHERE agent_id = $1 ORDER BY id DESC LIMIT 1`;
+      params = [agentId];
+    } else {
+      q = `SELECT input_tokens FROM audit_logs
+           WHERE agent_id = $1
+             AND (output->>'conversation_id_ref' = $2 OR output->>'conversationIdRef' = $2)
+           ORDER BY id DESC LIMIT 1`;
+      params = [agentId, String(conversationId)];
+    }
+    const { rows } = await this.pool.query(q, params);
+    if (rows.length === 0) return null;
+    return { input_tokens: rows[0].input_tokens ?? null };
+  }
+
   async getRecentAuditToolCalls(agentId: number, limit: number): Promise<string[]> {
     const { rows } = await this.pool.query(
       `SELECT output->'tool_calls' AS tool_calls FROM audit_logs
