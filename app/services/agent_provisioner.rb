@@ -194,7 +194,15 @@ module AgentProvisioner
           # alchemy_engine/src/proxy/anthropic-billing-proxy.ts). Proxy reads
           # ANTHROPIC_OAUTH_TOKEN from env, injects the Claude Code identifier
           # header, forwards to api.anthropic.com.
+          #
+          # ANTHROPIC_AUTH_TOKEN is the Claude Agent SDK's official env var for
+          # OAuth tokens — without it, the SDK refuses to make any requests and
+          # emits "Not logged in · Please run /login" before they ever hit our
+          # proxy. Set both: SDK uses ANTHROPIC_AUTH_TOKEN to authenticate at
+          # the client layer, the proxy uses ANTHROPIC_OAUTH_TOKEN to re-stamp
+          # the authorization header on outbound requests to api.anthropic.com.
           env["ANTHROPIC_BASE_URL"]    = "http://127.0.0.1:18801"
+          env["ANTHROPIC_AUTH_TOKEN"]  = cred.access_token
           env["ANTHROPIC_OAUTH_TOKEN"] = cred.access_token
           env["ANTHROPIC_API_KEY"]     = ""
         end
