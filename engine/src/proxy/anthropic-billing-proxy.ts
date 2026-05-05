@@ -356,9 +356,35 @@ function processBody(bodyStr: string): string {
         section = section.slice(0, vs) + section.slice(i);
         from = vs + 1;
       }
-      // Inject CC stubs at the start of the tools array.
-      const insertAt = '"tools":['.length;
-      section = section.slice(0, insertAt) + CC_TOOL_STUBS.join(",") + "," + section.slice(insertAt);
+      // Inject CC stubs at the start of the tools array — but only the ones
+      // whose name isn't already present in the request. The Claude Agent
+      // SDK ships Glob/Grep/Agent as built-ins via allowedTools; injecting
+      // duplicates trips Anthropic's strict `tools: Tool names must be
+      // unique` validation and fails the whole request.
+      const existingNames = new Set<string>();
+      let nameSearchFrom = 0;
+      while (true) {
+        const nIdx = section.indexOf('"name":"', nameSearchFrom);
+        if (nIdx === -1) break;
+        const ns = nIdx + '"name":"'.length;
+        let ne = ns;
+        while (ne < section.length) {
+          if (section[ne] === "\\" && ne + 1 < section.length) { ne += 2; continue; }
+          if (section[ne] === '"') break;
+          ne++;
+        }
+        existingNames.add(section.slice(ns, ne));
+        nameSearchFrom = ne + 1;
+      }
+      const stubsToInject = CC_TOOL_STUBS.filter((stub) => {
+        const m2 = stub.match(/"name":"([^"]+)"/);
+        const stubName = m2 ? m2[1] : undefined;
+        return stubName ? !existingNames.has(stubName) : true;
+      });
+      if (stubsToInject.length > 0) {
+        const insertAt = '"tools":['.length;
+        section = section.slice(0, insertAt) + stubsToInject.join(",") + "," + section.slice(insertAt);
+      }
       m = m.slice(0, toolsIdx) + section + m.slice(toolsEndIdx + 1);
     }
   }
