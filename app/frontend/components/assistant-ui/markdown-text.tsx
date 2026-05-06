@@ -146,29 +146,60 @@ const defaultComponents = memoizeMarkdownComponents({
     />
   ),
   a: ({ className, href, children, ...props }) => {
-    // Render download links for blob URLs as styled chips
-    const isBlob = href?.includes("/api/blobs/")
+    // File / blob links — render as a styled chip card with an icon. Catches
+    // both Rails ActiveStorage URLs (/rails/active_storage/blobs/...) and
+    // the engine's signed-blob proxy (/api/blobs/...). Plus we strip the
+    // 📎 emoji prefix the agent / serializer adds since the icon SVG already
+    // signals "attachment".
+    const hrefStr = href || ""
+    const isBlob =
+      hrefStr.includes("/api/blobs/") ||
+      hrefStr.includes("/rails/active_storage/")
+
     if (isBlob) {
+      const childArray = Array.isArray(children) ? children : [children]
+      const cleanChildren = childArray.map((c) =>
+        typeof c === "string" ? c.replace(/^📎\s*/, "") : c,
+      )
+      const isPdf = hrefStr.toLowerCase().includes(".pdf") ||
+        (typeof cleanChildren[0] === "string" && cleanChildren[0].toLowerCase().endsWith(".pdf"))
+
       return (
         <a
-          href={href}
+          href={hrefStr}
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            "aui-md-a inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2.5 py-1 text-xs font-medium text-foreground no-underline hover:bg-muted transition-colors my-1",
+            "aui-md-a not-prose inline-flex items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-xs no-underline hover:border-[var(--border-strong)] transition-colors my-1.5 max-w-[320px]",
             className,
           )}
-          download
           {...props}
         >
-          <svg className="size-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-          {children}
+          <span className="shrink-0 flex size-9 items-center justify-center rounded-md bg-muted">
+            {isPdf ? (
+              <span className="text-[9px] font-semibold tracking-wider text-red-500">PDF</span>
+            ) : (
+              <svg className="size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+            )}
+          </span>
+          <span className="min-w-0 flex-1 py-0.5">
+            <span className="block truncate font-medium text-foreground/90">
+              {cleanChildren}
+            </span>
+            <span className="block text-[10px] text-muted-foreground mt-0.5">
+              Click to open
+            </span>
+          </span>
         </a>
       )
     }
+    // All other markdown links open in a new tab — safer default and matches
+    // user expectation when clicking an external URL inside chat.
     return (
       <a
-        href={href}
+        href={hrefStr}
+        target="_blank"
+        rel="noopener noreferrer"
         className={cn(
           "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
           className,
