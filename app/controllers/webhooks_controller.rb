@@ -195,11 +195,27 @@ class WebhooksController < ApplicationController
       end
     end
 
+    # Resolve attachments to {url, filename, content_type, byte_size} so the
+    # engine can fetch directly from S3 (or local Disk in dev) without round-
+    # tripping through Rails. URL is presigned and expires in 1 hour — long
+    # enough for any normal agent run, short enough that it can't be hoarded.
+    attachments_payload = message.attachments.map do |att|
+      blob = att.blob
+      {
+        signed_id: att.signed_id,
+        url: blob.url(expires_in: 1.hour, disposition: "attachment"),
+        filename: blob.filename.to_s,
+        content_type: blob.content_type,
+        byte_size: blob.byte_size,
+      }
+    end
+
     enqueue(agent, "web", {
       from: current_user.email,
       from_name: current_user.name,
       body: params[:body].to_s,
       attachment_ids: attachment_signed_ids,
+      attachments: attachments_payload,
       conversationId: conversation.id,
       user_id: current_user.id,
     })
