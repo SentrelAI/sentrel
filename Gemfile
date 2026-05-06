@@ -18,6 +18,11 @@ gem "pundit"
 
 # Background Jobs & Redis
 gem "sidekiq"
+# Cron-style periodic jobs for Sidekiq OSS. Sidekiq's own `config.periodic`
+# is Enterprise-only; this gem fills the gap with the same Redis-backed
+# leader-only-runs semantics. Schedule registered in
+# config/initializers/sidekiq.rb.
+gem "sidekiq-cron", "~> 2.0"
 gem "redis"
 
 # Channels
