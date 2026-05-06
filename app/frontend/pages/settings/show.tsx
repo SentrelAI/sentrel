@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { dashboardPath, settingsPath } from "@/routes"
+import { AnthropicAccountCard, type AiAccount } from "@/components/anthropic-account-card"
 
 interface Member {
   id: number
@@ -29,9 +30,10 @@ interface Props {
     context_md: string | null
   }
   members: Member[]
+  anthropic_account?: AiAccount
 }
 
-export default function SettingsShow({ organization, members }: Props) {
+export default function SettingsShow({ organization, members, anthropic_account }: Props) {
   const { data, setData, patch, processing } = useForm({
     organization: {
       name: organization.name,
@@ -61,6 +63,18 @@ export default function SettingsShow({ organization, members }: Props) {
       />
 
       <div className="max-w-2xl space-y-8">
+        {/* AI account (subscription auth) — moved here from /integrations.
+            Pasting a Claude Pro / Max token routes agents through the
+            in-process billing proxy on their Fly Machine instead of metered
+            API. */}
+        <section>
+          <Overline className="mb-3">AI Account</Overline>
+          <p className="text-xs text-muted-foreground mb-3">
+            Run agents on your Claude Pro / Max / Team subscription instead of paying per token. Subject to subscription rate limits — best for hands-on use, not autonomous fleets.
+          </p>
+          <AnthropicAccountCard account={anthropic_account} />
+        </section>
+
         {/* Organization */}
         <section>
           <Overline className="mb-3">Organization</Overline>

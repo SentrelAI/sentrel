@@ -2,9 +2,27 @@ class SettingsController < ApplicationController
   before_action :authenticate_user!
 
   def show
+    # Subscription auth (Anthropic Pro/Max paste-token) lives here, not on
+    # /integrations — different mental model. /integrations is "what services
+    # can my agents act on?", /settings is "how is my workspace configured?".
+    anthropic_cred = begin
+      if defined?(OauthCredential) && ActiveRecord::Base.connection.table_exists?("oauth_credentials")
+        OauthCredential.find_by(organization_id: current_tenant.id, provider: "anthropic", kind: "ai_provider")
+      end
+    rescue StandardError
+      nil
+    end
+
     render inertia: "settings/show", props: {
       organization: current_tenant.as_json(only: [:id, :name, :slug, :email_domain, :email_domain_verified, :context_md, :email_provider, :email_aws_region]),
-      members: current_tenant.users.order(:name).as_json(only: [:id, :name, :email, :role, :created_at])
+      members: current_tenant.users.order(:name).as_json(only: [:id, :name, :email, :role, :created_at]),
+      anthropic_account: {
+        provider: "anthropic",
+        connected: anthropic_cred.present?,
+        account_email: anthropic_cred&.account_email,
+        expires_at: anthropic_cred&.expires_at,
+        last_refreshed_at: anthropic_cred&.last_refreshed_at,
+      },
     }
   end
 
