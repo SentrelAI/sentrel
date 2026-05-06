@@ -20,7 +20,9 @@ import {
   SuggestionPrimitive,
   ThreadPrimitive,
   useAuiState,
+  useThreadRuntime,
 } from "@assistant-ui/react";
+import { useMessageQueueOptional } from "@/contexts/message-queue";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -582,23 +584,26 @@ const Composer: FC = () => {
   const isRunning = useAuiState((s) => s.thread.isRunning);
   const agentStatus = useContext(AgentStatusContext);
   const agentReady = isAgentReady(agentStatus);
-  const disabled = isRunning || !agentReady;
+  // Allow typing + queueing while the agent is running — only block input
+  // when the agent itself isn't ready (booting / paused / stopped). Send
+  // button is queue-aware below.
+  const disabled = !agentReady;
 
   const placeholder = !agentReady
     ? agentLoadingLabel(agentStatus)
     : isRunning
-      ? "Waiting for response…"
+      ? "Add to queue — sends after the current reply…"
       : "Send a message — or drop files";
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+      <QueuedMessagesStrip />
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           data-slot="composer-shell"
           aria-disabled={!agentReady}
           className="group relative flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-all focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/40 data-[dragging=true]:ring-4 data-[dragging=true]:ring-ring/10 aria-disabled:opacity-60 aria-disabled:cursor-not-allowed"
         >
-          {/* Drop overlay — visible only while dragging files over the composer */}
           <div className="pointer-events-none absolute inset-0 hidden items-center justify-center rounded-(--composer-radius) bg-background/80 backdrop-blur-sm group-data-[dragging=true]:flex">
             <div className="flex flex-col items-center gap-1 text-center">
               <PlusIcon className="size-6 text-muted-foreground" />
@@ -620,6 +625,37 @@ const Composer: FC = () => {
         </div>
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
+  );
+};
+
+// Strip rendered above the composer input showing each queued message as a
+// dismissible pill. Only renders when there's at least one queued send.
+const QueuedMessagesStrip: FC = () => {
+  const queue = useMessageQueueOptional();
+  if (!queue || queue.items.length === 0) return null;
+  return (
+    <div className="aui-queued-strip mb-2 flex flex-col gap-1.5">
+      {queue.items.map((item) => (
+        <div
+          key={item.id}
+          className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-3 py-1.5 text-xs"
+        >
+          <Loader2Icon className="size-3 shrink-0 animate-spin text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+            <span className="font-medium text-foreground/80">Queued · </span>
+            {item.text || <em>(attachment)</em>}
+          </span>
+          <button
+            type="button"
+            onClick={() => queue.remove(item.id)}
+            className="text-muted-foreground/60 hover:text-destructive"
+            aria-label="Remove from queue"
+          >
+            <XIcon className="size-3" />
+          </button>
+        </div>
+      ))}
+    </div>
   );
 };
 
@@ -650,42 +686,81 @@ const ComposerAction: FC<{ agentReady: boolean; agentStatus: string }> = ({ agen
     <div className="aui-composer-action-wrapper relative flex items-center justify-between gap-2">
       <ComposerAddAttachment />
 
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2Icon className="size-3.5 animate-spin" />
-          <span>Thinking…</span>
-        </div>
-      </AuiIf>
+      <div className="flex items-center gap-2">
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2Icon className="size-3.5 animate-spin" />
+            <span>Thinking…</span>
+          </div>
+          <ComposerPrimitive.Cancel asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="aui-composer-cancel size-8 rounded-full text-muted-foreground hover:text-foreground"
+              aria-label="Stop generating"
+            >
+              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+            </Button>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
 
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
-          >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="Stop generating"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
+        <QueueAwareSend />
+      </div>
     </div>
+  );
+};
+
+// Send button that stays visible during runs. When the agent isn't busy this
+// behaves exactly like ComposerPrimitive.Send. While the agent is running it
+// intercepts the click, pushes the composer text into the message queue, and
+// resets the composer — the queue drains automatically once the assistant
+// completes. UX matches Linear / Slack.
+const QueueAwareSend: FC = () => {
+  const isRunning = useAuiState((s) => s.thread.isRunning);
+  const composerText = useAuiState((s) => s.thread.composer.text);
+  const runtime = useThreadRuntime();
+  const queue = useMessageQueueOptional();
+
+  if (!isRunning || !queue) {
+    return (
+      <ComposerPrimitive.Send asChild>
+        <TooltipIconButton
+          tooltip="Send message"
+          side="bottom"
+          type="button"
+          variant="default"
+          size="icon"
+          className="aui-composer-send size-8 rounded-full"
+          aria-label="Send message"
+        >
+          <ArrowUpIcon className="aui-composer-send-icon size-4" />
+        </TooltipIconButton>
+      </ComposerPrimitive.Send>
+    );
+  }
+
+  const canQueue = (composerText ?? "").trim().length > 0;
+
+  return (
+    <TooltipIconButton
+      tooltip="Add to queue — sends after current reply"
+      side="bottom"
+      type="button"
+      variant="default"
+      size="icon"
+      className="aui-composer-send size-8 rounded-full"
+      aria-label="Add to queue"
+      disabled={!canQueue}
+      onClick={() => {
+        const text = (composerText ?? "").trim();
+        if (!text) return;
+        queue.enqueue(text);
+        runtime.composer.setText("");
+      }}
+    >
+      <ArrowUpIcon className="aui-composer-send-icon size-4" />
+    </TooltipIconButton>
   );
 };
 

@@ -12,6 +12,7 @@ import {
 // @ts-expect-error — @rails/activestorage ships JS without types
 import { DirectUpload } from "@rails/activestorage"
 import { Thread, CmdApprovalProvider, ActionApprovalProvider, ConnectionProposalProvider, AgentStatusProvider } from "@/components/assistant-ui/thread"
+import { MessageQueueProvider, useMessageQueue } from "@/contexts/message-queue"
 
 // The engine gateway lives on Fly's private 6pn network in production, so
 // the browser can't reach it directly. Only connect when we're on localhost
@@ -493,6 +494,10 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
   // Track "agent is currently working on a message" across reloads + after
   // a fresh send. Cleared when an assistant message arrives via cable.
   const [thinkingSince, setThinkingSince] = useState<string | null>(agentThinking?.since ?? null)
+  // Mutable ref the cable handler calls to dispatch the next queued message
+  // when the agent's response arrives. Set inside the queue-aware wrapper
+  // below so we capture the runtime + queue handles after they exist.
+  const drainQueuedRef = useRef<(() => void) | null>(null)
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
 
   // Hydrate inline cards from server state on mount so a page refresh still
@@ -564,8 +569,13 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       } else if (data.type === "message" && data.role === "assistant") {
         // Agent finished — clear the persistent "thinking" indicator.
         setThinkingSince(null)
+        // Drain the next queued message if there is one. The runtime is
+        // ready to accept a new run now (assistant-ui's adapter loop is
+        // back to idle), so kick off the next send.
+        drainQueuedRef.current?.()
       } else if (data.type === "done" || data.type === "error") {
         setThinkingSince(null)
+        drainQueuedRef.current?.()
       }
     }
 
@@ -779,18 +789,56 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         <CmdApprovalProvider value={cmdApproval}>
           <ActionApprovalProvider value={actionApproval}>
             <ConnectionProposalProvider value={connectionProposal}>
-              <div className="relative h-full overflow-hidden bg-background">
-                <Thread />
-                {thinkingSince && (
-                  <ThinkingIndicator since={thinkingSince} agentName={agentName} />
-                )}
-              </div>
+              <MessageQueueProvider agentId={agentId}>
+                <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
+                <div className="relative h-full overflow-hidden bg-background">
+                  <Thread />
+                  {thinkingSince && (
+                    <ThinkingIndicator since={thinkingSince} agentName={agentName} />
+                  )}
+                </div>
+              </MessageQueueProvider>
             </ConnectionProposalProvider>
           </ActionApprovalProvider>
         </CmdApprovalProvider>
       </AgentStatusProvider>
     </AssistantRuntimeProvider>
   )
+}
+
+// Wire the cable's onAssistantMessage drain hook to the queue. Lives inside
+// MessageQueueProvider so it can read the queue; sets a ref the parent's
+// cable handler calls when the agent finishes a run.
+function QueueDrainController({
+  drainRef,
+  runtime,
+}: {
+  drainRef: React.MutableRefObject<(() => void) | null>
+  runtime: ReturnType<typeof useLocalRuntime>
+}) {
+  const queue = useMessageQueue()
+  useEffect(() => {
+    drainRef.current = () => {
+      const next = queue.shift()
+      if (!next) return
+      // Append text + attachments to the runtime — kicks off a fresh adapter
+      // run via the same path as a normal Send. Attachments-from-queue case
+      // is best-effort (text-only is the common queueing flow).
+      try {
+        runtime.thread.append({
+          role: "user",
+          content: [{ type: "text", text: next.text }],
+        })
+      } catch (err) {
+        // If append fails (e.g. runtime not ready), put the item back at the
+        // head so we don't lose it.
+        console.warn("Queue drain failed, re-queueing:", err)
+        queue.enqueue(next.text, next.attachments)
+      }
+    }
+    return () => { drainRef.current = null }
+  }, [drainRef, queue, runtime])
+  return null
 }
 
 // Persistent "agent is thinking" pill — rendered when the most recent
