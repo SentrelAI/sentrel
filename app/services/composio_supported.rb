@@ -311,13 +311,36 @@ class ComposioSupported
     list.compact.map { |c| normalize_category(c) }.reject(&:blank?).uniq
   end
 
+  # Categories Composio publishes that we drop entirely (junk / placeholders).
+  # Includes a regex catch-all for Composio's `tagN` placeholder pattern.
+  CATEGORY_DROPLIST = Set.new(%w[]).freeze
+  CATEGORY_DROP_REGEX = /\Atag\d+\z/i
+
+  # Synonyms collapsed before we display so "ecommerce" + "e_commerce" don't
+  # show as two buckets, etc. Keys are the post-normalize form; values are
+  # the canonical bucket they should fold into.
+  CATEGORY_SYNONYMS = {
+    "E Commerce" => "Ecommerce",
+    "Developer Tools & DevOps" => "Developer Tools",
+    "Productivity & Project Management" => "Project Management",
+  }.freeze
+
   # Normalise category strings so "ai-tools" / "AI Tools" / "ai_tools" all
-  # collapse to the same "AI Tools" bucket on the page.
+  # collapse to the same "AI Tools" bucket on the page. Returns "" for
+  # values on the droplist (caller filters those out).
   def self.normalize_category(raw)
-    s = raw.to_s.gsub(/[_-]+/, " ").strip
-    return "" if s.empty?
-    # Title-case while preserving common acronyms.
-    acronyms = %w[ai api crm cms hr seo sms]
-    s.split(/\s+/).map { |w| acronyms.include?(w.downcase) ? w.upcase : w.capitalize }.join(" ")
+    s = raw.to_s.gsub(/[_-]+/, " ").strip.downcase
+    return "" if s.empty? || CATEGORY_DROPLIST.include?(s) || s.match?(CATEGORY_DROP_REGEX)
+    # Title-case while preserving common acronyms + a few mixed-case words
+    # we want to keep cased correctly (DevOps, IoT, etc.).
+    acronyms = %w[ai api crm cms hr seo sms it sql url ip iot api crm hr]
+    mixed_case = { "devops" => "DevOps", "iot" => "IoT", "saas" => "SaaS", "javascript" => "JavaScript" }
+    titled = s.split(/\s+/).map { |w|
+      lw = w.downcase
+      next mixed_case[lw] if mixed_case.key?(lw)
+      next w.upcase if acronyms.include?(lw)
+      w.capitalize
+    }.join(" ")
+    CATEGORY_SYNONYMS[titled] || titled
   end
 end
