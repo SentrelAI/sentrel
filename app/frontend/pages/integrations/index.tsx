@@ -175,6 +175,19 @@ export default function IntegrationsIndex({
           : "Personal connections. Only your chats and your agents see these — your teammates can't."}
       </p>
 
+      {/* Active category header — spans the full width above both the
+          sidebar and the grid so it reads as "this is what's below this
+          line", regardless of whether the user is looking at the
+          category list or the cards. */}
+      <div className="mb-3 flex items-baseline justify-between border-b border-border pb-2">
+        <h2 className="text-base font-semibold text-foreground">
+          {selectedCategory === "All" ? "All services" : selectedCategory}
+        </h2>
+        <span className="text-xs font-mono text-muted-foreground">
+          {pagedSlice.length.toLocaleString()} / {totalInCategory.toLocaleString()}
+        </span>
+      </div>
+
       {/* Two-pane layout: sidebar is content-sized (auto-height card),
           right pane is the only scroll surface with a fixed viewport
           height so cards scroll independently. */}
@@ -228,17 +241,6 @@ export default function IntegrationsIndex({
             </div>
           ) : (
             <>
-              {/* Active category title + count, stays pinned at top of the
-                  scrollable list area so it's always visible without
-                  shouting at the user. */}
-              <div className="flex items-baseline justify-between mb-3 sticky top-0 bg-background py-1 z-10">
-                <h2 className="text-sm font-medium text-foreground">
-                  {selectedCategory === "All" ? "All services" : selectedCategory}
-                </h2>
-                <span className="text-[11px] font-mono text-muted-foreground">
-                  {pagedSlice.length.toLocaleString()} / {totalInCategory.toLocaleString()}
-                </span>
-              </div>
               <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                 {pagedSlice.map((service) => {
                   const connected = service.available && integrations.find((i) =>
