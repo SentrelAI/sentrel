@@ -18,6 +18,7 @@ import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { searchToolkits, isEmbeddingReady } from "../integrations/tool-embeddings.js";
 import { getActiveToolkits, buildComposioServerForToolkits } from "../integrations/composio.js";
+import { routeIntegrationRequest } from "../integrations/intent-router.js";
 import { logger } from "../logger.js";
 
 // Shared state between agent-runner and this tool handler.
@@ -35,7 +36,7 @@ export function createQueryState(): QueryState {
   return { current: null, loadedToolkits: new Set(), baseMcpServers: {} };
 }
 
-export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState) {
+export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState, userId?: number | null) {
   const searchTool = tool(
     "search_integrations",
     "Find and LOAD integration tools when you need to interact with an external service. " +
@@ -51,7 +52,7 @@ export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState
     },
     async (args) => {
       try {
-        const available = await getActiveToolkits(orgId);
+        const available = await getActiveToolkits(orgId, userId);
         if (available.length === 0) {
           return {
             content: [{ type: "text", text: "No integrations are connected for this organization." }],
@@ -59,14 +60,17 @@ export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState
           };
         }
 
-        if (!isEmbeddingReady()) {
+        const semanticMatches = isEmbeddingReady()
+          ? await searchToolkits(args.query, available)
+          : [];
+        const routing = routeIntegrationRequest(args.query, available, semanticMatches);
+        if (routing.errors.length > 0) {
           return {
-            content: [{ type: "text", text: `Embedding index not ready. Connected integrations: ${available.join(", ")}. Try again in a few seconds.` }],
+            content: [{ type: "text", text: routing.errors.join("\n") }],
             isError: true,
           };
         }
-
-        const matches = await searchToolkits(args.query, available);
+        const matches = routing.matches;
 
         if (matches.length === 0) {
           return {
@@ -92,7 +96,7 @@ export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState
         const newToolkits = [...allLoaded];
         logger.info(`search_integrations: "${args.query}" → ${matches.join(", ")} (loaded set: ${newToolkits.join(", ")})`);
 
-        const composioServer = await buildComposioServerForToolkits(orgId, newToolkits);
+        const composioServer = await buildComposioServerForToolkits(orgId, newToolkits, userId);
         if (!composioServer) {
           return {
             content: [{ type: "text", text: `Matched ${matches.join(", ")} but failed to load tools from Composio.` }],

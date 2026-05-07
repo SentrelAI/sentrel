@@ -64,6 +64,10 @@ const REQUIRED_BETAS = [
   "fast-mode-2026-02-01",
 ];
 
+function sanitizeBearerToken(token: string | undefined): string {
+  return (token || "").trim().replace(/^Bearer\s+/i, "").replace(/\s+/g, "");
+}
+
 // Five low-signal CC tools injected into the tools array so the visible tool
 // set looks more like a real CC session. The model won't actually call these —
 // schemas are minimal and there's no implementation behind them.
@@ -533,7 +537,14 @@ export function startAnthropicBillingProxy(): void {
           ) continue;
           headers.set(key, val);
         }
-        headers.set("authorization", `Bearer ${process.env.ANTHROPIC_OAUTH_TOKEN}`);
+        const oauthToken = sanitizeBearerToken(process.env.ANTHROPIC_OAUTH_TOKEN);
+        if (!oauthToken) {
+          return new Response(JSON.stringify({ error: "ANTHROPIC_OAUTH_TOKEN is not set" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        headers.set("authorization", `Bearer ${oauthToken}`);
         if (body) headers.set("content-length", String(body.length));
         headers.set("accept-encoding", "identity");
         headers.set("anthropic-version", "2023-06-01");

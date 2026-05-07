@@ -76,6 +76,7 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
         // so the report-back chain can deliver the final answer back to the
         // user without anyone calling a send_* tool explicitly.
         if (targetAgentId !== agentId) {
+          const createdTask = await host.getTask(id);
           const assignerInstruction = [
             args.instruction || args.description || args.title,
             `\n\n(This task was assigned to you by another agent — when you complete it, your response will be reported back to the assigner automatically, who will then deliver it to the user on the channel they originally asked from.)`,
@@ -84,6 +85,7 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
             type: "task_assignment",
             jobId: `task-assign-${id}`,
             orgId,
+            conversationId: createdTask?.conversation_id ?? null,
             origin: origin?.channel
               ? { channel: origin.channel, metadata: origin.metadata || {}, conversationId: origin.conversationId ?? null }
               : undefined,
@@ -313,11 +315,13 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
           assignedByAgentId: agentId,
           parentTaskId: args.task_id ?? currentTaskId,
         });
+        const createdTask = await host.getTask(newTaskId);
 
         await host.publishInboundToAgent(target.id, {
           type: "task_assignment",
           jobId: `agent-question-${newTaskId}`,
           orgId,
+          conversationId: createdTask?.conversation_id ?? null,
           origin: asOrigin(origin),
           payload: {
             taskId: newTaskId,
@@ -384,11 +388,13 @@ export function buildTasksMcpServer(agentId: number, orgId: number, origin?: Tas
           assignedByAgentId: agentId,
           parentTaskId: args.task_id,
         });
+        const createdTask = await host.getTask(escalationTaskId);
 
         await host.publishInboundToAgent(target.id, {
           type: "task_assignment",
           jobId: `escalation-${escalationTaskId}`,
           orgId,
+          conversationId: createdTask?.conversation_id ?? null,
           origin: asOrigin(origin),
           payload: {
             taskId: escalationTaskId,

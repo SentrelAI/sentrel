@@ -21,6 +21,7 @@ import { resolveActionApproval } from "./security/action-approval.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
+import { hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
 import { scanCommand } from "./security/command-scanner.js";
@@ -129,6 +130,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   //   the conversation + seeds the first user message on task create/comment)
   const isInbound = job.type === "inbound_message";
   const isTaskAssignment = job.type === "task_assignment";
+  const isReportbackJob = isTaskAssignment && job.jobId?.startsWith("task-reportback-") === true;
 
   // Spend-cap enforcement. Rails owns the cap config + spend rollup; the
   // engine asks via /api/spend_caps/check before each run. Hard-stop on
@@ -365,6 +367,13 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
   if (resumeSessionId) {
     options.resume = resumeSessionId;
   }
+  if (isReportbackJob) {
+    // Report-backs should transform a downstream result into a concise update.
+    // Letting them use tools caused fresh research / document creation loops.
+    options.allowedTools = [];
+    options.mcpServers = {};
+    logger.info("Report-back mode: tools disabled for this run");
+  }
 
   try {
     // SDK handles resume natively. Session rotation keeps transcripts small
@@ -596,7 +605,26 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     // Mark task as done on successful completion (unless skipAutoComplete — e.g. reopened task).
     if (isTaskAssignment && job.payload?.taskId && !job.payload?.skipAutoComplete) {
-      await host.updateTask(job.payload.taskId, { status: "done", result: { response: finalResponse.slice(0, 10000) } }).catch(() => {});
+      const task = await host.getTask(job.payload.taskId).catch(() => null);
+      const terminalOrPaused = task && ["awaiting_input", "failed", "cancelled"].includes(task.status);
+      if (terminalOrPaused) {
+        logger.info(`Task ${job.payload.taskId}: not auto-completing because current status is ${task.status}`);
+      } else {
+        const validation = validateTaskDeliverable(job, result, finalResponse);
+        if (!validation.ok) {
+          logger.warn(`Task ${job.payload.taskId}: deliverable validation failed`, { reason: validation.reason });
+          await host.updateTask(job.payload.taskId, {
+            status: validation.status || "failed",
+            result: {
+              response: finalResponse.slice(0, 10000),
+              validation_error: validation.reason,
+            },
+          }).catch(() => {});
+          await host.addTaskComment(job.payload.taskId, agent.id, `Task did not pass completion validation: ${validation.reason}`).catch(() => {});
+        } else {
+          await host.updateTask(job.payload.taskId, { status: "done", result: { response: finalResponse.slice(0, 10000) } }).catch(() => {});
+        }
+      }
     }
 
     // Auto-mirror agent response as a TaskComment so the UI thread always
@@ -624,6 +652,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
             type: "task_assignment",
             jobId: `task-reportback-${task.id}`,
             orgId: agent.organization_id,
+            conversationId: task.conversation_id ?? null,
             origin: job.origin,
             payload: {
               taskId: task.id,
@@ -670,15 +699,37 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
       const delaySec = 60 + retryCount * 60; // 60s, 120s, 180s
       logger.warn(`Rate-limited (attempt ${retryCount + 1}/3); re-enqueueing job in ${delaySec}s`, { jobId });
       const retryPayload = { ...job, _retryCount: retryCount + 1, jobId: `${jobId}-retry${retryCount + 1}` };
-      const { redis } = await import("./queue.js");
-      setTimeout(() => {
-        redis.lpush(`agent-inbox-${agent.id}`, JSON.stringify(retryPayload)).catch(() => {});
-      }, delaySec * 1000).unref();
+      const { queue } = await import("./queue.js");
+      await queue.add(retryPayload.type, retryPayload, {
+        delay: delaySec * 1000,
+        jobId: retryPayload.jobId,
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
+      });
       // Leave task in_progress so the kanban shows the work is still
       // happening rather than failed.
       if (job.type === "task_assignment" && job.payload?.taskId) {
         await host.updateTask(job.payload.taskId, { status: "in_progress" }).catch(() => {});
       }
+      await host.saveAuditLog(
+        agent.organization_id,
+        agent.id,
+        job.type,
+        undefined,
+        { prompt: built.promptText?.slice(0, 500), jobId },
+        { error: errMsg, retry_in_seconds: delaySec, retry_count: retryCount + 1 },
+        "retrying",
+        {
+          routedToolkits: relevantToolkits,
+          taskId: isTaskAssignment ? (job.payload?.taskId ?? null) : null,
+          wasResume: resumeSessionId !== null,
+          spans: spans.serialize(),
+          durationMs: Date.now() - startTime,
+          jobId,
+          conversationIdRef: conversation?.id?.toString() || null,
+          activeCapabilities: resolveCapabilities(agent) as unknown as Record<string, unknown>,
+        },
+      ).catch(() => {});
       // Tell the user channel this is happening, but don't error-emit.
       if (job.origin?.channel) {
         await deliverToOrigin(job.origin, `⏳ Hit a ${isRateLimit ? "rate limit" : "transient error"} on this turn — retrying in ${delaySec}s.`).catch(() => {});
@@ -777,6 +828,60 @@ interface QueryResult {
   toolHistory: ToolHistoryEntry[];
   thinkingText: string;
   thinkingDurationMs: number;
+}
+
+function validateTaskDeliverable(
+  job: JobData,
+  result: QueryResult,
+  finalResponse: string,
+): { ok: true } | { ok: false; reason: string; status?: "failed" | "awaiting_input" } {
+  const instruction = [
+    job.payload?.instruction || "",
+    job.payload?.body || "",
+    job.payload?.subject || "",
+  ].join("\n").toLowerCase();
+  const response = (finalResponse || "").toLowerCase();
+  const toolNames = result.toolHistory.map((t) => t.tool);
+
+  if (!finalResponse || finalResponse.trim().length === 0) {
+    return { ok: false, reason: "agent returned an empty response" };
+  }
+
+  if (hasIntegrationIntent(instruction, "spreadsheet")) {
+    const spreadsheetToolkits = toolkitsForIntent("spreadsheet").map((toolkit) => toolkit.toUpperCase());
+    const usedSpreadsheetTool = toolNames.some((name) => spreadsheetToolkits.some((prefix) => name.includes(prefix)));
+    const usedDocumentTool = toolNames.some((name) => /GOOGLEDOCS|NOTION/.test(name));
+    const hasSheetUrl = /docs\.google\.com\/spreadsheets/i.test(finalResponse);
+    const explicitBlocked = /\b(not connected|needs auth|connection|blocked|unavailable|failed|cannot access)\b/.test(response);
+
+    if (usedDocumentTool && !usedSpreadsheetTool) {
+      return {
+        ok: false,
+        reason: "requested a spreadsheet but the run used document tools instead of spreadsheet/table tools",
+      };
+    }
+    if (!usedSpreadsheetTool && !hasSheetUrl && !explicitBlocked) {
+      return {
+        ok: false,
+        reason: "requested a spreadsheet but no spreadsheet/table tool call or spreadsheet URL was produced",
+      };
+    }
+  }
+
+  if (hasIntegrationIntent(instruction, "lead_enrichment")) {
+    const leadToolkits = toolkitsForIntent("lead_enrichment").map((toolkit) => toolkit.toUpperCase());
+    const usedLeadTool = toolNames.some((name) => leadToolkits.some((prefix) => name.includes(prefix)));
+    const fallbackAllowed = /\b(fallback|fall back|web|linkedin|manual|manually|do it yourself)\b/.test(instruction);
+    const explicitBlocked = /\b(not connected|needs auth|connection|blocked|unavailable|failed|rate limit|429)\b/.test(response);
+    if (!usedLeadTool && !fallbackAllowed && !explicitBlocked) {
+      return {
+        ok: false,
+        reason: "requested lead/contact enrichment but no lead/CRM tool call or explicit blocker was recorded",
+      };
+    }
+  }
+
+  return { ok: true };
 }
 
 async function runAgentLoop(
@@ -1083,7 +1188,9 @@ async function buildQueryOptions(
   let composioToolNames: string[] = [];
   let relevantToolkits: string[] = [];
   if (caps.integrations.enabled) {
-    const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState);
+    const buildOriginatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
+      ?? (job as { user_id?: number }).user_id;
+    const integrationsServer = buildIntegrationSearchMcpServer(agent.organization_id, queryState, buildOriginatingUserId);
     mcpServers.integrations = integrationsServer;
     baseMcpServers.integrations = integrationsServer;
 
@@ -1107,8 +1214,6 @@ async function buildQueryOptions(
     // Layer 3 (on-demand): search_integrations MCP tool — agent calls it to
     //   load ADDITIONAL toolkits mid-session if needed.
     // Layer 4 (fallback): COMPOSIO_SEARCH_TOOLS (Composio API).
-    const buildOriginatingUserId = (job.payload?.metadata as Record<string, unknown> | undefined)?.user_id as number | undefined
-      ?? (job as { user_id?: number }).user_id;
     const availableToolkits = await getActiveToolkits(agent.organization_id, buildOriginatingUserId);
     const toolRouting = process.env.TOOL_ROUTING || "smart";
 
@@ -1123,29 +1228,20 @@ async function buildQueryOptions(
     const { searchToolkits, isEmbeddingReady } = await import("./integrations/tool-embeddings.js");
     const layer2 = isEmbeddingReady() ? await searchToolkits(routingText, availableToolkits, 3, 0.3) : [];
 
-    // Layer 0 — brand-name nudge. If the user spelled out a connected toolkit
-    // slug/label in plain text ("...add to Apollo", "push to HubSpot"), force-
-    // include it. This fires regardless of embedding readiness, which means
-    // cold-boot sessions still get the right toolkit pre-loaded instead of
-    // hallucinating about non-existent API keys.
-    const lowerRoutingText = routingText.toLowerCase();
-    const layer0 = availableToolkits.filter((slug) => {
-      const slugLower = slug.toLowerCase();
-      // Match either the slug ("apollo", "googlesheets") or a humanised form
-      // ("google sheets"). Single-word slugs need a wordish boundary so we
-      // don't trigger on substrings ("notion" inside "notional").
-      if (new RegExp(`\\b${slugLower}\\b`).test(lowerRoutingText)) return true;
-      const spaced = slugLower.replace(/(google|micro|smart|hub|sales|click)([a-z]+)/, "$1 $2");
-      return spaced !== slugLower && lowerRoutingText.includes(spaced);
-    });
+    // Layer 0 — deterministic routing by service mention and broad intent
+    // category. This avoids one-off rules for every integration while still
+    // keeping "spreadsheet" on spreadsheet tools, "lead enrichment" on lead
+    // tools, etc.
+    const layer0Decision = routeIntegrationRequest(routingText, availableToolkits, layer2);
+    const layer0 = layer0Decision.matches;
 
     relevantToolkits = toolRouting === "all"
       ? availableToolkits
-      : [...new Set([...layer0, ...layer1, ...layer2])].filter((t) => availableToolkits.includes(t));
+      : [...new Set([...layer0, ...layer1])].filter((t) => availableToolkits.includes(t));
 
     logger.info(
       `Tool routing: ${relevantToolkits.length === 0 ? "search-only" : relevantToolkits.join(", ")} ` +
-      `(layer0=${layer0.join(",") || "-"}, layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
+      `(layer0=${layer0.join(",") || "-"}, intents=${layer0Decision.intents.join(",") || "-"}, layer1=${layer1.join(",") || "-"}, layer2=${layer2.join(",") || "-"}, available: ${availableToolkits.join(", ") || "none"})`,
     );
 
     // Per-agent ACL — engine drops Composio tools the policy rejects before

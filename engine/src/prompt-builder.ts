@@ -126,6 +126,15 @@ export function buildPrompt(
       break;
     }
     case "task_assignment":
+      if (job.jobId?.startsWith("task-reportback-")) {
+        parts.push(
+          `## Report-back mode\n` +
+          `You are processing the result of work you delegated to another agent. Do not use tools, do not research, do not create files, and do not mutate tasks in this mode.\n\n` +
+          `Your job is to read the report below and produce a concise status update for the original requester. If the report says the work is blocked or incomplete, say exactly what is blocked and what input or connection is needed.\n\n` +
+          `${job.payload?.instruction || ""}`,
+        );
+        break;
+      }
       parts.push(`You have been assigned a task (ID: ${job.payload?.taskId}):\n${job.payload?.instruction || ""}`);
       if (taskCheckpoint && Object.keys(taskCheckpoint).length > 0) {
         // Step 5.5 — resume from prior progress if the agent checkpointed it.

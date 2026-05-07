@@ -12,7 +12,7 @@ export function setLogBroadcaster(fn: LogBroadcaster): void {
 }
 
 class BroadcastTransport extends Transport {
-  log(info: any, callback: () => void): void {
+  override log(info: any, callback: () => void): void {
     try {
       if (logBroadcaster) {
         logBroadcaster({

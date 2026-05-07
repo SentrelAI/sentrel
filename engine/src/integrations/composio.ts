@@ -390,7 +390,8 @@ export async function getComposioMcpServer(
 export async function buildComposioServerForToolkits(
   orgId: number,
   toolkits: string[],
+  userId?: number | null,
 ): Promise<any | null> {
-  const result = await getComposioMcpServer(orgId, toolkits);
+  const result = await getComposioMcpServer(orgId, toolkits, userId);
   return result?.server ?? null;
 }

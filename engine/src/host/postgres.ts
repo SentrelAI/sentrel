@@ -599,7 +599,9 @@ export class PostgresHost implements Host {
         opts?.parentTaskId ?? null,
       ],
     );
-    return rows[0].id;
+    const taskId = rows[0].id;
+    await this.ensureTaskConversation(taskId);
+    return taskId;
   }
 
   // Pull the first meaningful paragraph from an identity_md (skips blank lines
@@ -682,6 +684,53 @@ export class PostgresHost implements Host {
     await redis.lpush(`agent-inbox-${targetAgentId}`, JSON.stringify(body));
   }
 
+  private async ensureTaskConversation(taskId: number): Promise<number | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, organization_id, agent_id, assigned_by_user_id, title, description, instruction, conversation_id
+       FROM tasks WHERE id = $1 LIMIT 1`,
+      [taskId],
+    );
+    const task = rows[0];
+    if (!task) return null;
+    if (task.conversation_id) return task.conversation_id;
+
+    const { rows: created } = await this.pool.query(
+      `INSERT INTO conversations
+         (organization_id, agent_id, kind, user_id, contact_identifier, contact_name, subject, status, created_at, updated_at)
+       VALUES ($1, $2, 'internal', $3, $4, 'Task', $5, 'active', NOW(), NOW())
+       RETURNING id`,
+      [
+        task.organization_id,
+        task.agent_id,
+        task.assigned_by_user_id || null,
+        `task-${task.id}`,
+        task.title,
+      ],
+    );
+    const conversationId = created[0]?.id;
+    if (!conversationId) return null;
+
+    await this.pool.query(
+      `UPDATE tasks SET conversation_id = $1, updated_at = NOW() WHERE id = $2`,
+      [conversationId, taskId],
+    );
+
+    const seed = [`Task: ${task.title}`, task.description, task.instruction]
+      .filter((part) => typeof part === "string" && part.trim().length > 0)
+      .join("\n\n");
+    await this.saveMessage(
+      conversationId,
+      "user",
+      seed,
+      "inbound",
+      "task",
+      [],
+      { task_id: taskId, source: "task_created_by_engine" },
+    );
+
+    return conversationId;
+  }
+
   async listTasks(agentId: number, status?: string): Promise<Array<{ id: number; title: string; description: string | null; status: string; priority: string; due_at: string | null; created_at: string }>> {
     const wheres = ["agent_id = $1"];
     const params: unknown[] = [agentId];
@@ -743,12 +792,36 @@ export class PostgresHost implements Host {
   }
 
   async addTaskComment(taskId: number, agentId: number, content: string): Promise<number> {
-    const { rows } = await this.pool.query(
-      `INSERT INTO task_comments (task_id, agent_id, content, created_at, updated_at)
-       VALUES ($1, $2, $3, NOW(), NOW()) RETURNING id`,
-      [taskId, agentId, content],
+    const conversationId = await this.ensureTaskConversation(taskId);
+    if (!conversationId) throw new Error(`Task not found: ${taskId}`);
+
+    const message = await this.saveMessage(
+      conversationId,
+      "assistant",
+      content,
+      "outbound",
+      "task",
+      [],
+      { task_id: taskId, source: "agent_task_comment", agent_id: agentId },
     );
-    return rows[0].id;
+    await this.notifyTaskEvent(taskId, message.id).catch(() => {});
+    return message.id;
+  }
+
+  private async notifyTaskEvent(taskId: number, messageId: number): Promise<void> {
+    const railsUrl = process.env.RAILS_INTERNAL_URL;
+    const secret = process.env.ENGINE_API_SECRET;
+    if (!railsUrl || !secret) return;
+
+    await fetch(`${railsUrl}/api/task_events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Engine-Secret": secret,
+      },
+      body: JSON.stringify({ task_id: taskId, message_id: messageId }),
+      signal: AbortSignal.timeout(2_500),
+    });
   }
 
   // ── Blob storage (Sprint 1) ──
