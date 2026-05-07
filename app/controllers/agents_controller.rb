@@ -356,6 +356,7 @@ class AgentsController < ApplicationController
     permitted = params.require(:agent).permit(
       :name, :slug, :role, :status, :manager_id,
       :identity_md, :personality_md, :instructions_md, :email_signature_md, :memory_md,
+      :spend_daily_cap_usd, :spend_monthly_cap_usd, :spend_notify_threshold_pct,
       :heartbeat_enabled, :heartbeat_interval_minutes, :approval_mode,
       permissions: {},
       capabilities: CAPABILITY_KEYS
@@ -444,6 +445,7 @@ class AgentsController < ApplicationController
     agent.as_json(only: [
       :id, :name, :slug, :role, :status,
       :identity_md, :personality_md, :instructions_md, :memory_md, :email_signature_md,
+      :spend_daily_cap_usd, :spend_monthly_cap_usd, :spend_notify_threshold_pct,
       :heartbeat_enabled, :heartbeat_interval_minutes, :permissions, :approval_mode,
       :created_at, :updated_at
     ]).merge(

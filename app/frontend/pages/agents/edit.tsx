@@ -84,6 +84,9 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
       max_tokens: agent.ai_config?.max_tokens || 8192,
       thinking_level: agent.ai_config?.thinking_level || "none",
     },
+    spend_daily_cap_usd: (agent as { spend_daily_cap_usd?: number | null }).spend_daily_cap_usd ?? null,
+    spend_monthly_cap_usd: (agent as { spend_monthly_cap_usd?: number | null }).spend_monthly_cap_usd ?? null,
+    spend_notify_threshold_pct: (agent as { spend_notify_threshold_pct?: number }).spend_notify_threshold_pct ?? 0.8,
     permissions: (agent as any).permissions || {},
     capabilities: (agent as any).capabilities || {
       knowledge_base: { enabled: false, always_retrieve: true, threshold: 0.75, top_k: 5 },
@@ -241,6 +244,58 @@ export default function AgentEdit({ agent, agents = [] }: Props) {
                 Costs extra tokens per turn proportional to the budget. After saving, hit Ops → Reload to push to the engine.
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* Spend caps */}
+        <section>
+          <Overline className="mb-3">Spend caps</Overline>
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="spend_daily_cap" className="text-xs">Daily cap (USD)</Label>
+                <Input
+                  id="spend_daily_cap"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="No cap"
+                  value={data.spend_daily_cap_usd ?? ""}
+                  onChange={(e) => setData("spend_daily_cap_usd", e.target.value === "" ? null : parseFloat(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="spend_monthly_cap" className="text-xs">Monthly cap (USD)</Label>
+                <Input
+                  id="spend_monthly_cap"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  placeholder="No cap"
+                  value={data.spend_monthly_cap_usd ?? ""}
+                  onChange={(e) => setData("spend_monthly_cap_usd", e.target.value === "" ? null : parseFloat(e.target.value))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="spend_notify_threshold" className="text-xs">Notify when daily spend reaches</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="spend_notify_threshold"
+                  type="number"
+                  step="0.05"
+                  min={0}
+                  max={1}
+                  value={data.spend_notify_threshold_pct}
+                  onChange={(e) => setData("spend_notify_threshold_pct", parseFloat(e.target.value))}
+                  className="w-32"
+                />
+                <span className="text-xs text-muted-foreground">of daily cap (0–1)</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              Engine consults these before each run. Hard-stop on over-cap with a "⚠️ Spend cap hit" message; one-time-per-day heads-up when crossing the notify threshold. Leave empty for no limit. After saving, hit Ops → Reload to push to the engine.
+            </p>
           </div>
         </section>
 

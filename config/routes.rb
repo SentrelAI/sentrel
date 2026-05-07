@@ -24,6 +24,10 @@ Rails.application.routes.draw do
     # Engine consults this from the request_approval tool before pausing,
     # to honor standing rules ("auto-approve LinkedIn < 3/day", etc.).
     post "approval_rules/match", to: "approval_rules#match"
+    # Engine consults this before each run to enforce daily/monthly spend
+    # caps + decide whether to post the "approaching cap" heads-up.
+    get  "spend_caps/check",         to: "spend_caps#check"
+    post "spend_caps/mark_notified", to: "spend_caps#mark_notified"
     # User clicks Allow/Deny on a dangerous-command approval in the UI →
     # Rails relays the decision to the engine via Redis pub/sub.
     resources :command_approvals, only: [:create]

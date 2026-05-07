@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_07_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_07_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -129,6 +129,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_07_100000) do
     t.text "personality_md"
     t.string "role", null: false
     t.string "slug", null: false
+    t.decimal "spend_daily_cap_usd", precision: 10, scale: 2
+    t.decimal "spend_monthly_cap_usd", precision: 10, scale: 2
+    t.date "spend_notified_on"
+    t.decimal "spend_notify_threshold_pct", precision: 4, scale: 2, default: "0.8", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
     t.index ["capabilities"], name: "index_agents_on_capabilities", using: :gin
