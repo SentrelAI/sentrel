@@ -9,12 +9,20 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
-import { type FC, memo, useState } from "react";
+import { createContext, type FC, memo, useContext, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { useFilePreviewOptional } from "@/contexts/file-preview";
 import { cn } from "@/lib/utils";
+
+// Citation context — populated by the assistant message renderer when it has
+// a flat list of WebSearch / WebFetch sources for this turn. The text
+// preprocessor uses it to swap raw [N] markers in the prose for clickable
+// superscript links that hover-preview the matching source chip.
+export type Citation = { url: string; title?: string };
+const CitationsContext = createContext<Citation[] | null>(null);
+export const CitationsProvider = CitationsContext.Provider;
 
 // Best-effort guess at content type from a URL or filename. Used to feed
 // the FilePreview drawer when we only have a markdown link, no headers.
@@ -36,6 +44,14 @@ function guessContentType(href: string, filename: string): string {
 }
 
 const MarkdownTextImpl = () => {
+  const citations = useContext(CitationsContext);
+  // Pre-rewrites bare [N] tokens in the prose to special markdown links of
+  // the form [N](aui-cite:URL) so the existing `a` renderer below can pick
+  // them up and render the superscript hover card. No-ops when the message
+  // has no sources (typical chat) so we don't touch random brackets.
+  const preprocess = citations && citations.length > 0
+    ? (text: string) => rewriteCitations(text, citations)
+    : undefined;
   return (
     <MarkdownTextPrimitive
       // Smoothing on by default in AUI; making it explicit so a library
@@ -44,9 +60,19 @@ const MarkdownTextImpl = () => {
       remarkPlugins={[remarkGfm]}
       className="aui-md"
       components={defaultComponents}
+      preprocess={preprocess}
     />
   );
 };
+
+function rewriteCitations(text: string, citations: Citation[]): string {
+  return text.replace(/\[(\d+)\]/g, (whole, n) => {
+    const idx = Number(n) - 1;
+    const c = citations[idx];
+    if (!c) return whole;
+    return `[${n}](aui-cite:${encodeURIComponent(c.url)})`;
+  });
+}
 
 export const MarkdownText = memo(MarkdownTextImpl);
 
@@ -200,6 +226,26 @@ const defaultComponents = memoizeMarkdownComponents({
       hrefStr.includes("/api/blobs/") ||
       hrefStr.includes("/rails/active_storage/")
     const previewer = useFilePreviewOptional()
+
+    // Inline citation injected by rewriteCitations — render as a small
+    // superscript link that hover-previews the source's domain/title.
+    if (hrefStr.startsWith("aui-cite:")) {
+      const citationUrl = decodeURIComponent(hrefStr.slice("aui-cite:".length))
+      let domain = citationUrl
+      try { domain = new URL(citationUrl).hostname.replace(/^www\./, "") } catch {}
+      return (
+        <a
+          href={citationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={citationUrl}
+          className="aui-md-cite mx-0.5 inline-flex items-center justify-center rounded-sm bg-muted/60 px-1 align-super text-[10px] font-medium text-foreground/70 leading-tight no-underline hover:bg-muted hover:text-foreground transition-colors"
+        >
+          {children}
+          <span className="sr-only"> — {domain}</span>
+        </a>
+      )
+    }
 
     if (isBlob) {
       const childArray = Array.isArray(children) ? children : [children]

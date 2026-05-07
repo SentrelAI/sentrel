@@ -3,7 +3,7 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { MarkdownText, CitationsProvider, type Citation } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
@@ -987,6 +987,21 @@ const AssistantMessage: FC = () => {
     return custom?.thinking;
   }) as { text: string; durationMs: number } | undefined;
 
+  // Flatten sources from every WebSearch / WebFetch step in this turn so the
+  // markdown renderer can rewrite [N] tokens in the prose into clickable
+  // superscript links. Numbering is the agent's responsibility — we just
+  // map [N] to the Nth source we observed. If [N] is out of range, the
+  // text stays untouched.
+  const citations: Citation[] | null = (() => {
+    if (!toolSteps) return null;
+    const flat: Citation[] = [];
+    for (const step of toolSteps) {
+      if (!step.sources) continue;
+      for (const s of step.sources) flat.push({ url: s.url, title: s.title });
+    }
+    return flat.length > 0 ? flat : null;
+  })();
+
   return (
     <MessagePrimitive.Root
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
@@ -998,14 +1013,16 @@ const AssistantMessage: FC = () => {
         {isEmptyAndRunning && !hasToolSteps ? (
           <ColdStartAwareDot />
         ) : (
-          <MessagePrimitive.Parts>
-            {({ part }) => {
-              if (part.type === "text") return <TextWithApprovals />;
-              if (part.type === "tool-call")
-                return part.toolUI ?? <ToolFallback {...part} />;
-              return null;
-            }}
-          </MessagePrimitive.Parts>
+          <CitationsProvider value={citations}>
+            <MessagePrimitive.Parts>
+              {({ part }) => {
+                if (part.type === "text") return <TextWithApprovals />;
+                if (part.type === "tool-call")
+                  return part.toolUI ?? <ToolFallback {...part} />;
+                return null;
+              }}
+            </MessagePrimitive.Parts>
+          </CitationsProvider>
         )}
         <MessageError />
       </div>
