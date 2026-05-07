@@ -37,7 +37,7 @@ import { AgentChat } from "@/components/agent-chat"
 import { AgentOpsMenu } from "@/components/agent-ops-menu"
 import { AgentModelPicker } from "@/components/agent-model-picker"
 import { AgentSpendCard } from "@/components/agent-spend-card"
-import { DollarSign } from "lucide-react"
+import { DollarSign, Brain as BrainIcon } from "lucide-react"
 import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -151,7 +151,7 @@ interface Props {
   anthropic_account_connected?: boolean
 }
 
-type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "spend"
+type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "memory" | "spend"
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -398,7 +398,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
 }
 
 export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected }: Props) {
-  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "spend"]
+  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "memory", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
     const t = new URLSearchParams(window.location.search).get("tab") as Section | null
@@ -459,6 +459,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
     { key: "knowledge", label: "Knowledge", icon: BookOpen, count: knowledge_documents.length },
     { key: "identity", label: "Identity", icon: User },
+    { key: "memory", label: "Memory", icon: BrainIcon },
     { key: "spend", label: "Spend", icon: DollarSign },
   ]
 
@@ -832,6 +833,29 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         {/* Identity */}
         {section === "identity" && (
           <IdentityEditor agent={agent} />
+        )}
+
+        {section === "memory" && (
+          <div className="p-4 sm:p-6">
+            <div className="mx-auto max-w-2xl space-y-4">
+              <div>
+                <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                  <BrainIcon className="size-4 text-muted-foreground" />
+                  Long-term memory
+                </h2>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Curated facts the agent has folded into <code className="text-[10px] px-1 py-0.5 rounded bg-muted">memory.md</code> via Hermes-style threshold merge + OpenClaw-style pre-rotation flush.
+                  Bounded to 2200 chars; over-budget compressions audited in <code className="text-[10px] px-1 py-0.5 rounded bg-muted">dreams.md</code> on the engine volume.
+                </p>
+              </div>
+              <pre className="rounded-lg border bg-muted/30 p-4 text-[11px] font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-auto">
+                {(agent as { memory_md?: string }).memory_md?.trim() || "No memories consolidated yet."}
+              </pre>
+              <p className="text-[10px] text-muted-foreground">
+                Updates land at session rotation (~50% context, hard cap 200 turns). Tail engine logs for <code className="text-[10px] px-1 py-0.5 rounded bg-muted">consolidateAtRotation</code> to see writes.
+              </p>
+            </div>
+          </div>
         )}
 
         {section === "spend" && (
