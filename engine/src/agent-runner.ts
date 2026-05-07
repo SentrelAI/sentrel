@@ -1258,11 +1258,19 @@ async function buildQueryOptions(
 
   // Extended thinking: surfaces the model's reasoning trace as a "Thought
   // for Xs" pill in chat. Only useful on Claude 4 / Sonnet 4.x / Opus 4.x —
-  // older models silently ignore the budget. Env-gate so we can A/B without
-  // a redeploy. Default off.
-  const enableThinking = process.env.ENGINE_ENABLE_THINKING === "true";
-  if (enableThinking) {
-    options.maxThinkingTokens = 4000;
+  // older models silently ignore the budget. Configured per-agent via
+  // ai_config.thinking_level in Rails; provisioner forwards the value as
+  // ENGINE_THINKING_LEVEL. Legacy ENGINE_ENABLE_THINKING=true maps to
+  // "medium" so the env-only path keeps working.
+  const thinkingLevel = (process.env.ENGINE_THINKING_LEVEL || "").toLowerCase()
+    || (process.env.ENGINE_ENABLE_THINKING === "true" ? "medium" : "none");
+  const thinkingBudget: Record<string, number> = {
+    low: 2000,
+    medium: 4000,
+    high: 8000,
+  };
+  if (thinkingBudget[thinkingLevel]) {
+    options.maxThinkingTokens = thinkingBudget[thinkingLevel];
   }
 
   return { options, relevantToolkits };
