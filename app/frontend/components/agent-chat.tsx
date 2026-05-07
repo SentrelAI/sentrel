@@ -536,10 +536,10 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
           upsertAssistantContent(() => data.text)
         }
       } else if (data.type === "tool_call") {
-        // Engine started a tool invocation — append a step to the trailing
-        // assistant's toolSteps so we can render "Searching the web…" /
-        // "Vercel: create deployment…" chips above the content.
-        const id = `${data.tool}:${JSON.stringify(data.input ?? {}).slice(0, 32)}:${Date.now()}`
+        // Engine started a tool invocation. Step id = the SDK tool_use id
+        // (carried via toolUseId in the cable event) so tool_result can
+        // match correctly even when the same tool runs in parallel.
+        const id = String(data.toolUseId ?? `${data.tool}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)
         mutateToolSteps((steps) => [
           ...steps,
           {
@@ -550,9 +550,19 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
           },
         ])
       } else if (data.type === "tool_result") {
-        // Mark the most recent unfinished step for this tool as done.
+        // Match by tool_use_id when present (engine sends it), otherwise
+        // fall back to "latest unfinished step with same tool name". The
+        // id-based path handles parallel same-tool calls correctly.
+        const targetId = data.toolUseId ? String(data.toolUseId) : null
         mutateToolSteps((steps) => {
-          // Find the latest matching tool that hasn't finished yet.
+          if (targetId) {
+            const idx = steps.findIndex((s) => s.id === targetId)
+            if (idx >= 0 && !steps[idx].doneAt) {
+              const next = steps.slice()
+              next[idx] = { ...steps[idx], doneAt: Date.now(), result: data.result }
+              return next
+            }
+          }
           for (let i = steps.length - 1; i >= 0; i--) {
             if (steps[i].tool === data.tool && !steps[i].doneAt) {
               const next = steps.slice()

@@ -953,12 +953,9 @@ const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
               )}
             >
               {step.doneAt ? (
-                <CheckIcon className="size-3 text-foreground/60" />
+                <CheckIcon className="size-3 text-emerald-500/80" />
               ) : (
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40 opacity-60" />
-                  <span className="relative inline-flex size-2 rounded-full bg-foreground/60" />
-                </span>
+                <Loader2Icon className="size-3 animate-spin text-muted-foreground" />
               )}
               <span className="truncate max-w-[420px]">{step.label}</span>
               {elapsed && <span className="font-mono tabular-nums text-muted-foreground/70">{elapsed}</span>}
