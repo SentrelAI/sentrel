@@ -847,20 +847,40 @@ const MessageError: FC = () => {
 };
 
 const AssistantMessage: FC = () => {
+  // Render a typing-dot pulse when the message is empty + still streaming —
+  // covers both fresh sends (placeholder pre-content) and reload-mid-run
+  // (recovery seed). AUI's MessagePrimitive.Parts renders nothing for an
+  // empty text part on its own.
+  const isEmptyAndRunning = useAuiState((s) => {
+    const status = s.message.status;
+    if (status?.type !== "running") return false;
+    const parts = s.message.content as Array<{ type: string; text?: string }> | undefined;
+    if (!parts || parts.length === 0) return true;
+    return parts.every((p) => p.type !== "text" || !(p.text ?? "").trim());
+  });
+
   return (
     <MessagePrimitive.Root
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
-        <MessagePrimitive.Parts>
-          {({ part }) => {
-            if (part.type === "text") return <TextWithApprovals />;
-            if (part.type === "tool-call")
-              return part.toolUI ?? <ToolFallback {...part} />;
-            return null;
-          }}
-        </MessagePrimitive.Parts>
+        {isEmptyAndRunning ? (
+          <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
+            <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
+            <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
+            <span className="size-2 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
+          </div>
+        ) : (
+          <MessagePrimitive.Parts>
+            {({ part }) => {
+              if (part.type === "text") return <TextWithApprovals />;
+              if (part.type === "tool-call")
+                return part.toolUI ?? <ToolFallback {...part} />;
+              return null;
+            }}
+          </MessagePrimitive.Parts>
+        )}
         <MessageError />
       </div>
 

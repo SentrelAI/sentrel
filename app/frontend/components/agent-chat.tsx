@@ -359,6 +359,10 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   // Drain hook for the queued-messages strip. When isRunning flips false the
   // useEffect below dispatches the next queue item via the runtime.
   const drainQueuedRef = useRef<(() => void) | null>(null)
+  // Dedupe ids of finalized assistant messages so cable + poll racing don't
+  // each call upsertAssistantContent with final=true (the second call would
+  // see a non-pending trailing message and create a duplicate).
+  const finalizedIdsRef = useRef<Set<string>>(new Set())
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
 
   // Hydrate inline cards from server state on mount so a page refresh still
@@ -410,30 +414,26 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
 
   // Append to (or update) the trailing assistant message in the store. Used
   // by every cable event that carries assistant content — text_delta streams,
-  // media_attachment markdown, the final message, error fallbacks. Called
-  // with `final` to mark the run terminal.
+  // media_attachment markdown, the final message, error fallbacks. We never
+  // change the existing message's id once it's been issued — AUI's
+  // MessageRepository treats id changes as duplicates and crashes the tree.
   const upsertAssistantContent = useCallback(
-    (mutator: (current: string) => string, opts?: { id?: string | number; final?: boolean; status?: StoreMessage["status"] }) => {
+    (mutator: (current: string) => string, opts?: { final?: boolean; status?: StoreMessage["status"] }) => {
       setMessages((prev) => {
         const last = prev[prev.length - 1]
         const status = opts?.status ?? (opts?.final ? "complete" : "running")
         if (last?.role === "assistant" && last.status === "running") {
           return [
             ...prev.slice(0, -1),
-            {
-              ...last,
-              id: opts?.id != null ? String(opts.id) : last.id,
-              content: mutator(last.content),
-              status,
-            },
+            { ...last, content: mutator(last.content), status },
           ]
         }
-        // No pending placeholder yet — create one.
+        // No pending placeholder yet — create one with a fresh id.
         const created = Date.now()
         return [
           ...prev,
           {
-            id: opts?.id != null ? String(opts.id) : `srv-${created}`,
+            id: `srv-${created}-${Math.random().toString(36).slice(2, 8)}`,
             role: "assistant",
             content: mutator(""),
             createdAt: created,
@@ -454,8 +454,6 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
     let cableSub: { unsubscribe(): void } | null = null
     let consumer: { disconnect(): void } | null = null
     let mounted = true
-
-    const seenAssistantIds = new Set<string>()
 
     const handleEvent = (data: any) => {
       if (data.type === "command_approval") {
@@ -486,8 +484,8 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         upsertAssistantContent((cur) => cur + "\n\n" + marker)
       } else if (data.type === "message" && data.role === "assistant" && data.content) {
         const id = String(data.id ?? "")
-        if (id && seenAssistantIds.has(id)) return
-        if (id) seenAssistantIds.add(id)
+        if (id && finalizedIdsRef.current.has(id)) return
+        if (id) finalizedIdsRef.current.add(id)
         let body = data.content as string
         const media = Array.isArray(data.metadata?.media)
           ? (data.metadata.media as Array<{ url: string; filename: string; contentType: string }>)
@@ -497,7 +495,7 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
             ? `\n\n![${med.filename}](${med.url})`
             : `\n\n[Download ${med.filename}](${med.url})`
         }
-        upsertAssistantContent(() => body, { id: data.id, final: true })
+        upsertAssistantContent(() => body, { final: true })
         setIsRunning(false)
         setRunStartedAt(null)
       } else if (data.type === "error") {
@@ -672,16 +670,20 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         if (res.ok) {
           const data = await res.json() as { id?: string | number; content?: string; metadata?: Record<string, unknown> }
           if (data.content) {
-            let body = data.content
-            const media = Array.isArray(data.metadata?.media)
-              ? (data.metadata!.media as Array<{ url: string; filename: string; contentType: string }>)
-              : []
-            for (const med of media) {
-              body += med.contentType?.startsWith("image/")
-                ? `\n\n![${med.filename}](${med.url})`
-                : `\n\n[Download ${med.filename}](${med.url})`
+            const id = String(data.id ?? "")
+            if (!id || !finalizedIdsRef.current.has(id)) {
+              if (id) finalizedIdsRef.current.add(id)
+              let body = data.content
+              const media = Array.isArray(data.metadata?.media)
+                ? (data.metadata!.media as Array<{ url: string; filename: string; contentType: string }>)
+                : []
+              for (const med of media) {
+                body += med.contentType?.startsWith("image/")
+                  ? `\n\n![${med.filename}](${med.url})`
+                  : `\n\n[Download ${med.filename}](${med.url})`
+              }
+              upsertAssistantContent(() => body, { final: true })
             }
-            upsertAssistantContent(() => body, { id: data.id, final: true })
             setIsRunning(false)
             setRunStartedAt(null)
             return
