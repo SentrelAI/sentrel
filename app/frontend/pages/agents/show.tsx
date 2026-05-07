@@ -129,7 +129,7 @@ interface Props {
   conversations: ConversationItem[]
   emails: EmailItem[]
   chat_messages: unknown[]
-  agent_thinking?: { since: string; message_id: number } | null
+  agent_thinking?: { since: string; after: string } | null
   tasks: Task[]
   channel_configs: ChannelConfig[]
   scheduled_tasks: ScheduledTask[]

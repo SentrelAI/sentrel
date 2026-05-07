@@ -486,9 +486,11 @@ interface AgentChatProps {
   approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
   pendingActionApprovals?: PendingActionApprovalSeed[]
   // Hydrated from agents#show — non-null when the most recent message in
-  // the chat is a user message sent in the last 5 minutes (i.e. the agent
-  // is mid-run). Persists the "thinking" indicator across page reloads.
-  agentThinking?: { since: string; message_id: number } | null
+  // the chat is a user message sent in the last 15 minutes that doesn't yet
+  // have an assistant reply. Persists the "thinking" indicator across page
+  // reloads. `after` is the user message's created_at — used as the cursor
+  // for /chat/poll.
+  agentThinking?: { since: string; after: string } | null
 }
 
 export function AgentChat({ agentId, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
@@ -747,7 +749,7 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   // refetch initialMessages — the chat then re-seeds with the assistant
   // message included.
   useEffect(() => {
-    if (!agentThinking?.message_id) return
+    if (!agentThinking?.after) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | null = null
     const startedAt = Date.now()
@@ -758,7 +760,7 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         return
       }
       try {
-        const res = await fetch(`/agents/${agentId}/chat/poll?after_id=${agentThinking.message_id}`, {
+        const res = await fetch(`/agents/${agentId}/chat/poll?after=${encodeURIComponent(agentThinking.after)}`, {
           headers: { Accept: "application/json" },
         })
         if (res.ok) {
@@ -781,7 +783,7 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [agentId, agentThinking?.message_id])
+  }, [agentId, agentThinking?.after])
   const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
 
   // Inject media attachments + approval markers into message content for rendering

@@ -67,24 +67,25 @@ class AgentsController < ApplicationController
     # Surface "agent is thinking" across page reloads / new tabs. Heuristic:
     # find the most recent user message and see if any assistant message
     # exists *after* it. If not, and the user message is recent (<15 min),
-    # the run is still in flight. More robust than checking last_msg.role
-    # because the engine sometimes pre-creates empty assistant placeholder
-    # rows that would otherwise hide the pill. Frontend hydrates the
-    # indicator from this on mount and clears it via cable / poll.
+    # the run is still in flight. Compare on created_at — m["id"] is the
+    # PrefixedIds string ("msg_abc123") not the integer, so id.to_i would
+    # always return 0 and the comparison would never match. Frontend
+    # hydrates the indicator from this on mount and clears it via cable /
+    # poll once a reply lands.
     agent_thinking = nil
     if chat_messages.any?
       last_user_msg = chat_messages.reverse.find { |m| m["role"] == "user" }
       if last_user_msg && last_user_msg["created_at"].to_time > 15.minutes.ago
-        # any assistant message strictly after this user message?
+        last_user_at = last_user_msg["created_at"].to_time
         has_reply = chat_messages.any? { |m|
           m["role"] == "assistant" &&
             m["content"].to_s.strip.length > 0 &&
-            m["id"].to_i > last_user_msg["id"].to_i
+            m["created_at"].to_time > last_user_at
         }
         unless has_reply
           agent_thinking = {
             since: last_user_msg["created_at"],
-            message_id: last_user_msg["id"],
+            after: last_user_msg["created_at"],
           }
         end
       end
