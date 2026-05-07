@@ -509,14 +509,60 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function getToolLabel(tool: string): string {
-  return humanizeToolName(tool);
+// Best-effort: pull a useful detail out of the tool input so the chat pill
+// reads "Searching: 'neurology clinics LA'" instead of just "Searching the
+// web…". Falls back to the bare humanized label when nothing useful jumps
+// out. Trims aggressively to fit a chip.
+function detailFromInput(tool: string, input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const inp = input as Record<string, unknown>;
+  const trim = (s: unknown, max = 60): string | null => {
+    const str = typeof s === "string" ? s.trim() : null;
+    if (!str) return null;
+    return str.length > max ? `${str.slice(0, max)}…` : str;
+  };
+  switch (tool) {
+    case "WebSearch":
+      return trim(inp.query) || trim(inp.q);
+    case "WebFetch": {
+      const url = typeof inp.url === "string" ? inp.url : null;
+      if (!url) return null;
+      try { return new URL(url).hostname; } catch { return trim(url, 40); }
+    }
+    case "Read":
+    case "Write":
+    case "Edit": {
+      const p = typeof inp.file_path === "string" ? inp.file_path : (typeof inp.path === "string" ? inp.path : null);
+      return p ? p.split("/").pop() ?? p : null;
+    }
+    case "Bash":
+      return trim(inp.command, 70);
+    case "Grep":
+      return trim(inp.pattern, 50);
+    case "Glob":
+      return trim(inp.pattern, 50);
+    case "Agent":
+      return trim(inp.prompt, 80) || trim(inp.subagent_type);
+  }
+  // Composio/MCP tool — try common keys
+  return trim(inp.query) || trim(inp.q) || trim(inp.name) || trim(inp.title) ||
+    trim(inp.subject) || trim(inp.url) || trim(inp.body, 60);
 }
 
-export function emitToolCall(jobId: string | undefined, tool: string, input: unknown): void {
-  const label = humanizeToolName(tool);
+export function getToolLabel(tool: string, input?: unknown): string {
+  const base = humanizeToolName(tool);
+  if (input == null) return base;
+  const detail = detailFromInput(tool, input);
+  if (!detail) return base;
+  // Replace trailing "..." with ": '<detail>'" — reads as one phrase.
+  const stem = base.replace(/\.{3}$/, "").replace(/…$/, "");
+  return `${stem}: ${detail}`;
+}
+
+export function emitToolCall(jobId: string | undefined, tool: string, input: unknown, toolUseId?: string): void {
+  const label = getToolLabel(tool, input);
   logger.info(`Tool: ${tool} → ${label}`);
-  broadcast({ type: "tool_call", tool, label, input, jobId, timestamp: Date.now() });
+  broadcast({ type: "tool_call", tool, toolUseId, label, input, jobId, timestamp: Date.now() });
   broadcast({ type: "progress", label, tool, jobId, timestamp: Date.now() });
   // Route to the one listener keyed to this job. Broadcasting to all
   // listeners was leaking one job's tool labels into another job's open
@@ -528,8 +574,8 @@ export function emitToolCall(jobId: string | undefined, tool: string, input: unk
   }
 }
 
-export function emitToolResult(tool: string, result: string): void {
-  broadcast({ type: "tool_result", tool, result: result.slice(0, 500), timestamp: Date.now() });
+export function emitToolResult(tool: string, result: string, toolUseId?: string): void {
+  broadcast({ type: "tool_result", tool, toolUseId, result: result.slice(0, 500), timestamp: Date.now() });
 }
 
 // Listeners for agent events (channels like Telegram subscribe to these).

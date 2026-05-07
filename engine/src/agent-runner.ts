@@ -789,7 +789,7 @@ async function runAgentLoop(
           spans?.event("text_block", { length: block.text.length });
         }
         if (block.type === "tool_use") {
-          emitToolCall(jobId, block.name, block.input);
+          emitToolCall(jobId, block.name, block.input, block.id);
           interceptor.observe(block);
           // Persisted timeline entry — matched by tool_use id when the result
           // arrives. Truncate input to keep metadata row size bounded.
@@ -798,7 +798,7 @@ async function runAgentLoop(
             const entry: ToolHistoryEntry = {
               id: block.id,
               tool: block.name,
-              label: getToolLabel(block.name),
+              label: getToolLabel(block.name, block.input),
               input: inputStr.length > 1000 ? `${inputStr.slice(0, 1000)}…` : block.input,
               started_at: new Date().toISOString(),
             };
@@ -816,16 +816,19 @@ async function runAgentLoop(
         }
         if (block.type === "tool_result") {
           const content = typeof block.content === "string" ? block.content : "done";
-          emitToolResult(block.name || "tool", content);
+          // Look up the original tool name by the tool_use_id — Claude SDK
+          // doesn't put `name` on tool_result blocks, only `tool_use_id`.
+          // Without this lookup, all results were emitted as tool="tool"
+          // and the chat UI never matched them to their pending pill.
+          const matchedEntry = block.tool_use_id ? toolHistoryById.get(block.tool_use_id) : undefined;
+          const resultTool = matchedEntry?.tool || block.name || "tool";
+          emitToolResult(resultTool, content, block.tool_use_id);
           // Close the matching history entry — store a 500-char snippet so
           // the UI can show "click to expand result" without bloating rows.
-          if (block.tool_use_id) {
-            const entry = toolHistoryById.get(block.tool_use_id);
-            if (entry) {
-              entry.result = typeof block.content === "string" ? block.content.slice(0, 500) : undefined;
-              entry.ended_at = new Date().toISOString();
-              toolHistoryById.delete(block.tool_use_id);
-            }
+          if (block.tool_use_id && matchedEntry) {
+            matchedEntry.result = typeof block.content === "string" ? block.content.slice(0, 500) : undefined;
+            matchedEntry.ended_at = new Date().toISOString();
+            toolHistoryById.delete(block.tool_use_id);
           }
           // Close the matching tool_use span
           if (spans && block.tool_use_id) {
