@@ -335,6 +335,25 @@ export class PostgresHost implements Host {
     );
   }
 
+  // Used by the standing-rules auto-decide path: writes status + the
+  // chosen value + (optional) free-text decision_text in one UPDATE so
+  // the audit trail row reads the same as a manual decision.
+  async updatePendingApprovalDecision(
+    approvalId: number,
+    opts: { status: "approved" | "rejected"; decision: string; decisionText?: string | null },
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE pending_approvals
+         SET status = $1,
+             decision = $2,
+             decision_text = $3,
+             reviewed_at = NOW(),
+             updated_at = NOW()
+       WHERE id = $4`,
+      [opts.status, opts.decision, opts.decisionText ?? null, approvalId],
+    );
+  }
+
   // ── Audit + agent state ──
 
   async saveAuditLog(

@@ -167,6 +167,10 @@ export interface Host {
   getLatestPendingApproval(agentId: number): Promise<PendingApproval | null>;
   getApprovalById(id: number): Promise<PendingApproval | null>;
   updateApprovalStatus(approvalId: number, status: "approved" | "rejected"): Promise<void>;
+  updatePendingApprovalDecision(
+    approvalId: number,
+    opts: { status: "approved" | "rejected"; decision: string; decisionText?: string | null },
+  ): Promise<void>;
 
   // ── Audit + agent state ──
   createPendingActionApproval(opts: {
