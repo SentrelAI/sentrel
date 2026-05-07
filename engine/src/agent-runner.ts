@@ -39,6 +39,7 @@ import {
   emitDone,
   emitError,
   consumePendingMedia,
+  getToolLabel,
 } from "./gateway.js";
 import { setWhatsAppPendingReply } from "./channels/whatsapp.js";
 import { deliverToOrigin } from "./channels/origin-delivery.js";
@@ -358,6 +359,21 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
     const sentMedia = consumePendingMedia();
     let savedMessageId: number | null = null;
     if (conversationId && result.responseContent) {
+      const messageMetadata: Record<string, unknown> = {};
+      if (sentMedia.length > 0) {
+        messageMetadata.media = sentMedia.map((m) => ({
+          url: m.url,
+          filename: m.filename,
+          contentType: m.contentType,
+          signedId: m.signedId,
+        }));
+      }
+      // tool_history is what the chat UI reads to render the persistent
+      // tool-step pills (Perplexity-style). Same shape we use for the live
+      // cable stream — frontend can rehydrate without a separate endpoint.
+      if (result.toolHistory && result.toolHistory.length > 0) {
+        messageMetadata.tool_history = result.toolHistory;
+      }
       const saved = await host.saveMessage(
         conversationId,
         "assistant",
@@ -365,16 +381,7 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
         "outbound",
         job.channel,
         [],
-        sentMedia.length > 0
-          ? {
-              media: sentMedia.map((m) => ({
-                url: m.url,
-                filename: m.filename,
-                contentType: m.contentType,
-                signedId: m.signedId,
-              })),
-            }
-          : undefined,
+        Object.keys(messageMetadata).length > 0 ? messageMetadata : undefined,
       );
       savedMessageId = saved.id;
 
@@ -686,6 +693,16 @@ function shouldResumeSession(conversation: Conversation): boolean {
 
 // ── Internals ──────────────────────────────────────────────────
 
+interface ToolHistoryEntry {
+  id: string;
+  tool: string;
+  label: string;
+  input?: unknown;
+  result?: string;
+  started_at: string;
+  ended_at?: string;
+}
+
 interface QueryResult {
   responseContent: string;
   interceptor: ToolInterceptor;
@@ -694,6 +711,7 @@ interface QueryResult {
   cacheCreationTokens: number;
   inputTokens: number;
   outputTokens: number;
+  toolHistory: ToolHistoryEntry[];
 }
 
 async function runAgentLoop(
@@ -735,6 +753,11 @@ async function runAgentLoop(
 
   // Track open tool_use spans so we can close them when matching tool_result arrives
   const toolUseSpans = new Map<string, number>();
+  // Per-message timeline of tool invocations — persisted as metadata.tool_history
+  // on the assistant Message so the chat UI can render the same step list it
+  // shows live (Perplexity-style). Keyed by tool_use id for matching results.
+  const toolHistory: ToolHistoryEntry[] = [];
+  const toolHistoryById = new Map<string, ToolHistoryEntry>();
 
   for await (const message of q) {
     const msg = message as any;
@@ -768,6 +791,20 @@ async function runAgentLoop(
         if (block.type === "tool_use") {
           emitToolCall(jobId, block.name, block.input);
           interceptor.observe(block);
+          // Persisted timeline entry — matched by tool_use id when the result
+          // arrives. Truncate input to keep metadata row size bounded.
+          if (block.id) {
+            const inputStr = JSON.stringify(block.input ?? {});
+            const entry: ToolHistoryEntry = {
+              id: block.id,
+              tool: block.name,
+              label: getToolLabel(block.name),
+              input: inputStr.length > 1000 ? `${inputStr.slice(0, 1000)}…` : block.input,
+              started_at: new Date().toISOString(),
+            };
+            toolHistory.push(entry);
+            toolHistoryById.set(block.id, entry);
+          }
           // Start a span for the tool call — duration = time until tool_result comes back
           if (spans && block.id) {
             const spanId = spans.start(`tool_use:${block.name}`, {
@@ -780,6 +817,16 @@ async function runAgentLoop(
         if (block.type === "tool_result") {
           const content = typeof block.content === "string" ? block.content : "done";
           emitToolResult(block.name || "tool", content);
+          // Close the matching history entry — store a 500-char snippet so
+          // the UI can show "click to expand result" without bloating rows.
+          if (block.tool_use_id) {
+            const entry = toolHistoryById.get(block.tool_use_id);
+            if (entry) {
+              entry.result = typeof block.content === "string" ? block.content.slice(0, 500) : undefined;
+              entry.ended_at = new Date().toISOString();
+              toolHistoryById.delete(block.tool_use_id);
+            }
+          }
           // Close the matching tool_use span
           if (spans && block.tool_use_id) {
             const spanId = toolUseSpans.get(block.tool_use_id);
@@ -835,7 +882,7 @@ async function runAgentLoop(
   if (closeInputStream) (closeInputStream as () => void)();
   queryState.current = null;
 
-  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens };
+  return { responseContent, interceptor, capturedSessionId, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens, toolHistory };
 }
 
 interface BuiltQueryOptions {
