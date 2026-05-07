@@ -632,7 +632,7 @@ export function emitDone(jobId: string, content: string): void {
       logger.error(`Gateway emitDone: listener threw`, { error: (err as Error).message });
     }
   } else {
-    logger.warn(`Gateway emitDone: no listener for jobId=${jobId} — message dropped (${doneListeners.size} listeners registered for other jobs)`);
+    logger.info(`Gateway emitDone: no direct channel listener for jobId=${jobId} (${doneListeners.size} listeners registered for other jobs)`);
   }
 }
 
