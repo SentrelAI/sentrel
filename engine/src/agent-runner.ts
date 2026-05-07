@@ -763,6 +763,7 @@ interface ToolHistoryEntry {
   is_error?: boolean;
   started_at: string;
   ended_at?: string;
+  parent_tool_use_id?: string;
 }
 
 interface QueryResult {
@@ -822,6 +823,12 @@ async function runAgentLoop(
   // shows live (Perplexity-style). Keyed by tool_use id for matching results.
   const toolHistory: ToolHistoryEntry[] = [];
   const toolHistoryById = new Map<string, ToolHistoryEntry>();
+  // Sub-agent stack for tool-step nesting. When the SDK calls the `Agent`
+  // tool to delegate to a sub-agent, we push that tool_use id; every
+  // subsequent tool_use is tagged with parentToolUseId = top-of-stack so
+  // the chat UI can render Sam's tools indented under Casper's `Agent`
+  // step. Pop on the matching tool_result.
+  const activeAgentStack: string[] = [];
   // Extended-thinking accumulator. Each thinking block from the SDK is
   // appended; durations are bracketed by first/last block timestamps.
   // Surface as a "Thought for Xs" pill above the assistant content.
@@ -869,7 +876,10 @@ async function runAgentLoop(
           spans?.event("text_block", { length: block.text.length });
         }
         if (block.type === "tool_use") {
-          emitToolCall(jobId, block.name, block.input, block.id);
+          // Tag this tool_use with the currently-active Agent delegation, if
+          // any, so the chat UI can render it nested under that block.
+          const parentToolUseId = activeAgentStack[activeAgentStack.length - 1];
+          emitToolCall(jobId, block.name, block.input, block.id, parentToolUseId);
           interceptor.observe(block);
           // Persisted timeline entry — matched by tool_use id when the result
           // arrives. Truncate input to keep metadata row size bounded.
@@ -881,9 +891,12 @@ async function runAgentLoop(
               label: getToolLabel(block.name, block.input),
               input: inputStr.length > 1000 ? `${inputStr.slice(0, 1000)}…` : block.input,
               started_at: new Date().toISOString(),
+              parent_tool_use_id: parentToolUseId,
             };
             toolHistory.push(entry);
             toolHistoryById.set(block.id, entry);
+            // Agent delegation: push so children get nested under us.
+            if (block.name === "Agent") activeAgentStack.push(block.id);
           }
           // Start a span for the tool call — duration = time until tool_result comes back
           if (spans && block.id) {
@@ -914,6 +927,11 @@ async function runAgentLoop(
             matchedEntry.ended_at = new Date().toISOString();
             matchedEntry.is_error = isError;
             toolHistoryById.delete(block.tool_use_id);
+          }
+          // Pop the Agent stack when a delegation completes.
+          const stackTop = activeAgentStack[activeAgentStack.length - 1];
+          if (stackTop && stackTop === block.tool_use_id) {
+            activeAgentStack.pop();
           }
           // Close the matching tool_use span
           if (spans && block.tool_use_id) {

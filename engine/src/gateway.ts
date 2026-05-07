@@ -566,10 +566,16 @@ export function getToolLabel(tool: string, input?: unknown): string {
   return `${stem}: ${detail}`;
 }
 
-export function emitToolCall(jobId: string | undefined, tool: string, input: unknown, toolUseId?: string): void {
+export function emitToolCall(
+  jobId: string | undefined,
+  tool: string,
+  input: unknown,
+  toolUseId?: string,
+  parentToolUseId?: string,
+): void {
   const label = getToolLabel(tool, input);
   logger.info(`Tool: ${tool} → ${label}`);
-  broadcast({ type: "tool_call", tool, toolUseId, label, input, jobId, timestamp: Date.now() });
+  broadcast({ type: "tool_call", tool, toolUseId, parentToolUseId, label, input, jobId, timestamp: Date.now() });
   broadcast({ type: "progress", label, tool, jobId, timestamp: Date.now() });
   // Route to the one listener keyed to this job. Broadcasting to all
   // listeners was leaking one job's tool labels into another job's open
