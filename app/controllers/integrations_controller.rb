@@ -124,6 +124,24 @@ class IntegrationsController < ApplicationController
         return
       end
 
+      owner_user_id = scope == "user" ? current_user.id : nil
+      locally_connected = current_tenant.integrations
+        .where(service_name: service, scope: scope, owner_user_id: owner_user_id, status: "connected")
+        .where.not(composio_connection_id: [nil, ""])
+        .exists?
+
+      unless locally_connected
+        cleanup = disconnect_existing_composio_accounts(user_id, service)
+        unless cleanup[:ok]
+          msg = "Could not clear stale #{service.titleize} connection in Composio: #{cleanup[:message]}"
+          respond_to do |format|
+            format.json { render json: { error: msg }, status: :unprocessable_entity }
+            format.html { redirect_to integrations_path, alert: msg }
+          end
+          return
+        end
+      end
+
       # Step 2: Create a connect link (initiates OAuth)
       response = composio_post("/api/v3/connected_accounts/link", api_key, {
         auth_config_id: auth_config_id,
@@ -177,7 +195,7 @@ class IntegrationsController < ApplicationController
         data = JSON.parse(res.body) rescue {}
         status = data["status"]
 
-        if status == "ACTIVE" || status == "INITIATED"
+        if %w[ACTIVE INITIATED INITIALIZING].include?(status)
           owner_user_id = scope == "user" ? current_user.id : nil
           # Lookup must include scope/owner so org + user connections to the
           # same service don't collide on the unique index.
@@ -258,28 +276,17 @@ class IntegrationsController < ApplicationController
       return
     end
 
-    # Delete only the matching Composio bucket (org_<id> vs user_<id>) so
-    # we don't accidentally yank the org's connection when removing a
-    # personal one or vice versa.
     if ENV["COMPOSIO_API_KEY"].present?
-      begin
-        user_id = integration.composio_user_id
-        res = composio_get("/api/v3/connected_accounts?user_ids=#{user_id}", ENV["COMPOSIO_API_KEY"])
-        items = (JSON.parse(res.body)["items"] rescue []) || []
-        items.each do |c|
-          next unless (c.dig("toolkit", "slug") || "").downcase == name.downcase
-          uri = URI("https://backend.composio.dev/api/v3/connected_accounts/#{c["id"]}")
-          req = Net::HTTP::Delete.new(uri)
-          req["x-api-key"] = ENV["COMPOSIO_API_KEY"]
-          dres = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
-          Rails.logger.info "Composio disconnect #{name} (#{c["id"]}): #{dres.code}"
-        end
-      rescue => e
-        Rails.logger.warn "Composio disconnect error: #{e.message}"
+      result = disconnect_composio_integration(integration)
+      unless result[:ok]
+        redirect_to integrations_path, alert: "Could not disconnect #{name.titleize} from Composio: #{result[:message]}"
+        return
       end
     end
 
     integration.destroy
+    clear_composio_sync_cache
+    sync_agents_after_integration_change(integration)
     redirect_to integrations_path, notice: "#{name.titleize} disconnected"
   end
 
@@ -313,6 +320,109 @@ class IntegrationsController < ApplicationController
     # Tight timeouts — when Composio is degraded we'd rather render the page
     # with stale data than block for 30+ seconds.
     Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 5) { |http| http.request(req) }
+  end
+
+  def composio_delete(path, api_key)
+    uri = URI("https://backend.composio.dev#{path}")
+    req = Net::HTTP::Delete.new(uri)
+    req["x-api-key"] = api_key
+    req["Content-Type"] = "application/json"
+    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 3, read_timeout: 8) { |http| http.request(req) }
+  end
+
+  def disconnect_composio_integration(integration)
+    service = integration.service_name.to_s.downcase
+    user_id = integration.composio_user_id
+    ids = []
+
+    ids << integration.composio_connection_id if integration.composio_connection_id.present?
+    ids.concat(composio_connection_ids_for(user_id, service))
+    disconnect_composio_accounts(user_id, service, ids)
+  rescue => e
+    Rails.logger.warn "Composio disconnect error: #{e.class}: #{e.message}"
+    { ok: false, message: e.message }
+  end
+
+  def disconnect_existing_composio_accounts(user_id, service)
+    disconnect_composio_accounts(user_id, service, composio_connection_ids_for(user_id, service))
+  rescue => e
+    Rails.logger.warn "Composio stale connection cleanup failed: #{e.class}: #{e.message}"
+    { ok: false, message: e.message }
+  end
+
+  def disconnect_composio_accounts(user_id, service, ids)
+    api_key = ENV["COMPOSIO_API_KEY"]
+    ids = ids.compact.map(&:to_s).reject(&:blank?).uniq
+
+    if ids.empty?
+      Rails.logger.info "Composio disconnect #{service}: no remote connected account found for #{user_id}; removing local row"
+      return { ok: true, message: "already disconnected" }
+    end
+
+    failures = []
+    ids.each do |id|
+      res = composio_delete("/api/v3/connected_accounts/#{id}", api_key)
+      Rails.logger.info "Composio disconnect #{service} (#{id}, bucket=#{user_id}): #{res.code} #{res.body.to_s[0..200]}"
+      next if res.is_a?(Net::HTTPSuccess) || res.code == "404"
+
+      failures << "#{id} HTTP #{res.code}: #{res.body.to_s[0..200]}"
+    end
+
+    if failures.any?
+      { ok: false, message: failures.join("; ") }
+    else
+      { ok: true, message: "disconnected #{ids.length} remote account(s)" }
+    end
+  end
+
+  def composio_connection_ids_for(user_id, service)
+    ids = []
+    cursor = nil
+
+    loop do
+      params = { user_ids: [user_id], toolkit_slugs: [service], limit: 100 }
+      params[:cursor] = cursor if cursor.present?
+      query = composio_query(params)
+      res = composio_get("/api/v3/connected_accounts?#{query}", ENV["COMPOSIO_API_KEY"])
+      unless res.is_a?(Net::HTTPSuccess)
+        raise "connected_accounts list HTTP #{res.code}: #{res.body.to_s[0..200]}"
+      end
+
+      data = JSON.parse(res.body) rescue {}
+      Array(data["items"]).each do |account|
+        slug = account.dig("toolkit", "slug") || account["appName"] || account["app_name"]
+        next unless same_composio_toolkit?(slug, service)
+
+        ids << account["id"]
+      end
+
+      cursor = data["next_cursor"] || data["nextCursor"]
+      break if cursor.blank?
+    end
+
+    ids.compact.map(&:to_s).reject(&:blank?).uniq
+  end
+
+  def same_composio_toolkit?(left, right)
+    left.to_s.downcase.gsub(/[-_]/, "") == right.to_s.downcase.gsub(/[-_]/, "")
+  end
+
+  def composio_query(params)
+    encoded = params.transform_values { |value| value.is_a?(Array) ? value.to_json : value }
+    URI.encode_www_form(encoded)
+  end
+
+  def clear_composio_sync_cache
+    Rails.cache.delete("composio:sync:org_#{current_tenant.id}:user_#{current_user.id}")
+    Rails.cache.delete("composio:refresh_enq:org_#{current_tenant.id}")
+    Rails.cache.delete("composio:auth_configs")
+    Rails.cache.delete("composio:toolkits")
+  end
+
+  def sync_agents_after_integration_change(integration)
+    Agent.where(organization_id: integration.organization_id).find_each do |agent|
+      EngineSync.trigger(agent) rescue nil
+    end
   end
 
   # Fetch active Composio connections and sync to our DB. Pulls both the
@@ -356,7 +466,8 @@ class IntegrationsController < ApplicationController
   end
 
   def composio_active_for(api_key, composio_user_id)
-    res = composio_get("/api/v3/connected_accounts?user_ids=#{composio_user_id}&statuses=ACTIVE", api_key)
+    query = composio_query(user_ids: [composio_user_id], statuses: ["ACTIVE"])
+    res = composio_get("/api/v3/connected_accounts?#{query}", api_key)
     data = JSON.parse(res.body) rescue {}
     items = data["items"] || []
     items.each_with_object({}) do |c, acc|
