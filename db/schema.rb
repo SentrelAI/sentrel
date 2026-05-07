@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_06_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_07_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -147,6 +147,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_100000) do
     t.string "thinking_level", default: "none"
     t.datetime "updated_at", null: false
     t.index ["agent_id"], name: "index_ai_configs_on_agent_id", unique: true
+  end
+
+  create_table "approval_rules", force: :cascade do |t|
+    t.bigint "agent_id"
+    t.string "auto_decision", null: false
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: true, null: false
+    t.string "label"
+    t.bigint "organization_id", null: false
+    t.string "payload_type"
+    t.jsonb "predicate", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id"], name: "index_approval_rules_on_agent_id"
+    t.index ["organization_id", "enabled", "payload_type"], name: "idx_approval_rules_lookup"
+    t.index ["organization_id"], name: "index_approval_rules_on_organization_id"
   end
 
   create_table "audit_logs", force: :cascade do |t|
@@ -548,6 +563,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_100000) do
   add_foreign_key "agents", "agents", column: "manager_id"
   add_foreign_key "agents", "organizations"
   add_foreign_key "ai_configs", "agents"
+  add_foreign_key "approval_rules", "agents"
+  add_foreign_key "approval_rules", "organizations"
   add_foreign_key "audit_logs", "agents"
   add_foreign_key "audit_logs", "organizations"
   add_foreign_key "audit_logs", "tasks"

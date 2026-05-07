@@ -21,6 +21,9 @@ Rails.application.routes.draw do
     # AgentChatChannel so the browser sees live tool calls, progress, and
     # approval prompts without a direct WS into the engine.
     resources :agent_events, only: [:create]
+    # Engine consults this from the request_approval tool before pausing,
+    # to honor standing rules ("auto-approve LinkedIn < 3/day", etc.).
+    post "approval_rules/match", to: "approval_rules#match"
     # User clicks Allow/Deny on a dangerous-command approval in the UI →
     # Rails relays the decision to the engine via Redis pub/sub.
     resources :command_approvals, only: [:create]
@@ -155,6 +158,13 @@ Rails.application.routes.draw do
 
     resources :pending_approvals, only: [:index, :update]
     resources :audit_logs, only: [:index]
+    # Filterable audit trail of every approval decision (manual + auto-rule),
+    # with CSV export for compliance reviews.
+    get "audits/approvals", to: "audits#approvals", as: :audits_approvals
+    get "audits/approvals.csv", to: "audits#approvals", defaults: { format: "csv" }
+    # approval_rules CRUD UI is a follow-up — for MVP, rules are created via
+    # Rails console: ApprovalRule.create!(organization:, payload_type: "linkedin_post",
+    #   predicate: { max_per_day: 3 }, auto_decision: "approve", label: "...")
 
     # Observability — run timings, costs, tool call trees, error tracking
     namespace :ops do
