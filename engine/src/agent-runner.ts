@@ -620,6 +620,27 @@ export async function runAgent(agent: Agent, job: JobData): Promise<void> {
 
     emitError(errMsg);
 
+    // Persist the error as an assistant message so the chat UI's
+    // "agent is thinking" heuristic clears across reload (the heuristic
+    // looks for an assistant reply newer than the latest user message;
+    // without this, an auth/rate-limit failure leaves the indicator
+    // permanently pinned). Also keeps the error visible in chat history.
+    if (conversation?.id && job.type === "inbound_message") {
+      await host
+        .saveMessage(
+          conversation.id,
+          "assistant",
+          `⚠️ Run failed: ${errMsg.slice(0, 500)}`,
+          "outbound",
+          job.channel || "web",
+          undefined,
+          { error: true },
+        )
+        .catch((e) => {
+          logger.warn("Failed to persist error message", { error: (e as Error).message });
+        });
+    }
+
     // Mark task as failed
     if (job.type === "task_assignment" && job.payload?.taskId) {
       await host.updateTask(job.payload.taskId, { status: "failed" }).catch(() => {});
