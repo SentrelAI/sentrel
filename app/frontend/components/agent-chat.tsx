@@ -264,6 +264,7 @@ type ToolStep = {
   result?: string    // short snippet (engine truncates to 500)
   startedAt: number
   doneAt?: number
+  isError?: boolean  // engine sets this when block.is_error === true
   // Derived display data (populated when result lands or on rehydrate):
   sources?: ToolSource[]    // parsed URLs for WebSearch / WebFetch
   diff?: { added: number; removed: number }   // line counts for Edit / Write
@@ -407,7 +408,7 @@ function fromServerMessage(
   // Engine writes metadata.tool_history; convert to the same shape the live
   // stream uses so the same render path handles both.
   const persistedHistory = Array.isArray((meta as Record<string, unknown>).tool_history)
-    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; input?: unknown; result?: string; started_at?: string; ended_at?: string }>)
+    ? ((meta as Record<string, unknown>).tool_history as Array<{ id?: string; tool: string; label: string; input?: unknown; result?: string; is_error?: boolean; started_at?: string; ended_at?: string }>)
     : []
   const toolSteps: ToolStep[] | undefined = persistedHistory.length > 0
     ? persistedHistory.map((h, i) => ({
@@ -415,9 +416,10 @@ function fromServerMessage(
         tool: h.tool,
         label: stripLabelEmoji(h.label || h.tool),
         result: h.result,
+        isError: h.is_error === true,
         startedAt: h.started_at ? new Date(h.started_at).getTime() : created,
         doneAt: h.ended_at ? new Date(h.ended_at).getTime() : created,
-        sources: (h.tool === "WebSearch" || h.tool === "WebFetch")
+        sources: !h.is_error && (h.tool === "WebSearch" || h.tool === "WebFetch")
           ? extractSources(h.result, h.input)
           : undefined,
         diff: deriveDiff(h.tool, h.input),
@@ -714,14 +716,15 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         // fall back to "latest unfinished step with same tool name". The
         // id-based path handles parallel same-tool calls correctly.
         const targetId = data.toolUseId ? String(data.toolUseId) : null
+        const isError = data.isError === true
         mutateToolSteps((steps) => {
           const finalize = (idx: number) => {
             const cur = steps[idx]
-            const sources = (cur.tool === "WebSearch" || cur.tool === "WebFetch")
+            const sources = !isError && (cur.tool === "WebSearch" || cur.tool === "WebFetch")
               ? extractSources(data.result)
               : undefined
             const next = steps.slice()
-            next[idx] = { ...cur, doneAt: Date.now(), result: data.result, sources }
+            next[idx] = { ...cur, doneAt: Date.now(), result: data.result, sources, isError }
             return next
           }
           if (targetId) {

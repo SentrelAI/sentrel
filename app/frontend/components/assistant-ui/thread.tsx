@@ -867,6 +867,7 @@ type ToolStep = {
   result?: string;
   startedAt: number;
   doneAt?: number;
+  isError?: boolean;
   sources?: ToolSource[];
   diff?: { added: number; removed: number };
   groupId?: string;
@@ -1039,24 +1040,33 @@ const ToolStepRow: FC<{ step: ToolStep; now: number; nested?: boolean }> = ({ st
         className={cn(
           "group flex items-center gap-2 self-start rounded-lg border px-2.5 py-1 text-[11px] text-foreground/85 transition-colors",
           expandable ? "cursor-pointer hover:bg-muted/60" : "cursor-default",
-          step.doneAt
-            ? "border-border/60 bg-muted/30"
-            : "border-foreground/15 bg-muted/50",
-          isAgentDelegation && "border-indigo-400/40 bg-indigo-500/5",
+          step.isError
+            ? "border-red-400/50 bg-red-500/5"
+            : step.doneAt
+              ? "border-border/60 bg-muted/30"
+              : "border-foreground/15 bg-muted/50",
+          !step.isError && isAgentDelegation && "border-indigo-400/40 bg-indigo-500/5",
         )}
       >
         <span className={cn(
           "flex size-5 shrink-0 items-center justify-center rounded-md",
-          step.doneAt ? "bg-muted text-muted-foreground" : "bg-foreground/10 text-foreground",
-          isAgentDelegation && "bg-indigo-500/15 text-indigo-500",
+          step.isError
+            ? "bg-red-500/15 text-red-500"
+            : step.doneAt ? "bg-muted text-muted-foreground" : "bg-foreground/10 text-foreground",
+          !step.isError && isAgentDelegation && "bg-indigo-500/15 text-indigo-500",
         )}>
-          {step.doneAt ? (
+          {step.isError ? (
+            <XIcon className="size-3" />
+          ) : step.doneAt ? (
             <Icon className="size-3" />
           ) : (
             <Loader2Icon className="size-3 animate-spin" />
           )}
         </span>
-        <span className="truncate max-w-[420px] font-medium">{step.label}</span>
+        <span className={cn(
+          "truncate max-w-[420px] font-medium",
+          step.isError && "text-red-500",
+        )}>{step.label}</span>
         {step.diff && (step.diff.added > 0 || step.diff.removed > 0) && (
           <span className="flex items-center gap-1 font-mono text-[10px]">
             {step.diff.added > 0 && <span className="text-emerald-500">+{step.diff.added}</span>}
@@ -1071,7 +1081,9 @@ const ToolStepRow: FC<{ step: ToolStep; now: number; nested?: boolean }> = ({ st
         {summary && (
           <span className="text-muted-foreground/70">· {summary}</span>
         )}
-        {step.doneAt && (
+        {step.isError ? (
+          <span className="ml-auto text-[10px] uppercase tracking-wide text-red-500/80">failed</span>
+        ) : step.doneAt && (
           <CheckIcon className="ml-auto size-3 text-emerald-500/80" />
         )}
         {expandable && (
@@ -1109,7 +1121,12 @@ const ToolStepRow: FC<{ step: ToolStep; now: number; nested?: boolean }> = ({ st
       )}
 
       {resultOpen && step.result && (
-        <pre className="ml-7 max-h-40 overflow-auto rounded-md border border-border/60 bg-muted/20 p-2 text-[10px] font-mono whitespace-pre-wrap text-muted-foreground">
+        <pre className={cn(
+          "ml-7 max-h-40 overflow-auto rounded-md border p-2 text-[10px] font-mono whitespace-pre-wrap",
+          step.isError
+            ? "border-red-400/40 bg-red-500/5 text-red-500/90"
+            : "border-border/60 bg-muted/20 text-muted-foreground",
+        )}>
           {step.result}
         </pre>
       )}
