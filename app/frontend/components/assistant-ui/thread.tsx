@@ -147,6 +147,8 @@ export const Thread: FC = () => {
           {() => <ThreadMessage />}
         </ThreadPrimitive.Messages>
 
+        <RecoveryDotIndicator />
+
         <div className="flex-1" />
         <InlineCommandApproval />
         <InlineActionApproval />
@@ -167,6 +169,25 @@ const ThreadMessage: FC = () => {
   if (isEditing) return <EditComposer />;
   if (role === "user") return <UserMessage />;
   return <AssistantMessage />;
+};
+
+// Streaming dot below the last user message — shown during a normal run by
+// the runtime, but hidden in recovery mode (page reloaded mid-run, no
+// adapter run in flight). We render a matching dot here so the user has
+// the same visual cue as in-tab. AuiIf hides it when the runtime is live.
+const RecoveryDotIndicator: FC = () => {
+  const recovery = useContext(RecoveryThinkingContext);
+  const isRunning = useAuiState((s) => s.thread.isRunning);
+  if (!recovery.active || isRunning) return null;
+  return (
+    <div className="aui-recovery-dot mx-auto w-full max-w-(--thread-max-width) px-2 py-3">
+      <div className="flex items-center gap-1.5">
+        <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
+        <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
+        <span className="size-2 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
+      </div>
+    </div>
+  );
 };
 
 const InlineCommandApproval: FC = () => {

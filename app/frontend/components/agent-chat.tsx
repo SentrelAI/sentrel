@@ -501,25 +501,15 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   // when the agent's response arrives. Set inside the queue-aware wrapper
   // below so we capture the runtime + queue handles after they exist.
   const drainQueuedRef = useRef<(() => void) | null>(null)
-  // "Recovery mode" — the page was mounted while a run was already in flight
-  // (typical case: user reloaded mid-stream). The in-memory runtime can't
-  // recover state because the original adapter run() is gone. Source of
-  // truth becomes the DB: when the reply lands we refetch chat_messages
-  // (Inertia partial reload), which bumps the AgentChat key in show.tsx and
-  // remounts the runtime with the full message list. Disabled during normal
-  // in-tab runs because the adapter handles streaming itself.
+  // "Recovery mode" — page mounted while a run was already in flight. The
+  // adapter run() is gone, so the cable / polling path is responsible for
+  // pushing the assistant reply into the runtime. recoverAssistantRef
+  // appends a single assistant turn to the existing thread (no remount, no
+  // glitchy full re-render) — wired up by the controller below which has
+  // access to useThreadRuntime. Set to null in non-recovery mode so the
+  // ref check noops during normal in-tab runs.
   const wasRecoveryMount = useRef(agentThinking != null)
-  const refetchInflight = useRef(false)
-  const refetchMessages = () => {
-    if (!wasRecoveryMount.current) return
-    if (refetchInflight.current) return
-    refetchInflight.current = true
-    router.reload({
-      only: ["chat_messages", "agent_thinking", "approvals_by_message", "pending_action_approvals"],
-      preserveScroll: true,
-      onFinish: () => { refetchInflight.current = false },
-    })
-  }
+  const recoverAssistantRef = useRef<((data: { id?: string | number; content: string; metadata?: Record<string, unknown> }) => void) | null>(null)
   const [cmdApproval, setCmdApproval] = useState<CmdApprovalState>(null)
 
   // Hydrate inline cards from server state on mount so a page refresh still
@@ -589,20 +579,28 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
       } else if (data.type === "connection_proposal") {
         handleConnectionProposal(data)
       } else if (data.type === "message" && data.role === "assistant") {
-        // Agent finished — refetch chat_messages so a reload-mid-run page
-        // picks up the assistant content. Don't clear thinkingSince directly
-        // here: the new agent_thinking prop from the server is the source of
-        // truth, and the AgentChat remount on key change re-seeds the
-        // indicator state. Clearing here causes a flash where the indicator
-        // disappears before the new message renders.
-        refetchMessages()
+        // Agent finished. In recovery mode (page reloaded mid-run) the
+        // adapter run() is gone — push the message into the runtime
+        // directly so the new turn appends in-place instead of needing a
+        // full remount. Dedupe is handled inside the controller. In normal
+        // in-tab flow the adapter is still mid-yield and the recoverAssistant
+        // call noops via the isRunning guard.
+        recoverAssistantRef.current?.({
+          id: data.id,
+          content: data.content || "",
+          metadata: data.metadata || {},
+        })
+        setThinkingSince(null)
         drainQueuedRef.current?.()
       } else if (data.type === "done" || data.type === "error") {
-        // `done` (engine relays) and `error` always come paired with the
-        // engine-side message persistence — refetching pulls both the new
-        // chat_messages and the recomputed agent_thinking so the indicator
-        // clears at the same moment the reply (or error message) renders.
-        refetchMessages()
+        // `done` always comes paired with a `message` event (engine
+        // broadcasts both); we let the message branch do the append. Just
+        // ensure the indicator clears and the queue advances on terminal
+        // states. `error` may not have a paired message — engine still
+        // persists "⚠️ Run failed: …" via host.saveMessage on the
+        // inbound_message error path, which fires this cable handler with
+        // type=message after a beat, so the message lands then.
+        setThinkingSince(null)
         drainQueuedRef.current?.()
       }
     }
@@ -764,13 +762,14 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
           headers: { Accept: "application/json" },
         })
         if (res.ok) {
-          const data = await res.json() as { content?: string }
+          const data = await res.json() as { id?: string | number; content?: string; metadata?: Record<string, unknown> }
           if (data.content) {
-            // Don't clear thinkingSince directly — let refetchMessages pull
-            // the new agent_thinking from the server, and the AgentChat key
-            // change remount it cleanly with the new state. Otherwise the
-            // indicator vanishes a beat before the reply renders.
-            refetchMessages()
+            recoverAssistantRef.current?.({
+              id: data.id,
+              content: data.content,
+              metadata: data.metadata || {},
+            })
+            setThinkingSince(null)
             drainQueuedRef.current?.()
             return
           }
@@ -866,7 +865,11 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
               <ConnectionProposalProvider value={connectionProposal}>
                 <MessageQueueProvider agentId={agentId}>
                   <FilePreviewProvider>
-                    <QueueDrainController drainRef={drainQueuedRef} runtime={runtime} />
+                    <QueueDrainController
+                      drainRef={drainQueuedRef}
+                      recoverAssistantRef={recoverAssistantRef}
+                      runtime={runtime}
+                    />
                     <div className="relative h-full overflow-hidden bg-background">
                       <Thread />
                     </div>
@@ -882,23 +885,27 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
 }
 
 // Wire the cable's onAssistantMessage drain hook to the queue. Lives inside
-// MessageQueueProvider so it can read the queue; sets a ref the parent's
+// MessageQueueProvider so it can read the queue; sets refs the parent's
 // cable handler calls when the agent finishes a run.
 function QueueDrainController({
   drainRef,
+  recoverAssistantRef,
   runtime,
 }: {
   drainRef: React.MutableRefObject<(() => void) | null>
+  recoverAssistantRef: React.MutableRefObject<((data: { id?: string | number; content: string; metadata?: Record<string, unknown> }) => void) | null>
   runtime: ReturnType<typeof useLocalRuntime>
 }) {
   const queue = useMessageQueue()
+  // Track ids of assistant messages already appended via the recovery path.
+  // The same reply lands twice: once via the engine's manual broadcast, and
+  // again via /chat/poll if the cable raced. Dedupe so we don't double-render.
+  const seenIdsRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
     drainRef.current = () => {
       const next = queue.shift()
       if (!next) return
-      // Append text + attachments to the runtime — kicks off a fresh adapter
-      // run via the same path as a normal Send. Attachments-from-queue case
-      // is best-effort (text-only is the common queueing flow).
       try {
         runtime.thread.append({
           role: "user",
@@ -909,8 +916,44 @@ function QueueDrainController({
         queue.enqueue(next.text, next.attachments)
       }
     }
-    return () => { drainRef.current = null }
-  }, [drainRef, queue, runtime])
+
+    recoverAssistantRef.current = ({ id, content, metadata }) => {
+      try {
+        if (runtime.thread.getState().isRunning) return
+      } catch { return }
+      const key = String(id ?? `c:${content.slice(0, 64)}`)
+      if (seenIdsRef.current.has(key)) return
+      seenIdsRef.current.add(key)
+
+      // Inject any media attachments the same way initialMessages mapping
+      // does so a recovered message renders identically to a reload-restored
+      // one (PDF chip, image inline, etc.).
+      let body = content || ""
+      const media = Array.isArray(metadata?.media)
+        ? (metadata!.media as Array<{ url: string; filename: string; contentType: string }>)
+        : []
+      for (const med of media) {
+        if (med.contentType?.startsWith("image/")) {
+          body += `\n\n![${med.filename}](${med.url})`
+        } else {
+          body += `\n\n[Download ${med.filename}](${med.url})`
+        }
+      }
+      try {
+        runtime.thread.append({
+          role: "assistant",
+          content: [{ type: "text", text: body }],
+        })
+      } catch (err) {
+        console.warn("Assistant recovery append failed:", err)
+      }
+    }
+
+    return () => {
+      drainRef.current = null
+      recoverAssistantRef.current = null
+    }
+  }, [drainRef, recoverAssistantRef, queue, runtime])
   return null
 }
 
