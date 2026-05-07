@@ -248,6 +248,18 @@ interface AgentChatProps {
   agentThinking?: { since: string; after: string } | null
 }
 
+// One tool invocation inside a single assistant turn — accumulated as the
+// engine streams `tool_call` / `tool_result` cable events. Rendered as a
+// step pill above the assistant content (Perplexity / Claude.ai style).
+type ToolStep = {
+  id: string         // tool_call signature: tool + first 16 chars of input
+  tool: string       // raw tool name (WebSearch, mcp__composio__…)
+  label: string      // engine-generated humanized label ("🔍 Searching the web…")
+  result?: string    // short snippet (engine truncates to 500)
+  startedAt: number
+  doneAt?: number
+}
+
 // External-store message — the source of truth the runtime renders from.
 // Server-restored messages and optimistic / streaming messages both land here.
 // `content` is markdown — attachments + media + approval markers are baked in
@@ -258,6 +270,7 @@ type StoreMessage = {
   content: string
   createdAt: number
   status: "complete" | "running" | "error"
+  toolSteps?: ToolStep[]
 }
 
 // Inject media metadata + ActiveStorage attachments into a server-side
@@ -325,6 +338,12 @@ const storeToThreadMessage = (m: StoreMessage): ThreadMessageLike => ({
       : m.status === "error"
         ? { type: "incomplete" as const, reason: "error" as const }
         : { type: "complete" as const, reason: "stop" as const }
+    : undefined,
+  // Tool-step pills are read out of metadata.custom in AssistantMessage —
+  // assistant-ui passes the metadata through verbatim so we can stash any
+  // shape we like.
+  metadata: m.toolSteps && m.toolSteps.length > 0
+    ? { custom: { toolSteps: m.toolSteps } }
     : undefined,
 })
 
@@ -412,6 +431,37 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
   })()
   const [actionApproval, setActionApproval] = useState<ActionApprovalState>(seedActionApproval)
 
+  // Mutate the trailing pending assistant's toolSteps. Creates a placeholder
+  // bubble if there isn't one (rare — tool_call usually arrives after onNew
+  // has seeded the placeholder). Same id-stability rule as upsertAssistant
+  // Content: never change a bubble's id once issued.
+  const mutateToolSteps = useCallback(
+    (mutator: (steps: ToolStep[]) => ToolStep[]) => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1]
+        if (last?.role === "assistant" && last.status === "running") {
+          return [
+            ...prev.slice(0, -1),
+            { ...last, toolSteps: mutator(last.toolSteps ?? []) },
+          ]
+        }
+        const created = Date.now()
+        return [
+          ...prev,
+          {
+            id: `srv-${created}-${Math.random().toString(36).slice(2, 8)}`,
+            role: "assistant",
+            content: "",
+            createdAt: created,
+            status: "running",
+            toolSteps: mutator([]),
+          },
+        ]
+      })
+    },
+    [],
+  )
+
   // Append to (or update) the trailing assistant message in the store. Used
   // by every cable event that carries assistant content — text_delta streams,
   // media_attachment markdown, the final message, error fallbacks. We never
@@ -467,6 +517,33 @@ export function AgentChat({ agentId, agentStatus = "running", initialMessages = 
         if (typeof data.text === "string") {
           upsertAssistantContent(() => data.text)
         }
+      } else if (data.type === "tool_call") {
+        // Engine started a tool invocation — append a step to the trailing
+        // assistant's toolSteps so we can render "Searching the web…" /
+        // "Vercel: create deployment…" chips above the content.
+        const id = `${data.tool}:${JSON.stringify(data.input ?? {}).slice(0, 32)}:${Date.now()}`
+        mutateToolSteps((steps) => [
+          ...steps,
+          {
+            id,
+            tool: String(data.tool || ""),
+            label: String(data.label || data.tool || "tool"),
+            startedAt: Date.now(),
+          },
+        ])
+      } else if (data.type === "tool_result") {
+        // Mark the most recent unfinished step for this tool as done.
+        mutateToolSteps((steps) => {
+          // Find the latest matching tool that hasn't finished yet.
+          for (let i = steps.length - 1; i >= 0; i--) {
+            if (steps[i].tool === data.tool && !steps[i].doneAt) {
+              const next = steps.slice()
+              next[i] = { ...steps[i], doneAt: Date.now(), result: data.result }
+              return next
+            }
+          }
+          return steps
+        })
       } else if (data.type === "media_attachment") {
         // Engine sent an image/file via send_image/send_file — append as
         // markdown to the trailing pending assistant message.

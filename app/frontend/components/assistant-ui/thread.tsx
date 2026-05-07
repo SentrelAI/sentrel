@@ -846,6 +846,15 @@ const MessageError: FC = () => {
   );
 };
 
+type ToolStep = {
+  id: string;
+  tool: string;
+  label: string;
+  result?: string;
+  startedAt: number;
+  doneAt?: number;
+};
+
 const AssistantMessage: FC = () => {
   // Render a typing-dot pulse when the message is empty + still streaming —
   // covers both fresh sends (placeholder pre-content) and reload-mid-run
@@ -859,13 +868,19 @@ const AssistantMessage: FC = () => {
     return parts.every((p) => p.type !== "text" || !(p.text ?? "").trim());
   });
 
+  const toolSteps = useAuiState((s) => {
+    const custom = (s.message.metadata as { custom?: { toolSteps?: ToolStep[] } } | undefined)?.custom;
+    return custom?.toolSteps ?? [];
+  }) as ToolStep[];
+
   return (
     <MessagePrimitive.Root
       className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
-        {isEmptyAndRunning ? (
+        {toolSteps.length > 0 && <ToolSteps steps={toolSteps} />}
+        {isEmptyAndRunning && toolSteps.length === 0 ? (
           <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
             <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
             <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
@@ -889,6 +904,75 @@ const AssistantMessage: FC = () => {
         <AssistantActionBar />
       </div>
     </MessagePrimitive.Root>
+  );
+};
+
+// Inline tool-use timeline. Each entry is a chip with a spinner while
+// active; checkmark + click-to-expand-result when done. The list collapses
+// to the most-recent entry once the assistant message reaches >2 steps.
+const ToolSteps: FC<{ steps: ToolStep[] }> = ({ steps }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [openResults, setOpenResults] = useState<Record<string, boolean>>({});
+
+  let active: ToolStep | undefined;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (!steps[i].doneAt) { active = steps[i]; break; }
+  }
+  const visible = expanded ? steps : active ? [active] : steps.slice(-1);
+  const hidden = steps.length - visible.length;
+
+  return (
+    <div className="aui-tool-steps mb-2 flex flex-col gap-1">
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="self-start text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ↑ {hidden} earlier {hidden === 1 ? "step" : "steps"}
+        </button>
+      )}
+      {visible.map((step) => {
+        const isOpen = openResults[step.id];
+        const elapsedMs = (step.doneAt ?? Date.now()) - step.startedAt;
+        const elapsed = elapsedMs > 1500 ? ` · ${(elapsedMs / 1000).toFixed(1)}s` : "";
+        return (
+          <div key={step.id} className="flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={!step.result}
+              onClick={() => setOpenResults((p) => ({ ...p, [step.id]: !p[step.id] }))}
+              className={cn(
+                "group flex items-center gap-2 self-start rounded-md border bg-muted/40 px-2.5 py-1 text-[11px] text-foreground/80",
+                step.result ? "cursor-pointer hover:bg-muted/70" : "cursor-default",
+                !step.doneAt && "border-border/80 bg-muted/60",
+              )}
+            >
+              {step.doneAt ? (
+                <CheckIcon className="size-3 text-foreground/60" />
+              ) : (
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40 opacity-60" />
+                  <span className="relative inline-flex size-2 rounded-full bg-foreground/60" />
+                </span>
+              )}
+              <span className="truncate max-w-[420px]">{step.label}</span>
+              {elapsed && <span className="font-mono tabular-nums text-muted-foreground/70">{elapsed}</span>}
+              {step.result && (
+                <span className="text-[10px] text-muted-foreground/60 ml-auto">
+                  {isOpen ? "hide" : "show"}
+                </span>
+              )}
+            </button>
+            {isOpen && step.result && (
+              <pre className="ml-4 max-h-32 overflow-auto rounded-md border border-border/60 bg-muted/20 p-2 text-[10px] font-mono whitespace-pre-wrap text-muted-foreground">
+                {step.result}
+              </pre>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 };
 
