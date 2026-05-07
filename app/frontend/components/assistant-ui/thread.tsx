@@ -868,10 +868,14 @@ const AssistantMessage: FC = () => {
     return parts.every((p) => p.type !== "text" || !(p.text ?? "").trim());
   });
 
+  // Read toolSteps directly so React's reference identity is stable. Returning
+  // a fresh `[]` from the selector triggers AUI's Object.is change detection
+  // every render — that's React error #185 (infinite update loop).
   const toolSteps = useAuiState((s) => {
     const custom = (s.message.metadata as { custom?: { toolSteps?: ToolStep[] } } | undefined)?.custom;
-    return custom?.toolSteps ?? [];
-  }) as ToolStep[];
+    return custom?.toolSteps;
+  }) as ToolStep[] | undefined;
+  const hasToolSteps = !!toolSteps && toolSteps.length > 0;
 
   return (
     <MessagePrimitive.Root
@@ -879,8 +883,8 @@ const AssistantMessage: FC = () => {
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
-        {toolSteps.length > 0 && <ToolSteps steps={toolSteps} />}
-        {isEmptyAndRunning && toolSteps.length === 0 ? (
+        {hasToolSteps && <ToolSteps steps={toolSteps!} />}
+        {isEmptyAndRunning && !hasToolSteps ? (
           <div className="flex items-center gap-1.5 py-1" aria-label="Agent is thinking">
             <span className="size-2 rounded-full bg-foreground/70 animate-pulse" />
             <span className="size-2 rounded-full bg-foreground/40 animate-pulse [animation-delay:150ms]" />
