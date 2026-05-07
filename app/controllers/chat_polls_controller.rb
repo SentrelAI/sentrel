@@ -17,7 +17,11 @@ class ChatPollsController < ApplicationController
         .first
 
       if latest
-        render json: { content: latest.content, id: latest.id }
+        render json: {
+          id: latest.id,
+          content: latest.content,
+          metadata: latest.metadata,
+        }
         return
       end
     end

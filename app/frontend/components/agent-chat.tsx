@@ -731,6 +731,51 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       clearTimeout(reconnectTimer)
     }
   }, [agentId])
+
+  // Polling fallback. The cable broadcast can fire *before* a freshly-mounted
+  // page subscribes (typical case: user reloads while the engine is finishing
+  // the run — broadcast lands in the void, new tab subscribes too late). When
+  // the server tells us a run is mid-flight via `agentThinking`, poll
+  // /chat/poll until we see an assistant reply newer than the user's message,
+  // then route it through the same recovery path the cable would have used.
+  useEffect(() => {
+    if (!agentThinking?.message_id) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
+    const tick = async () => {
+      if (cancelled) return
+      // Stop polling after 5 minutes — past that, treat the run as lost.
+      if (Date.now() - startedAt > 5 * 60_000) {
+        setThinkingSince(null)
+        return
+      }
+      try {
+        const res = await fetch(`/agents/${agentId}/chat/poll?after_id=${agentThinking.message_id}`, {
+          headers: { Accept: "application/json" },
+        })
+        if (res.ok) {
+          const data = await res.json() as { id?: number; content?: string; metadata?: Record<string, unknown> }
+          if (data.content) {
+            recoverAssistantRef.current?.({
+              id: data.id,
+              content: data.content,
+              metadata: data.metadata || {},
+            })
+            setThinkingSince(null)
+            drainQueuedRef.current?.()
+            return
+          }
+        }
+      } catch { /* network blip — keep polling */ }
+      timer = setTimeout(tick, 3000)
+    }
+    timer = setTimeout(tick, 1500)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [agentId, agentThinking?.message_id])
   const sorted = initialMessages.filter((m) => m.role === "user" || m.role === "assistant")
 
   // Inject media attachments + approval markers into message content for rendering
