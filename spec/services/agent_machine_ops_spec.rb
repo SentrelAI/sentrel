@@ -42,6 +42,33 @@ RSpec.describe AgentMachineOps do
     end
   end
 
+  describe ".restart" do
+    it "records operation failures on the instance" do
+      instance = create_instance
+      app = described_class.app_name(agent)
+
+      allow(described_class)
+        .to receive(:fly_api)
+        .with(:post, "/apps/#{app}/machines/old-mid/restart")
+        .and_raise(StandardError, "Fly timeout")
+
+      result = described_class.restart(agent)
+
+      expect(result).to include(ok: false, operation: "restart", message: "Fly timeout", error_class: "StandardError")
+      expect(instance.reload.provisioning_error).to include("Ops restart failed")
+      expect(instance.provisioning_error).to include("Fly timeout")
+    end
+
+    it "returns a structured failure when no machine id is recorded" do
+      instance = create_instance(machine_id: nil)
+
+      result = described_class.restart(agent)
+
+      expect(result).to include(ok: false, operation: "restart", message: "Agent has no machine_id recorded")
+      expect(instance.reload.provisioning_error).to include("Agent has no machine_id recorded")
+    end
+  end
+
   describe ".reprovision" do
     it "destroys the has_one instance record and enqueues provisioning" do
       create_instance

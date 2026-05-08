@@ -1,8 +1,9 @@
-# Engine → Rails callback. Called by cloud-init.sh after docker compose
-# brings up the agent's containers and /health returns 200.
+# Engine → Rails callback. Called at engine boot and then periodically by the
+# engine health reporter.
 #
-# Rails uses this to flip the instance from "provisioning" → "running" and
-# record the public IP so the admin UI can show a green dot.
+# Rails uses this to flip the instance to "running", refresh
+# health_checked_at, and clear stale heartbeat errors so the admin UI can show
+# a real liveness signal.
 class Api::AgentInstancesController < ApplicationController
   skip_before_action :verify_authenticity_token
   skip_before_action :set_tenant
@@ -22,12 +23,16 @@ class Api::AgentInstancesController < ApplicationController
       machine_id: "unknown",
     )
 
-    instance.update!(
+    attrs = {
       status: "running",
       public_ip: params[:public_ip].presence || instance.public_ip,
       health_checked_at: Time.current,
       started_at: instance.started_at || Time.current,
-    )
+    }
+    if instance.provisioning_error.to_s.start_with?("Engine heartbeat", "No engine heartbeat")
+      attrs[:provisioning_error] = nil
+    end
+    instance.update!(attrs)
     Rails.logger.info "Agent #{agent.id} instance ready: #{instance.public_ip}"
     head :ok
   end

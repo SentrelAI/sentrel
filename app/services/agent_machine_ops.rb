@@ -14,13 +14,14 @@ module AgentMachineOps
   # Restart the running Machine in place (keeps the volume, re-pulls env).
   def restart(agent)
     app = app_name(agent)
-    mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
+    mid = machine_id(agent) or return operation_failure(agent, :restart, "Agent has no machine_id recorded")
     fly_api(:post, "/apps/#{app}/machines/#{mid}/restart")
+    clear_operation_failure(agent)
     { ok: true, message: "Restart requested" }
   rescue ApiNotFound
     recover_missing_machine(agent, operation: "restart", stale_machine_id: mid)
   rescue => e
-    { ok: false, message: e.message }
+    operation_exception(agent, :restart, e)
   end
 
   # Wake a stopped Fly Machine. Fly's auto_start_machines wakes on HTTP
@@ -30,13 +31,14 @@ module AgentMachineOps
   # Idempotent: hitting start on an already-running machine is a no-op.
   def start(agent)
     app = app_name(agent)
-    mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
+    mid = machine_id(agent) or return operation_failure(agent, :start, "Agent has no machine_id recorded")
     fly_api(:post, "/apps/#{app}/machines/#{mid}/start")
+    clear_operation_failure(agent)
     { ok: true, message: "Start requested" }
   rescue ApiNotFound
     recover_missing_machine(agent, operation: "start", stale_machine_id: mid)
   rescue => e
-    { ok: false, message: e.message }
+    operation_exception(agent, :start, e)
   end
 
   # Tell the engine to reload its in-memory config AND push fresh env
@@ -46,7 +48,7 @@ module AgentMachineOps
   # Machine-level restart — no /data loss.
   def reload(agent)
     app = app_name(agent)
-    mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
+    mid = machine_id(agent) or return operation_failure(agent, :reload, "Agent has no machine_id recorded")
 
     current = fly_api(:get, "/apps/#{app}/machines/#{mid}")
     cfg = current["config"] || {}
@@ -56,18 +58,19 @@ module AgentMachineOps
     # Also fire the Redis sync so the engine rebuilds in-memory state
     # once it's back up (skills, channel pollers, etc.).
     EngineSync.trigger(agent)
+    clear_operation_failure(agent)
     { ok: true, message: "Fresh env pushed + config reload requested" }
   rescue ApiNotFound
     recover_missing_machine(agent, operation: "reload", stale_machine_id: mid)
   rescue => e
-    { ok: false, message: e.message }
+    operation_exception(agent, :reload, e)
   end
 
   # Update the Machine's image reference to the latest tag AND refresh
   # env vars from the current Rails process env. Fly rolls the Machine.
   def redeploy(agent, image: nil)
     app = app_name(agent)
-    mid = machine_id(agent) or return { ok: false, message: "Agent has no machine_id recorded" }
+    mid = machine_id(agent) or return operation_failure(agent, :redeploy, "Agent has no machine_id recorded")
     target = image || ENV.fetch("ENGINE_IMAGE", "ghcr.io/parsedev/alchemy-engine:latest")
 
     current = fly_api(:get, "/apps/#{app}/machines/#{mid}")
@@ -76,11 +79,12 @@ module AgentMachineOps
     cfg["env"] = AgentProvisioner::FlyBackend.env_for(agent)
 
     fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
+    clear_operation_failure(agent)
     { ok: true, message: "Redeployed #{target}" }
   rescue ApiNotFound
     recover_missing_machine(agent, operation: "redeploy", stale_machine_id: mid)
   rescue => e
-    { ok: false, message: e.message }
+    operation_exception(agent, :redeploy, e)
   end
 
   # Destroy + recreate the app and volume from scratch. Last resort when
@@ -90,9 +94,10 @@ module AgentMachineOps
     AgentProvisioner.terminate_for(agent)
     agent.instance&.destroy
     ProvisionAgentJob.perform_later(agent.id)
+    clear_operation_failure(agent)
     { ok: true, message: "Tearing down and reprovisioning; give it ~60s" }
   rescue => e
-    { ok: false, message: e.message }
+    operation_exception(agent, :reprovision, e)
   end
 
   # Tail recent logs from Fly's log API. Returns an array of
@@ -112,7 +117,8 @@ module AgentMachineOps
     end
     { ok: true, message: "ok", logs: entries }
   rescue => e
-    { ok: false, message: e.message, logs: [] }
+    Rails.logger.warn "AgentMachineOps.logs(agent=#{agent&.id}) failed: #{e.class}: #{e.message}"
+    { ok: false, operation: "logs", message: e.message, error_class: e.class.name, logs: [] }
   end
 
   # ── internals ────────────────────────────────────────────────────────
@@ -145,15 +151,54 @@ module AgentMachineOps
     if recreated&.machine_id.present?
       {
         ok: true,
+        operation: operation.to_s,
         message: "Fly machine record was stale; recreated machine #{recreated.machine_id}",
       }
     else
       error = agent.reload.instance&.provisioning_error.presence || "unknown provisioning failure"
       {
         ok: false,
+        operation: operation.to_s,
         message: "Fly machine record was stale, but recreation failed: #{error}",
       }
     end
+  rescue => e
+    operation_exception(agent, operation, e)
+  end
+
+  def operation_failure(agent, operation, message, error_class: nil)
+    record_operation_failure(agent, operation, message)
+    {
+      ok: false,
+      operation: operation.to_s,
+      message: message,
+      error_class: error_class,
+    }.compact
+  end
+
+  def operation_exception(agent, operation, error)
+    Rails.logger.error "AgentMachineOps.#{operation}(agent=#{agent&.id}) failed: #{error.class}: #{error.message}\n#{error.backtrace&.first(5)&.join("\n")}"
+    Sentry.capture_exception(error, extra: { agent_id: agent&.id, operation: operation }) if defined?(Sentry) && Sentry.respond_to?(:capture_exception)
+    operation_failure(agent, operation, error.message, error_class: error.class.name)
+  end
+
+  def record_operation_failure(agent, operation, message)
+    instance = agent&.instance
+    return unless instance
+
+    instance.update_columns(
+      provisioning_error: "Ops #{operation} failed at #{Time.current.utc.iso8601}: #{message.to_s.truncate(500)}",
+      updated_at: Time.current,
+    )
+  rescue => e
+    Rails.logger.warn "AgentMachineOps: could not record #{operation} failure for agent=#{agent&.id}: #{e.message}"
+  end
+
+  def clear_operation_failure(agent)
+    instance = agent&.instance
+    return unless instance&.provisioning_error.to_s.start_with?("Ops ")
+
+    instance.update_columns(provisioning_error: nil, updated_at: Time.current)
   end
 
   def fly_api(method, path, body = nil)
