@@ -78,9 +78,17 @@ module Email
     end
 
     # Parses MANAGED_DNS_ZONES into [[zone, provider], ...]. Default provider
-    # is "cloudflare" for backward compat with the original one-string format.
+    # for unprefixed entries is "cloudflare" (backward compat with the
+    # original one-string format). When the env is empty, we default to
+    # route53:double.md — our primary managed zone — so a fresh deploy has
+    # auto-DNS working without any extra configuration.
+    DEFAULT_MANAGED_ZONES = [["double.md", "route53"]].freeze
+
     def parsed_managed_zones
-      ENV.fetch("MANAGED_DNS_ZONES", "").split(",").filter_map do |raw|
+      raw_env = ENV.fetch("MANAGED_DNS_ZONES", "")
+      return DEFAULT_MANAGED_ZONES if raw_env.strip.empty?
+
+      raw_env.split(",").filter_map do |raw|
         entry = raw.strip
         next if entry.empty?
         if entry.include?(":")
