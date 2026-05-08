@@ -30,8 +30,11 @@ class ChannelConfigsController < ApplicationController
       begin
         setup_ses_inbound(address)
       rescue => e
-        Rails.logger.error "SES inbound setup error: #{e.message}"
-        # Don't block — outbound still works
+        Rails.logger.error "SES inbound setup error: #{e.class}: #{e.message}"
+        Rails.logger.error e.backtrace.first(10).join("\n")
+        @ses_inbound_error = "#{e.class.name.demodulize}: #{e.message}"
+        # Don't block save — outbound still works. We surface the error in the
+        # flash + a Resync button on the channel row so the user can retry.
       end
     end
 
@@ -55,10 +58,36 @@ class ChannelConfigsController < ApplicationController
 
     if config.save
       EngineSync.trigger(@agent)
-      redirect_to agent_channel_configs_path(@agent), notice: "#{config.channel_type.capitalize} connected"
+      if @ses_inbound_error
+        redirect_to agent_channel_configs_path(@agent),
+          alert: "#{config.channel_type.capitalize} connected for outbound, but inbound setup failed — #{@ses_inbound_error}. Click Resync to retry."
+      else
+        redirect_to agent_channel_configs_path(@agent), notice: "#{config.channel_type.capitalize} connected"
+      end
     else
       redirect_back fallback_location: agent_channel_configs_path(@agent), alert: config.errors.full_messages.join(", ")
     end
+  end
+
+  # POST /agents/:agent_id/channel_configs/:id/resync_inbound
+  # Re-runs the SES inbound provisioning for an email channel that didn't
+  # finish setup (e.g. perms error on first save). Idempotent — skips bits
+  # that already exist.
+  def resync_inbound
+    config = @agent.channel_configs.find(params[:id])
+    unless config.channel_type == "email" && config.config["address"].present?
+      redirect_back fallback_location: agent_channel_configs_path(@agent),
+        alert: "Resync only applies to email channels with an address"
+      return
+    end
+
+    setup_ses_inbound(config.config["address"])
+    redirect_to agent_channel_configs_path(@agent), notice: "Inbound re-synced for #{config.config['address']}"
+  rescue => e
+    Rails.logger.error "SES inbound resync error: #{e.class}: #{e.message}"
+    Rails.logger.error e.backtrace.first(10).join("\n")
+    redirect_back fallback_location: agent_channel_configs_path(@agent),
+      alert: "Resync failed — #{e.class.name.demodulize}: #{e.message}"
   end
 
   def update

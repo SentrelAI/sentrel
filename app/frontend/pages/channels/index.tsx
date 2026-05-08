@@ -1,5 +1,5 @@
 import { Head, router } from "@inertiajs/react"
-import { MessageSquare, Phone, Hash, Send, Mail, Check, X, Plus, Loader2, ShoppingCart } from "lucide-react"
+import { MessageSquare, Phone, Hash, Send, Mail, Check, X, Plus, Loader2, ShoppingCart, RefreshCw } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import AppLayout from "@/layouts/app-layout"
@@ -110,6 +110,16 @@ export default function ChannelsIndex({ agent, channels, available_channels, twi
                     <Check className="size-3 mr-1" />
                     Connected
                   </Badge>
+                  {ch.channel_type === "email" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Re-run SES inbound setup (creates SNS topic + receipt rule if missing)"
+                      onClick={() => router.post(`/agents/${agent.id}/channel_configs/${ch.id}/resync_inbound`)}
+                    >
+                      <RefreshCw className="size-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

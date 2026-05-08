@@ -71,6 +71,9 @@ Rails.application.routes.draw do
     resources :agents do
       resources :conversations, only: [:index, :show]
       resources :channel_configs, only: [:index, :create, :update, :destroy] do
+        member do
+          post :resync_inbound
+        end
         collection do
           get :twilio_numbers
           get :available_numbers
