@@ -1,5 +1,5 @@
 import { Head, useForm } from "@inertiajs/react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Copy, Check, Loader2, RefreshCw } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -178,6 +178,13 @@ export default function SettingsShow({ organization, members, anthropic_account 
 
 // ── Email domain section ──
 interface DnsRecord { type: string; name: string; value: string; purpose: string }
+interface AutoDnsResult {
+  applied?: Array<{ type: string; name: string; purpose: string }>
+  skipped?: Array<{ type: string; name: string; purpose: string; reason: string }>
+  errors?: Array<{ type: string; name: string; purpose: string; error: string }>
+  zone?: string
+  error?: string
+}
 
 function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave, processing }: {
   organization: Props["organization"]
@@ -187,29 +194,86 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
   processing: boolean
 }) {
   const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([])
+  const [autoDns, setAutoDns] = useState<AutoDnsResult | null>(null)
+  const [managedZone, setManagedZone] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(false)
   const [verificationStatus, setVerificationStatus] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
+  const pollAbortRef = useRef<{ cancelled: boolean }>({ cancelled: false })
 
-  async function getDnsRecords() {
-    setLoading(true)
+  // Auto-poll verification once we've connected the identity (or DNS auto-
+  // applied). 5s interval, stops on Success or after 5 minutes.
+  function startVerificationPoll() {
+    pollAbortRef.current.cancelled = false
+    const startedAt = Date.now()
+    const tick = async () => {
+      if (pollAbortRef.current.cancelled) return
+      if (Date.now() - startedAt > 5 * 60_000) return
+      const ok = await pollOnce()
+      if (ok) return
+      setTimeout(tick, 5_000)
+    }
+    setTimeout(tick, 5_000)
+  }
+
+  async function pollOnce(): Promise<boolean> {
     try {
-      const res = await fetch("/settings/verify_domain", { method: "POST", headers: { "X-CSRF-Token": document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "", "Content-Type": "application/json" } })
-      if (!res.ok) throw new Error("Failed")
+      const res = await fetch("/settings/check_domain_verification", { method: "POST", headers: { "X-CSRF-Token": csrf(), "Content-Type": "application/json" } })
       const data = await res.json()
+      setVerificationStatus(data.status)
+      if (data.verified) return true
+    } catch { /* keep polling */ }
+    return false
+  }
+
+  function csrf() {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+  }
+
+  async function connectDomain() {
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      const res = await fetch("/settings/verify_domain", { method: "POST", headers: { "X-CSRF-Token": csrf(), "Content-Type": "application/json" } })
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorMsg(data.error || `Server returned ${res.status}`)
+        return
+      }
       setDnsRecords(data.records || [])
-    } catch { /* ignore */ }
+      setAutoDns(data.auto_dns || null)
+      setManagedZone(data.managed_zone || null)
+      setVerificationStatus(data.verification_status || "Pending")
+      // Whether records were auto-applied or the user has to add them
+      // manually, start polling so the UI flips to Verified on its own.
+      startVerificationPoll()
+    } catch (e) {
+      setErrorMsg((e as Error).message || "Network error")
+    }
     setLoading(false)
   }
 
   async function checkVerification() {
     setChecking(true)
+    setErrorMsg(null)
     try {
-      const res = await fetch("/settings/check_domain_verification", { method: "POST", headers: { "X-CSRF-Token": document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "", "Content-Type": "application/json" } })
+      const res = await fetch("/settings/check_domain_verification", { method: "POST", headers: { "X-CSRF-Token": csrf(), "Content-Type": "application/json" } })
       const data = await res.json()
+      if (!res.ok) {
+        setErrorMsg(data.error || `Server returned ${res.status}`)
+        return
+      }
       setVerificationStatus(data.status)
-    } catch { /* ignore */ }
+      // If the server self-healed the missing identity, fetch records for the
+      // user to add manually (or auto-apply if managed zone).
+      if (data.initialized) {
+        await connectDomain()
+      }
+    } catch (e) {
+      setErrorMsg((e as Error).message || "Network error")
+    }
     setChecking(false)
   }
 
@@ -250,11 +314,11 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
             </Button>
             {organization.email_domain && !organization.email_domain_verified && (
               <>
-                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={getDnsRecords} disabled={loading}>
+                <Button type="button" size="sm" className="h-7 text-xs" onClick={connectDomain} disabled={loading}>
                   {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
-                  DNS Records
+                  {dnsRecords.length > 0 ? "Refresh records" : "Connect domain"}
                 </Button>
-                <Button type="button" size="sm" className="h-7 text-xs" onClick={checkVerification} disabled={checking}>
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={checkVerification} disabled={checking}>
                   {checking ? <Loader2 className="size-3 animate-spin mr-1" /> : <RefreshCw className="size-3 mr-1" />}
                   Verify
                 </Button>
@@ -262,6 +326,38 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
             )}
           </div>
         </form>
+
+        {errorMsg && (
+          <div className="rounded-md border border-red-300 bg-red-50 p-2 text-[11px] text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            <span className="font-medium">Error:</span> {errorMsg}
+          </div>
+        )}
+
+        {autoDns?.error && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <span className="font-medium">DNS auto-config failed:</span> {autoDns.error}
+            <span className="block text-[10px] mt-1 text-amber-700 dark:text-amber-400">Falling back to manual — copy the records below into your DNS provider.</span>
+          </div>
+        )}
+
+        {autoDns && (autoDns.applied?.length || autoDns.skipped?.length) ? (
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 p-2 text-[11px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            <span className="font-medium">Auto-configured DNS on {autoDns.zone}.</span>
+            {autoDns.applied && autoDns.applied.length > 0 && (
+              <span className="ml-1">{autoDns.applied.length} record{autoDns.applied.length === 1 ? "" : "s"} added.</span>
+            )}
+            {autoDns.skipped && autoDns.skipped.length > 0 && (
+              <span className="ml-1 text-emerald-700 dark:text-emerald-400">{autoDns.skipped.length} already in place.</span>
+            )}
+            <span className="block text-[10px] mt-1 text-emerald-700 dark:text-emerald-400">Verification polls every 5s; the badge flips to Verified once SES confirms (usually 1–5 min).</span>
+          </div>
+        ) : null}
+
+        {managedZone && !autoDns?.applied?.length && !autoDns?.error && (
+          <div className="rounded-md border border-sky-300 bg-sky-50 p-2 text-[11px] text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">
+            <span className="font-medium">{managedZone} is on our managed zone.</span> Click <span className="font-medium">Connect domain</span> and we'll add the records for you — no DNS copy/paste needed.
+          </div>
+        )}
 
         {dnsRecords.length > 0 && (
           <div className="space-y-2">

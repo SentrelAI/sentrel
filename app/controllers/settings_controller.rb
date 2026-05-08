@@ -35,6 +35,14 @@ class SettingsController < ApplicationController
   end
 
   # POST /settings/verify_domain
+  # Smart "connect domain" — idempotently:
+  #   1. Creates the SES identity (returns verification + DKIM tokens)
+  #   2. Builds the 6 DNS records the user needs
+  #   3. If the domain falls under a zone we manage on Cloudflare, applies
+  #      those records automatically so the user doesn't have to copy/paste
+  #   4. Reads back the current verification status
+  # Returns a structured payload the UI can render with proper feedback per
+  # phase (identity-created / dns-applied / pending / verified / error).
   def verify_domain
     domain = current_tenant.email_domain
     return render json: { error: "No domain set" }, status: :unprocessable_entity unless domain.present?
@@ -42,18 +50,42 @@ class SettingsController < ApplicationController
     ses = SesClient.for(current_tenant)
     result = ses.verify_domain_identity(domain: domain)
     dkim = ses.verify_domain_dkim(domain: domain)
+    records = build_dns_records(domain, result.verification_token, dkim.dkim_tokens)
+
+    auto_dns = nil
+    if Email::DnsAutoConfigurator.managed?(domain)
+      begin
+        auto_dns = Email::DnsAutoConfigurator.apply!(domain, records)
+      rescue StandardError => e
+        Rails.logger.warn "DNS auto-config failed for #{domain}: #{e.class}: #{e.message}"
+        auto_dns = { error: e.message }
+      end
+    end
+
+    # Read live verification + DKIM status so the UI shows the right state.
+    status = ses.get_identity_verification_attributes(identities: [domain]).verification_attributes[domain]
+    if status&.verification_status == "Success" && !current_tenant.email_domain_verified?
+      current_tenant.update!(email_domain_verified: true)
+    end
 
     render json: {
       domain: domain,
       verification_token: result.verification_token,
       dkim_tokens: dkim.dkim_tokens,
-      records: build_dns_records(domain, result.verification_token, dkim.dkim_tokens),
+      records: records,
+      verification_status: status&.verification_status || "Pending",
+      auto_dns: auto_dns,
+      managed_zone: Email::DnsAutoConfigurator.managed_zone_for(domain),
     }
   rescue Aws::SES::Errors::ServiceError => e
-    render json: { error: e.message }, status: :unprocessable_entity
+    Rails.logger.error "SES verify_domain failed (#{domain}): #{e.class}: #{e.message}"
+    render json: { error: e.message, code: e.class.name.demodulize }, status: :unprocessable_entity
   end
 
   # POST /settings/check_domain_verification
+  # Polls SES for verification status. Self-heals: if no identity exists yet
+  # (e.g. user clicked Verify before creating one), this triggers the
+  # creation flow so the next poll returns useful state instead of unknown.
   def check_domain_verification
     domain = current_tenant.email_domain
     return render json: { verified: false, status: "no_domain" } unless domain.present?
@@ -62,12 +94,21 @@ class SettingsController < ApplicationController
     result = ses.get_identity_verification_attributes(identities: [domain])
     attrs = result.verification_attributes[domain]
 
-    verified = attrs&.verification_status == "Success"
-    current_tenant.update!(email_domain_verified: true) if verified
+    if attrs.nil?
+      # Identity doesn't exist in SES yet — kick off creation so subsequent
+      # polls have something to look at. Caller will hit verify_domain to
+      # get the actual records, but this avoids a permanent "unknown" state.
+      ses.verify_domain_identity(domain: domain) rescue nil
+      return render json: { verified: false, status: "Pending", initialized: true }
+    end
 
-    render json: { verified: verified, status: attrs&.verification_status || "unknown" }
+    verified = attrs.verification_status == "Success"
+    current_tenant.update!(email_domain_verified: true) if verified && !current_tenant.email_domain_verified?
+
+    render json: { verified: verified, status: attrs.verification_status || "unknown" }
   rescue Aws::SES::Errors::ServiceError => e
-    render json: { error: e.message }, status: :unprocessable_entity
+    Rails.logger.error "SES check_domain_verification failed (#{domain}): #{e.class}: #{e.message}"
+    render json: { error: e.message, code: e.class.name.demodulize }, status: :unprocessable_entity
   end
 
   private
