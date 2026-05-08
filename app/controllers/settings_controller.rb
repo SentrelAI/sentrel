@@ -23,6 +23,16 @@ class SettingsController < ApplicationController
     render json: { available: true, full: full }
   end
 
+  # POST /settings/reset_email_domain
+  # Clears the org's email_domain so the picker shows again. We don't
+  # touch the SES identity / Route 53 records — those are cheap and
+  # idempotent on re-pick. If the user re-claims the same name they
+  # land on a fully-verified state immediately.
+  def reset_email_domain
+    current_tenant.update!(email_domain: nil, email_domain_verified: false)
+    redirect_to settings_path, notice: "Email domain cleared — pick a new subdomain to start over"
+  end
+
   # POST /settings/claim_managed_subdomain
   # One-click "give me <label>.<zone>" — sets organization.email_domain to
   # the picked subdomain, then redirects to settings with ?connect=1 so the

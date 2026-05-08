@@ -302,6 +302,26 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  async function resetEmailDomain() {
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      const form = document.createElement("form")
+      form.method = "POST"
+      form.action = "/settings/reset_email_domain"
+      const csrfInput = document.createElement("input")
+      csrfInput.type = "hidden"
+      csrfInput.name = "authenticity_token"
+      csrfInput.value = csrf()
+      form.appendChild(csrfInput)
+      document.body.appendChild(form)
+      form.submit()
+    } catch (e) {
+      setErrorMsg((e as Error).message || "Network error")
+      setLoading(false)
+    }
+  }
+
   async function claimManagedSubdomain(args: { label?: string; zone?: string; domain?: string }) {
     setLoading(true)
     setErrorMsg(null)
@@ -343,45 +363,17 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
           />
         )}
         {organization.email_domain && (
-          <form onSubmit={onSave} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email_domain">Domain</Label>
-              <div className="flex items-center gap-3">
-                <Input
-                  id="email_domain"
-                  placeholder="team.company.com"
-                  value={emailDomain}
-                  onChange={(e) => onDomainChange(e.target.value)}
-                  className="flex-1"
-                />
-                {organization.email_domain_verified ? (
-                  <Badge className="bg-emerald-600 shrink-0 text-[10px]">Verified</Badge>
-                ) : (
-                  <Badge variant="secondary" className="shrink-0 text-[10px]">{verificationStatus || "Pending"}</Badge>
-                )}
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                Agents send emails from @{emailDomain || "your-domain.com"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 justify-end">
-              <Button type="submit" disabled={processing} variant="outline" size="sm" className="h-7 text-xs">
-                {processing ? "Saving..." : "Save Domain"}
-              </Button>
-              {!organization.email_domain_verified && (
-                <>
-                  <Button type="button" size="sm" className="h-7 text-xs" onClick={connectDomain} disabled={loading}>
-                    {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
-                    {dnsRecords.length > 0 ? "Refresh records" : "Connect domain"}
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={checkVerification} disabled={checking}>
-                    {checking ? <Loader2 className="size-3 animate-spin mr-1" /> : <RefreshCw className="size-3 mr-1" />}
-                    Verify
-                  </Button>
-                </>
-              )}
-            </div>
-          </form>
+          <ConnectedDomainCard
+            domain={organization.email_domain}
+            verified={organization.email_domain_verified || verificationStatus === "Success"}
+            verificationStatus={verificationStatus}
+            loading={loading}
+            checking={checking}
+            recordsLoaded={dnsRecords.length > 0}
+            onConnect={connectDomain}
+            onVerify={checkVerification}
+            onReset={resetEmailDomain}
+          />
         )}
 
         {!organization.email_domain && (
@@ -553,6 +545,84 @@ function SubdomainPicker({
         {status === "taken" && <span className="text-red-600 dark:text-red-400 inline-flex items-center gap-1"><X className="size-3" /> {reason || "already taken"}</span>}
         {status === "invalid" && <span className="text-amber-600 dark:text-amber-400">{reason || "Invalid subdomain"}</span>}
       </div>
+    </div>
+  )
+}
+
+// Compact "domain is connected" view. Shows the domain, the verified
+// state with a friendly label (not the raw SES status), and the actions
+// the user actually needs at this stage. Click "Change" to reset back
+// to the picker. While unverified, exposes the manual Connect/Verify
+// buttons (mostly redundant with auto-poll, kept for the "your-own-
+// domain" path where we couldn't push DNS for them).
+function ConnectedDomainCard({
+  domain,
+  verified,
+  verificationStatus,
+  loading,
+  checking,
+  recordsLoaded,
+  onConnect,
+  onVerify,
+  onReset,
+}: {
+  domain: string
+  verified: boolean
+  verificationStatus: string | null
+  loading: boolean
+  checking: boolean
+  recordsLoaded: boolean
+  onConnect: () => void
+  onVerify: () => void
+  onReset: () => void
+}) {
+  // SES returns "Success" / "Failed" / "Pending"; map to user-facing text.
+  const statusLabel = verified
+    ? "Verified"
+    : verificationStatus === "Failed"
+      ? "Failed"
+      : verificationStatus === "Pending"
+        ? "Pending DNS propagation…"
+        : verificationStatus
+          ? verificationStatus
+          : "Pending"
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border bg-card p-3 flex items-center gap-3">
+        <div className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-md border",
+          verified
+            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
+            : "border-amber-500/40 bg-amber-500/10 text-amber-500",
+        )}>
+          {verified ? <Check className="size-4" strokeWidth={3} /> : <Loader2 className="size-4 animate-spin" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-sm truncate">{domain}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {verified
+              ? <>Agents at <span className="font-mono">your-name@{domain}</span></>
+              : statusLabel}
+          </div>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={onReset} disabled={loading}>
+          Change
+        </Button>
+      </div>
+
+      {!verified && (
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" size="sm" className="h-7 text-xs" onClick={onConnect} disabled={loading}>
+            {loading ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
+            {recordsLoaded ? "Refresh records" : "Connect domain"}
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={onVerify} disabled={checking}>
+            {checking ? <Loader2 className="size-3 animate-spin mr-1" /> : <RefreshCw className="size-3 mr-1" />}
+            Verify
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
