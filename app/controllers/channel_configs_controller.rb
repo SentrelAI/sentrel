@@ -106,7 +106,7 @@ class ChannelConfigsController < ApplicationController
     # Clean up SES receipt rule on email disconnect
     if config.channel_type == "email" && config.config["address"].present?
       begin
-        rule_name = "alchemy-#{config.config['address'].gsub(/[^a-z0-9@]/i, '-')}"
+        rule_name = "alchemy-#{config.config['address'].gsub(/[^a-z0-9]/i, '-')}"
         ses_client.delete_receipt_rule(rule_set_name: "alchemy-inbound", rule_name: rule_name)
       rescue => e
         Rails.logger.warn "SES cleanup: #{e.message}"
@@ -265,7 +265,7 @@ class ChannelConfigsController < ApplicationController
     end
 
     # 4. Create receipt rule for this email address
-    rule_name = "alchemy-#{address.gsub(/[^a-z0-9@]/i, '-')}"
+    rule_name = "alchemy-#{address.gsub(/[^a-z0-9]/i, '-')}"
     begin
       ses_client.create_receipt_rule(
         rule_set_name: rule_set_name,
