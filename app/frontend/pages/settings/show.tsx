@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { dashboardPath, settingsPath } from "@/routes"
 import { AnthropicAccountCard, type AiAccount } from "@/components/anthropic-account-card"
+import { cn } from "@/lib/utils"
 
 interface Member {
   id: number
