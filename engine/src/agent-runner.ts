@@ -1255,7 +1255,7 @@ function buildToolProfile(
   const hasAttachments = Boolean(job.payload?.attachments?.length || job.payload?.attachment_ids?.length);
   const integrationIntent = detectIntegrationIntents(text).length > 0 || /\b(connect|integration|oauth|apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|google[-\s]?meet|zoom|calendly|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin)\b/i.test(text);
   const taskIntent = /\b(task|todo|delegate|assign|ask\s+(sam|alex|casper)|follow\s*up|progress|status update)\b/i.test(text);
-  const schedulingIntent = /\b(remind|reminder|schedule|calendar|meeting|appointment|cron|every\s+(day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tomorrow|next\s+week)\b/i.test(text);
+  const schedulingIntent = /\b(remind|reminder|schedul(e|ing)|calendar|meeting|appointment|cron|availab(le|ility)|free\s+time|free\s+slot|open\s+slot|time\s+slot|book(ing)?\s+(a|some|time)|find\s+(a\s+)?time|suggest\s+(some\s+)?times?|when\s+(are\s+you|can\s+we)|what\s+times?|every\s+(day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tomorrow|next\s+week)\b/i.test(text);
   const recallIntent = /\b(remember|previous|earlier|last time|what did (i|we|you)|history|conversation)\b/i.test(text);
   const knowledgeIntent = /\b(policy|contract|document|docs|knowledge|playbook|uploaded|company info|handbook)\b/i.test(text);
   const mediaIntent = hasAttachments || /\b(send|create|attach|voice|audio|image|screenshot|file|pdf|csv)\b/i.test(text);
