@@ -37,15 +37,14 @@ class CredentialsController < ApplicationController
   end
 
   def create
-    attrs = credential_params
-    fields = attrs.delete(:fields) || {}
-    # Tolerate the legacy `value` param so single-field UIs still work.
-    if attrs[:kind].present? && attrs[:provider].present? && fields.empty? && attrs[:value].present?
-      schema = Credential.field_schema_for(attrs[:kind], attrs[:provider])
+    attrs = credential_params.to_h
+    fields = normalize_fields(attrs.delete("fields"))
+    legacy_value = attrs.delete("value")
+    # Tolerate the legacy single `value` param so older callers still work.
+    if attrs["kind"].present? && attrs["provider"].present? && fields.empty? && legacy_value.present?
+      schema = Credential.field_schema_for(attrs["kind"], attrs["provider"])
       primary = (schema.find { |f| f[:primary] } || schema.first)[:key]
-      fields = { primary => attrs.delete(:value) }
-    else
-      attrs.delete(:value)
+      fields = { primary => legacy_value }
     end
 
     cred = current_tenant.credentials.new(attrs)
@@ -57,17 +56,18 @@ class CredentialsController < ApplicationController
     else
       redirect_back fallback_location: credentials_path, alert: cred.errors.full_messages.join(", ")
     end
+  rescue StandardError => e
+    Rails.logger.error "[CredentialsController#create] #{e.class}: #{e.message}\n#{e.backtrace.first(10).join("\n")}"
+    redirect_back fallback_location: credentials_path,
+      alert: "Couldn't save credential — #{e.class.name.demodulize}: #{e.message.truncate(200)}"
   end
 
   def update
     cred = current_tenant.credentials.find(params[:id])
-    attrs = credential_params
-    new_fields = attrs.delete(:fields) || {}
-    if attrs[:value].present?
-      new_fields[cred.primary_field_name] ||= attrs.delete(:value)
-    else
-      attrs.delete(:value)
-    end
+    attrs = credential_params.to_h
+    new_fields = normalize_fields(attrs.delete("fields"))
+    legacy_value = attrs.delete("value")
+    new_fields[cred.primary_field_name] ||= legacy_value if legacy_value.present?
 
     # Merge — rotating just one field shouldn't wipe the rest. Blank values
     # in the submitted hash are ignored (Credential#fields= drops them).
@@ -80,6 +80,10 @@ class CredentialsController < ApplicationController
     else
       redirect_back fallback_location: credentials_path, alert: cred.errors.full_messages.join(", ")
     end
+  rescue StandardError => e
+    Rails.logger.error "[CredentialsController#update] #{e.class}: #{e.message}\n#{e.backtrace.first(10).join("\n")}"
+    redirect_back fallback_location: credentials_path,
+      alert: "Couldn't update credential — #{e.class.name.demodulize}: #{e.message.truncate(200)}"
   end
 
   def destroy
@@ -94,6 +98,19 @@ class CredentialsController < ApplicationController
 
   def credential_params
     params.require(:credential).permit(:kind, :provider, :name, :value, meta: {}, fields: {})
+  end
+
+  # Hash-ify whatever shape the fields param arrived as (Hash,
+  # ActionController::Parameters, nil). String keys, string values, blanks
+  # dropped. Defensive so any weird shape from the wire still reaches the
+  # model as a clean Hash.
+  def normalize_fields(raw)
+    return {} if raw.blank?
+    h = raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw.to_h rescue {}
+    h.each_with_object({}) do |(k, v), acc|
+      val = v.is_a?(String) ? v : v.to_s
+      acc[k.to_s] = val unless val.strip.empty?
+    end
   end
 
   # Flatten the schema constant into a key the frontend can look up via

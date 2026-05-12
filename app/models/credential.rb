@@ -136,8 +136,17 @@ class Credential < ApplicationRecord
   end
 
   # Replaces all fields. Empty/blank values are dropped so the JSON stays tidy.
+  # Accepts a plain Hash or an ActionController::Parameters — the controller
+  # used to leave the latter wrapped, which then iterated weirdly.
   def fields=(hash)
-    cleaned = (hash || {}).each_with_object({}) do |(k, v), acc|
+    h = if hash.respond_to?(:to_unsafe_h)
+          hash.to_unsafe_h
+        elsif hash.respond_to?(:to_h)
+          hash.to_h
+        else
+          hash || {}
+        end
+    cleaned = h.each_with_object({}) do |(k, v), acc|
       key = k.to_s
       val = v.is_a?(String) ? v : v.to_s
       acc[key] = val unless val.strip.empty?
