@@ -26,6 +26,11 @@ import { logger } from "../logger.js";
 
 interface SecretResponse {
   value: string;
+  // Multi-field creds (AWS = access_key_id + secret_access_key + region,
+  // Twilio = account_sid + auth_token, Stripe = secret_key + …) ship every
+  // field here. Single-value creds (LLM keys, DigitalOcean) still populate
+  // a one-entry map (`value` field).
+  fields?: Record<string, string>;
   kind: string;
   provider: string;
   name: string;
@@ -145,9 +150,13 @@ export function buildSecretsMcpServer(agentId: number) {
 }
 
 function successResponse(data: SecretResponse) {
-  // Wrap the value in a guardrail comment so the model is reminded not to
-  // leak it into any user-facing assistant text. The SDK never persists tool
+  // Wrap the value(s) in a guardrail comment so the model is reminded not to
+  // leak them into any user-facing assistant text. The SDK never persists tool
   // results into the message stream — they only show in the tool_history.
+  const fieldsBlock = data.fields && Object.keys(data.fields).length > 0
+    ? Object.entries(data.fields).map(([k, v]) => `${k}: ${v}`).join("\n")
+    : `value: ${data.value}`;
+
   return {
     content: [{
       type: "text" as const,
@@ -156,8 +165,8 @@ function successResponse(data: SecretResponse) {
         `name: ${data.name}\n` +
         `kind: ${data.kind}\n` +
         `provider: ${data.provider}\n` +
-        `value: ${data.value}\n\n` +
-        `Do not print this value back to the user. Use it in headers or environment-variable form when you make the upstream API call.`,
+        `${fieldsBlock}\n\n` +
+        `Do not print these values back to the user. Use them in headers or environment-variable form when you make the upstream API call.`,
     }],
   };
 }
