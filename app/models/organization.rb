@@ -9,6 +9,8 @@ class Organization < ApplicationRecord
   has_many :audit_logs, dependent: :destroy
   has_many :agent_summaries, dependent: :destroy
   has_many :invitations, dependent: :destroy
+  has_many :credentials, dependent: :destroy
+  has_many :agent_templates, dependent: :destroy
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: true
