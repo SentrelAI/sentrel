@@ -134,6 +134,9 @@ class WebhooksController < ApplicationController
       content: message[:text].to_s,
       direction: "inbound",
       channel: "telegram",
+      sender_name: display,
+      sender_email: nil,
+      sender_user_id: user_id,
       metadata: { chat_id: chat_id, message_id: message[:message_id] },
     )
 
@@ -187,6 +190,9 @@ class WebhooksController < ApplicationController
       content: params[:body].to_s,
       direction: "inbound",
       channel: "web",
+      sender_name: current_user.name,
+      sender_email: current_user.email,
+      sender_user_id: current_user.id,
       metadata: attachment_signed_ids.any? ? { attachment_ids: attachment_signed_ids } : {},
     )
 
@@ -283,6 +289,8 @@ class WebhooksController < ApplicationController
       content: params[:text] || params[:body] || params[:html] || "",
       direction: "inbound",
       channel: "email",
+      sender_name: params[:from_name].presence || params[:from],
+      sender_email: params[:from],
       metadata: { from: params[:from], from_name: params[:from_name], subject: params[:subject] },
     )
 

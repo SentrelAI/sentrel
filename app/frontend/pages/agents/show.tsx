@@ -1,4 +1,4 @@
-import { Head, Link, router } from "@inertiajs/react"
+import { Head, Link, router, usePage } from "@inertiajs/react"
 import {
   MessageSquare,
   CheckSquare,
@@ -85,6 +85,16 @@ interface MessageItem {
   metadata: Record<string, unknown>
   created_at: string
   attachments?: MessageAttachment[]
+  sender_name?: string | null
+  sender_email?: string | null
+  sender_user_id?: number | null
+  sender?: { name: string | null; email: string | null; kind: string } | null
+}
+
+interface EmailSender {
+  name: string | null
+  email: string | null
+  kind: "agent" | "user" | "external"
 }
 
 interface EmailItem {
@@ -97,6 +107,10 @@ interface EmailItem {
   subject: string | null
   to: string | null
   from: string | null
+  sender?: EmailSender | null
+  sender_name?: string | null
+  sender_email?: string | null
+  sender_user_id?: number | null
   conversation_id: number
   contact: string | null
 }
@@ -398,6 +412,16 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
 }
 
 export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected }: Props) {
+  // Shared via inertia_share in ApplicationController — used to label the
+  // user's own composed messages with their real name + email in the chat.
+  const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
+  const currentUser = page.props.auth?.user ?? null
+  // First enabled email channel — surfaced to the chat header so the
+  // assistant bubble can show "Casper · casper@…" instead of just "Casper".
+  const agentPrimaryEmail: string | null = (() => {
+    const fromEmail = (emails as Array<{ direction?: string; from?: string }> | undefined)?.find((e) => e.direction === "outbound")?.from
+    return fromEmail ?? null
+  })()
   const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "memory", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
@@ -513,7 +537,9 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
             <AgentChat
               agentId={agent.id}
               agentName={agent.name}
+              agentEmail={agentPrimaryEmail}
               agentStatus={agent.status}
+              currentUser={currentUser}
               initialMessages={chat_messages as any}
               agentThinking={agent_thinking}
               approvalsByMessage={approvals_by_message}
@@ -572,7 +598,20 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                 <ArrowDownLeft className="size-3 text-emerald-500 shrink-0" />
                               )}
                               <span className="font-medium text-xs truncate">
-                                {isOutbound ? `To: ${email.to || email.contact}` : `From: ${email.contact || email.from}`}
+                                {(() => {
+                                  if (isOutbound) {
+                                    const toLabel = email.to || email.contact || "—"
+                                    const senderName = email.sender?.name || email.sender_name
+                                    return senderName
+                                      ? `${senderName} → ${toLabel}`
+                                      : `To: ${toLabel}`
+                                  }
+                                  const fromName = email.sender?.name || email.sender_name || email.contact
+                                  const fromAddr = email.sender?.email || email.sender_email || email.from
+                                  return fromName && fromName !== fromAddr
+                                    ? `${fromName} <${fromAddr ?? "?"}>`
+                                    : `From: ${fromAddr || fromName || "Unknown"}`
+                                })()}
                               </span>
                             </div>
                             <span className="text-[10px] text-muted-foreground shrink-0">
@@ -641,11 +680,25 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                         <div className="space-y-0.5 text-xs">
                           <div className="flex gap-2">
                             <span className="font-medium w-10 text-muted-foreground">From</span>
-                            <span>{isOutbound ? `${agent.name} <${email.from}>` : email.contact || email.from}</span>
+                            <span>
+                              {(() => {
+                                const name = email.sender?.name || email.sender_name
+                                const addr = email.sender?.email || email.sender_email || email.from
+                                if (name && addr && name !== addr) return `${name} <${addr}>`
+                                return name || addr || "—"
+                              })()}
+                            </span>
                           </div>
                           <div className="flex gap-2">
                             <span className="font-medium w-10 text-muted-foreground">To</span>
-                            <span>{isOutbound ? (email.to || email.contact) : `${agent.name} <${email.from}>`}</span>
+                            <span>
+                              {(() => {
+                                if (isOutbound) return email.to || email.contact || "—"
+                                // For inbound mail, "to" is the agent's address. Show agent name + addr.
+                                const addr = email.to || agentPrimaryEmail
+                                return addr ? `${agent.name} <${addr}>` : agent.name
+                              })()}
+                            </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -679,12 +732,18 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                     <div className="flex-1 overflow-y-auto p-4 space-y-2">
                       {convMessages.map((msg) => {
                         const isOut = msg.direction === "outbound" || msg.role === "assistant"
+                        const senderName = (msg as { sender_name?: string | null }).sender_name
+                        const senderEmail = (msg as { sender_email?: string | null }).sender_email
+                        const displayName = senderName || (isOut ? agent.name : (conv.contact_name || conv.contact_email || "Contact"))
                         return (
                           <div key={msg.id} className={`rounded-lg border border-border p-3 ${isOut ? "bg-card" : "bg-muted/30"}`}>
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center gap-1.5">
                                 {isOut ? <ArrowUpRight className="size-3 text-blue-500" /> : <ArrowDownLeft className="size-3 text-emerald-500" />}
-                                <span className="font-medium text-xs">{isOut ? agent.name : (conv.contact_name || conv.contact_email || "Contact")}</span>
+                                <span className="font-medium text-xs">{displayName}</span>
+                                {senderEmail && senderEmail !== displayName && (
+                                  <span className="text-[10px] text-muted-foreground truncate max-w-[16rem]">{senderEmail}</span>
+                                )}
                               </div>
                               <span className="text-[10px] text-muted-foreground">{new Date(msg.created_at).toLocaleString()}</span>
                             </div>

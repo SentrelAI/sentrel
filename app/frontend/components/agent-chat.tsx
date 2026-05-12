@@ -236,8 +236,12 @@ interface PendingActionApprovalSeed {
 interface AgentChatProps {
   agentId: string | number
   agentName: string
+  agentEmail?: string | null
   agentStatus?: string
-  initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown> }[]
+  // Logged-in user — used to label the user's own composed messages with
+  // their real name + email, instead of the generic "me".
+  currentUser?: { id: number; name: string; email: string } | null
+  initialMessages?: { id?: number; role: string; content: string; created_at: string; metadata?: Record<string, unknown>; sender?: SenderInfo | null }[]
   approvalsByMessage?: Record<string, { id: number; tool_name: string; tool_input: Record<string, unknown>; status: string }[]>
   pendingActionApprovals?: PendingActionApprovalSeed[]
   // Hydrated from agents#show — non-null when the most recent message in
@@ -276,6 +280,12 @@ type ToolStep = {
 // Server-restored messages and optimistic / streaming messages both land here.
 // `content` is markdown — attachments + media + approval markers are baked in
 // (matching the markdown-link rendering in markdown-text.tsx).
+type SenderInfo = {
+  name: string | null
+  email: string | null
+  kind: "agent" | "user" | "external"
+}
+
 type StoreMessage = {
   id: string
   role: "user" | "assistant"
@@ -285,6 +295,7 @@ type StoreMessage = {
   toolSteps?: ToolStep[]
   thinking?: { text: string; durationMs: number; startedAt?: number }
   jobId?: string
+  sender?: SenderInfo
 }
 
 // Best-effort URL extractor for WebSearch / WebFetch results. The Claude
@@ -369,7 +380,7 @@ function stripLabelEmoji(label: string): string {
 // rehydrated into toolSteps so the chat shows what tools were used in past
 // turns, not just the live one.
 function fromServerMessage(
-  m: { id?: number | string; role: string; content: string; created_at?: string; metadata?: Record<string, unknown>; attachments?: Array<{ url: string; filename: string; content_type: string }> },
+  m: { id?: number | string; role: string; content: string; created_at?: string; metadata?: Record<string, unknown>; attachments?: Array<{ url: string; filename: string; content_type: string }>; sender?: SenderInfo | null },
   approvals?: Array<{ id: number; tool_input: Record<string, unknown>; status: string }>,
 ): StoreMessage {
   let content = m.content || ""
@@ -445,6 +456,7 @@ function fromServerMessage(
     toolSteps,
     thinking,
     jobId,
+    sender: m.sender ?? undefined,
   }
 }
 
@@ -467,18 +479,19 @@ const storeToThreadMessage = (m: StoreMessage): ThreadMessageLike => ({
   // read out of metadata.custom in AssistantMessage / AssistantActionBar —
   // assistant-ui passes the metadata through verbatim so we can stash any
   // shape we like.
-  metadata: (m.toolSteps && m.toolSteps.length > 0) || m.thinking || m.jobId
+  metadata: (m.toolSteps && m.toolSteps.length > 0) || m.thinking || m.jobId || m.sender
     ? {
         custom: {
           ...(m.toolSteps && m.toolSteps.length > 0 ? { toolSteps: m.toolSteps } : {}),
           ...(m.thinking ? { thinking: m.thinking } : {}),
           ...(m.jobId ? { jobId: m.jobId } : {}),
+          ...(m.sender ? { sender: m.sender } : {}),
         },
       }
     : undefined,
 })
 
-export function AgentChat({ agentId, agentName, agentStatus = "running", initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
+export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus = "running", currentUser = null, initialMessages = [], approvalsByMessage = {}, pendingActionApprovals = [], agentThinking = null }: AgentChatProps) {
   // Source of truth for what the chat renders. Hydrated from the server's
   // chat_messages, then updated in-place by the cable subscription.
   // If the server says a run is in flight (agentThinking set), append an
@@ -495,6 +508,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
         content: "",
         createdAt: Date.now(),
         status: "running",
+        sender: { name: agentName, email: agentEmail, kind: "agent" },
       })
     }
     return seeded
@@ -777,9 +791,13 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
             : `\n\n[Download ${med.filename}](${med.url})`
         }
         const persistedJobId = typeof data.metadata?.job_id === "string" ? data.metadata.job_id : undefined
+        const senderFromCable = (data.sender as SenderInfo | undefined) ?? undefined
         upsertAssistantContent(() => body, {
           final: true,
-          extra: persistedJobId ? { jobId: persistedJobId } : undefined,
+          extra: {
+            ...(persistedJobId ? { jobId: persistedJobId } : {}),
+            ...(senderFromCable ? { sender: senderFromCable } : {}),
+          },
         })
         setIsRunning(false)
         setRunStartedAt(null)
@@ -1011,6 +1029,9 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       content: userContent,
       createdAt: now,
       status: "complete",
+      sender: currentUser
+        ? { name: currentUser.name, email: currentUser.email, kind: "user" }
+        : undefined,
     }
     const pendingAssistant: StoreMessage = {
       id: `pending-${now}`,
@@ -1018,6 +1039,7 @@ export function AgentChat({ agentId, agentName, agentStatus = "running", initial
       content: "",
       createdAt: now + 1,
       status: "running",
+      sender: { name: agentName, email: agentEmail, kind: "agent" },
     }
     setMessages((prev) => [...prev, userMsg, pendingAssistant])
     setIsRunning(true)

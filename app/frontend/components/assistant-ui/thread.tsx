@@ -202,6 +202,51 @@ const ThreadMessage: FC = () => {
   return <AssistantMessage />;
 };
 
+// Sender chip: initials avatar + "<Name> · <email>". Reads custom.sender from
+// the message metadata (agent-chat hydrates this for live, persisted, and
+// optimistic messages). When sender is missing entirely (legacy rows), we
+// render nothing — the bubble alone is enough.
+type SenderInfo = { name?: string | null; email?: string | null; kind?: "agent" | "user" | "external" };
+
+const senderInitials = (name?: string | null, email?: string | null) => {
+  const base = (name || email || "").trim();
+  if (!base) return "?";
+  const parts = base.split(/[\s@\.]+/).filter(Boolean);
+  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || base[0].toUpperCase();
+};
+
+const SenderHeader: FC<{ align?: "left" | "right" }> = ({ align = "left" }) => {
+  const sender = useAuiState((s) => {
+    const custom = (s.message.metadata as { custom?: { sender?: SenderInfo } } | undefined)?.custom;
+    return custom?.sender;
+  }) as SenderInfo | undefined;
+
+  if (!sender || (!sender.name && !sender.email)) return null;
+
+  const tint =
+    sender.kind === "agent"
+      ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
+      : sender.kind === "external"
+      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+
+  return (
+    <div
+      className={`flex items-center gap-2 text-xs text-muted-foreground mb-1 ${align === "right" ? "justify-end" : ""}`}
+      data-sender-kind={sender.kind ?? "unknown"}
+    >
+      <span
+        className={`inline-flex size-5 items-center justify-center rounded-full text-[10px] font-medium ${tint}`}
+        aria-hidden="true"
+      >
+        {senderInitials(sender.name, sender.email)}
+      </span>
+      {sender.name && <span className="font-medium text-foreground/80">{sender.name}</span>}
+      {sender.email && <span className="truncate">{sender.email}</span>}
+    </div>
+  );
+};
+
 const InlineCommandApproval: FC = () => {
   const approval = useContext(CmdApprovalContext);
   const [result, setResult] = useState<string | null>(null);
@@ -1009,6 +1054,7 @@ const AssistantMessage: FC = () => {
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
+        <SenderHeader align="left" />
         {thinking && <ThinkingPill text={thinking.text} durationMs={thinking.durationMs} />}
         {hasToolSteps && <ToolSteps steps={toolSteps!} />}
         {isEmptyAndRunning && !hasToolSteps ? (
@@ -1560,6 +1606,7 @@ const UserMessage: FC = () => {
       <UserMessageAttachments />
 
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
+        <SenderHeader align="right" />
         <div className="aui-user-message-content wrap-break-word peer rounded-2xl bg-muted px-4 py-2.5 text-foreground empty:hidden">
           {/* Render user-message text via the same MarkdownText renderer
               we use for assistant messages so injected links — like the

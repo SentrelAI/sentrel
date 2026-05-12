@@ -45,4 +45,15 @@ class Agent < ApplicationRecord
   def capability_enabled?(key)
     effective_capabilities.dig(key.to_s, "enabled") == true
   end
+
+  # First enabled email channel address — the agent's outward identity for
+  # outbound mail and the "From" label on the agent's own messages.
+  def primary_email_address
+    @primary_email_address ||= channel_configs
+      .where(channel_type: "email", enabled: true)
+      .order(:id)
+      .first
+      &.config
+      &.dig("address")
+  end
 end

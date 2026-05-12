@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_07_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_12_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -367,12 +367,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_07_110000) do
     t.string "direction"
     t.jsonb "metadata", default: {}
     t.string "role", null: false
+    t.string "sender_email"
+    t.string "sender_name"
+    t.bigint "sender_user_id"
     t.jsonb "tool_calls", default: []
     t.datetime "updated_at", null: false
     t.index "((metadata ->> 'message_id'::text))", name: "index_messages_on_metadata_message_id", where: "(metadata ? 'message_id'::text)"
     t.index ["content"], name: "index_messages_on_content_trgm", opclass: :gin_trgm_ops, using: :gin
     t.index ["conversation_id", "created_at"], name: "index_messages_on_conversation_id_and_created_at"
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
+    t.index ["sender_user_id"], name: "index_messages_on_sender_user_id"
   end
 
   create_table "oauth_credentials", force: :cascade do |t|
@@ -589,6 +593,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_07_110000) do
   add_foreign_key "invitations", "organizations"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "messages", "conversations"
+  add_foreign_key "messages", "users", column: "sender_user_id", validate: false
   add_foreign_key "oauth_credentials", "organizations"
   add_foreign_key "pending_approvals", "agents"
   add_foreign_key "pending_approvals", "messages"

@@ -48,7 +48,8 @@ class AgentsController < ApplicationController
     # render the same attachment chip we use during composition.
     chat_messages = if chat_conversation
       chat_conversation.messages.includes(attachments_attachments: :blob).order(id: :asc).map do |m|
-        base = m.as_json(only: [:id, :role, :content, :channel, :metadata, :created_at])
+        base = m.as_json(only: [:id, :role, :content, :channel, :metadata, :created_at, :sender_name, :sender_email, :sender_user_id])
+        base["sender"] = m.display_sender
         base["attachments"] = m.attachments.map do |att|
           blob = att.blob
           {
@@ -160,10 +161,11 @@ class AgentsController < ApplicationController
         .order(created_at: :desc)
         .limit(50)
         .map { |m|
-          m.as_json(only: [:id, :role, :content, :direction, :channel, :created_at]).merge(
+          m.as_json(only: [:id, :role, :content, :direction, :channel, :created_at, :sender_name, :sender_email, :sender_user_id]).merge(
             subject: m.metadata&.dig("subject"),
             to: m.metadata&.dig("to"),
             from: m.direction == "inbound" ? m.conversation.contact_email : @agent.channel_configs.find_by(channel_type: "email")&.config&.dig("address"),
+            sender: m.display_sender,
             conversation_id: m.conversation_id,
             contact: m.conversation.contact_email || m.conversation.contact_name,
           )

@@ -3,6 +3,7 @@ class Message < ApplicationRecord
   include PublicIdSerialization
 
   belongs_to :conversation
+  belongs_to :sender_user, class_name: "User", foreign_key: :sender_user_id, optional: true
   has_many_attached :attachments
 
   validates :role, presence: true, inclusion: { in: %w[user assistant system] }
@@ -15,6 +16,32 @@ class Message < ApplicationRecord
   # Frontend subscribes to AgentChatChannel per agent_id and appends new
   # messages as they arrive — no more "refresh to see" UX in production.
   after_create_commit :broadcast_to_chat, if: -> { role == "assistant" && content.present? }
+
+  # Resolves who actually sent this message — used by chat + inbox renderers
+  # to show "Casper <casper@…>" instead of "me". Falls back to the conversation's
+  # agent for assistant rows the engine wrote without populating the new columns
+  # (those land before the migration backfill runs in production).
+  def display_sender
+    name  = sender_name.presence
+    email = sender_email.presence
+    if (name.nil? || email.nil?) && role == "assistant"
+      agent = conversation&.agent
+      name  ||= agent&.name
+      email ||= agent&.primary_email_address
+    end
+    {
+      name:  name,
+      email: email,
+      kind:  sender_kind,
+    }
+  end
+
+  def sender_kind
+    return :user     if sender_user_id.present?
+    return :agent    if role == "assistant"
+    return :external if direction == "inbound" && channel == "email"
+    role == "user" ? :user : :agent
+  end
 
   private
 

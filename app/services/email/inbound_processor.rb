@@ -72,6 +72,8 @@ module Email
         content: @parsed.body_text.presence || subject.presence || "(empty email)",
         direction: "inbound",
         channel: "email",
+        sender_name: from_name.presence || from,
+        sender_email: from,
         metadata: {
           from: from,
           from_name: from_name,

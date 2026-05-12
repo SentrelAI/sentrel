@@ -10,6 +10,9 @@ class TaskCommentsController < ApplicationController
       content: params[:content].to_s,
       direction: "inbound",
       channel: "task",
+      sender_name: current_user.name,
+      sender_email: current_user.email,
+      sender_user_id: current_user.id,
       metadata: { task_id: task.id, source: "task_comment", user_id: current_user.id },
     )
 

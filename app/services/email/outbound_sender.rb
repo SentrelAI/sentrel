@@ -184,11 +184,20 @@ module Email
     end
 
     def save_outbound_message(conversation, threading_headers, ses_message_id)
+      acting_user_id = @payload[:acting_user_id].presence
+      sender_name = if acting_user_id
+        User.where(id: acting_user_id).pick(:name) || @agent.name
+      else
+        @payload[:from_name].presence || @agent.name
+      end
       conversation.messages.create!(
         role: "assistant",
         content: @payload[:body_text].presence || @payload[:body_html] || "",
         direction: "outbound",
         channel: "email",
+        sender_name: sender_name,
+        sender_email: @from_address,
+        sender_user_id: acting_user_id,
         metadata: {
           to: @payload[:to],
           cc: @payload[:cc],
@@ -198,7 +207,8 @@ module Email
           in_reply_to: threading_headers[:in_reply_to],
           references: threading_headers[:references],
           ses_message_id: ses_message_id,
-        },
+          sent_via_agent_by_user: acting_user_id,
+        }.compact,
       )
     end
 

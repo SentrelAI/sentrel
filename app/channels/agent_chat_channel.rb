@@ -39,6 +39,7 @@ class AgentChatChannel < ApplicationCable::Channel
       content: message.content,
       created_at: message.created_at.iso8601,
       metadata: message.metadata,
+      sender: message.display_sender,
     })
   end
 end
