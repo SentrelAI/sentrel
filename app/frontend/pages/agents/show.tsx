@@ -740,23 +740,29 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                             {isOutbound ? "Sent" : "Received"}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">{new Date(email.created_at).toLocaleString()}</span>
-                          {!isOutbound && agentPrimaryEmail && (
+                          {agentPrimaryEmail && (
                             <Button
                               size="sm"
                               variant="outline"
                               className="h-7 gap-1.5"
                               onClick={() => {
-                                const replyAddr = email.sender?.email || email.sender_email || email.from || ""
-                                const replyName = email.sender?.name || email.sender_name || ""
+                                // Inbound → reply to the sender. Outbound → follow
+                                // up with the original recipient on the same thread.
+                                const targetAddr = isOutbound
+                                  ? (email.to || email.contact || "")
+                                  : (email.sender?.email || email.sender_email || email.from || "")
+                                const targetName = isOutbound
+                                  ? ""
+                                  : (email.sender?.name || email.sender_name || "")
                                 const subject = (email.subject || "").startsWith("Re:")
                                   ? (email.subject || "")
                                   : `Re: ${email.subject || ""}`
                                 setComposerSeed({
-                                  to: replyAddr,
+                                  to: targetAddr,
                                   subject,
                                   body: "",
                                   replyingTo: {
-                                    from: replyName ? `${replyName} <${replyAddr}>` : replyAddr,
+                                    from: targetName ? `${targetName} <${targetAddr}>` : targetAddr,
                                     subject: email.subject,
                                   },
                                 })
@@ -764,7 +770,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                               }}
                             >
                               <PenLine className="size-3.5" />
-                              Reply
+                              {isOutbound ? "Follow up" : "Reply"}
                             </Button>
                           )}
                         </div>
