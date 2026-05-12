@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Send, X as XIcon, Loader2, User2 } from "lucide-react"
 
 import {
@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 
+export type ComposerMode = "compose" | "reply" | "followup"
+
 interface EmailComposerModalProps {
   open: boolean
   onClose: () => void
@@ -22,7 +24,14 @@ interface EmailComposerModalProps {
   agentEmail: string | null
   // The human currently logged in, for the "acting as" banner.
   currentUser?: { id: number; name: string; email: string } | null
-  // Optional initial values (used by Reply).
+  // Drives the title + the context banner copy. "compose" = fresh email,
+  // "reply" = responding to an inbound, "followup" = continuing a thread
+  // we already sent.
+  mode?: ComposerMode
+  // Optional initial values (used by Reply / Follow up). The modal re-syncs
+  // these to internal state every time `open` flips from false → true so
+  // the same instance can be reused across multiple opens without leaking
+  // stale state from the prior session.
   initialTo?: string
   initialCc?: string
   initialSubject?: string
@@ -34,6 +43,18 @@ interface EmailComposerModalProps {
 
 function csrf(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+}
+
+const MODE_TITLE: Record<ComposerMode, string> = {
+  compose: "Compose email",
+  reply: "Reply",
+  followup: "Follow up",
+}
+
+const MODE_CONTEXT_LABEL: Record<ComposerMode, string> = {
+  compose: "",
+  reply: "Replying to",
+  followup: "Following up with",
 }
 
 // Compose / reply window. Visually distinctive (indigo accent + explicit
@@ -48,6 +69,7 @@ export function EmailComposerModal({
   agentName,
   agentEmail,
   currentUser = null,
+  mode = "compose",
   initialTo = "",
   initialCc = "",
   initialSubject = "",
@@ -63,6 +85,23 @@ export function EmailComposerModal({
   const [sending, setSending] = useState(false)
   const [showCc, setShowCc] = useState(initialCc.length > 0)
   const [showBcc, setShowBcc] = useState(false)
+
+  // Re-seed state every time the modal opens. The parent renders this
+  // component permanently and toggles `open` — without this hook, the
+  // form keeps state from the previous open (so clicking Reply after a
+  // prior Compose would show empty To / Subject because they were
+  // overwritten earlier).
+  useEffect(() => {
+    if (!open) return
+    setTo(initialTo)
+    setCc(initialCc)
+    setBcc("")
+    setSubject(initialSubject)
+    setBody(initialBody)
+    setShowCc(initialCc.length > 0)
+    setShowBcc(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialTo, initialCc, initialSubject, initialBody])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -108,7 +147,7 @@ export function EmailComposerModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="size-4 text-indigo-500" />
-            {replyingTo ? "Reply" : "Compose email"}
+            {MODE_TITLE[mode]}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-2 text-xs">
             <User2 className="size-3.5" />
@@ -123,10 +162,11 @@ export function EmailComposerModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          {replyingTo && replyingTo.from && (
+          {replyingTo && replyingTo.from && mode !== "compose" && (
             <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Replying to <span className="font-medium text-foreground">{replyingTo.from}</span>
-              {replyingTo.subject && <span> · “{replyingTo.subject}”</span>}
+              {MODE_CONTEXT_LABEL[mode]}{" "}
+              <span className="font-medium text-foreground">{replyingTo.from}</span>
+              {replyingTo.subject && <span> · "{replyingTo.subject}"</span>}
             </div>
           )}
 

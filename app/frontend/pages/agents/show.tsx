@@ -471,6 +471,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerSeed, setComposerSeed] = useState<{
+    mode: "compose" | "reply" | "followup"
     to?: string; cc?: string; subject?: string; body?: string;
     replyingTo?: { from: string | null; subject: string | null } | null
   } | null>(null)
@@ -602,7 +603,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                   <Button
                     size="sm"
                     className="w-full h-7 gap-1.5"
-                    onClick={() => { setComposerSeed(null); setComposerOpen(true) }}
+                    onClick={() => { setComposerSeed({ mode: "compose" }); setComposerOpen(true) }}
                   >
                     <PenLine className="size-3.5" />
                     Compose
@@ -754,17 +755,23 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                 const targetName = isOutbound
                                   ? ""
                                   : (email.sender?.name || email.sender_name || "")
-                                const subject = (email.subject || "").startsWith("Re:")
-                                  ? (email.subject || "")
-                                  : `Re: ${email.subject || ""}`
+                                const cleanSubject = (email.subject || "").trim()
+                                const subject = cleanSubject
+                                  ? cleanSubject.toLowerCase().startsWith("re:")
+                                    ? cleanSubject
+                                    : `Re: ${cleanSubject}`
+                                  : ""
                                 setComposerSeed({
+                                  mode: isOutbound ? "followup" : "reply",
                                   to: targetAddr,
                                   subject,
                                   body: "",
-                                  replyingTo: {
-                                    from: targetName ? `${targetName} <${targetAddr}>` : targetAddr,
-                                    subject: email.subject,
-                                  },
+                                  replyingTo: targetAddr
+                                    ? {
+                                        from: targetName ? `${targetName} <${targetAddr}>` : targetAddr,
+                                        subject: cleanSubject,
+                                      }
+                                    : null,
                                 })
                                 setComposerOpen(true)
                               }}
@@ -1007,6 +1014,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         agentName={agent.name}
         agentEmail={agentPrimaryEmail}
         currentUser={currentUser}
+        mode={composerSeed?.mode ?? "compose"}
         initialTo={composerSeed?.to ?? ""}
         initialCc={composerSeed?.cc ?? ""}
         initialSubject={composerSeed?.subject ?? ""}
