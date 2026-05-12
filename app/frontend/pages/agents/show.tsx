@@ -34,6 +34,7 @@ function formatBytes(bytes: number): string {
 import { StatusDot } from "@/components/brand"
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
+import { MarkdownEditor } from "@/components/markdown-editor"
 import { EmailComposerModal } from "@/components/email-composer-modal"
 import { AgentOpsMenu } from "@/components/agent-ops-menu"
 import { AgentModelPicker } from "@/components/agent-model-picker"
@@ -398,15 +399,29 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
           <span className="text-[11px] text-muted-foreground">{file.description}</span>
         </div>
 
-        {/* Textarea editor */}
-        <textarea
-          value={currentValue}
-          onChange={(e) => handleChange(e.target.value)}
-          placeholder={file.placeholder}
-          maxLength={file.charLimit}
-          className="flex-1 w-full resize-none bg-transparent px-4 py-3 text-sm font-mono leading-relaxed outline-none placeholder:text-muted-foreground/40"
-          spellCheck={false}
-        />
+        {/* Editor — TipTap WYSIWYG for prose fields, plain textarea for
+            engine-managed memory.md (engine writes raw markdown, no human
+            formatting needed). */}
+        {file.field === "memory_md" ? (
+          <textarea
+            value={currentValue}
+            onChange={(e) => handleChange(e.target.value)}
+            placeholder={file.placeholder}
+            maxLength={file.charLimit}
+            className="flex-1 w-full resize-none bg-transparent px-4 py-3 text-sm font-mono leading-relaxed outline-none placeholder:text-muted-foreground/40"
+            spellCheck={false}
+          />
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4">
+            <MarkdownEditor
+              value={currentValue}
+              onChange={handleChange}
+              placeholder={file.placeholder}
+              minHeight="320px"
+              ariaLabel={file.label}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
