@@ -12,17 +12,23 @@
 //   - LLM provider keys are NOT exposed here; those are piped into the agent's
 //     env at provision time so the SDK can authenticate the model call. Going
 //     through the tool would leak the key into the conversation log.
-//   - No approval gating yet — Rails-side ACL is the only barrier. Per-fetch
-//     approval is a follow-up phase.
 //
-// The agent should call this for things like:
-//   "I need to deploy this to Heroku" → secrets.get({ provider: "heroku" })
-//   "Charge the customer in Stripe"   → secrets.get({ provider: "stripe" })
-//   "Use my prod AWS keys"            → secrets.get({ name: "aws-prod" })
+// Approval gating:
+//   Rails marks high-risk credentials (cloud providers that can spend money /
+//   mutate infra, anything with meta.requires_approval = true) with
+//   `requires_approval: true` in the response. When set, we pause the agent's
+//   turn and surface a request_approval card to the human before handing the
+//   value to the model. On reject the agent gets a "denied by user" error
+//   it can recover from; on approve the value flows through normally and is
+//   cached for the rest of the run so the user isn't re-prompted.
 
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
+import { createActionApproval } from "../security/action-approval.js";
+import { emitActionApproval } from "../gateway.js";
+import { host } from "../host/index.js";
+import type { Origin } from "../channels/origin-delivery.js";
 
 interface SecretResponse {
   value: string;
@@ -34,6 +40,7 @@ interface SecretResponse {
   kind: string;
   provider: string;
   name: string;
+  requires_approval?: boolean;
 }
 
 function railsUrl(): string {
@@ -51,17 +58,29 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 type CacheEntry = { at: number; value: SecretResponse };
 const cache = new Map<string, CacheEntry>();
 
+// Once a user approves a particular high-risk credential during a run, skip
+// re-prompting them for it. Resets per process so a fresh run starts fresh.
+const approvedThisRun = new Set<string>();
+
 function cacheKey(agentId: number, args: { name?: string; provider?: string; kind?: string }) {
   return `${agentId}|${args.name ?? ""}|${args.provider ?? ""}|${args.kind ?? ""}`;
 }
 
-export function buildSecretsMcpServer(agentId: number) {
+interface SecretsContext {
+  agentId: number;
+  orgId: number;
+  origin?: Origin;
+}
+
+export function buildSecretsMcpServer(ctx: SecretsContext) {
+  const { agentId, orgId, origin } = ctx;
   const getTool = tool(
     "get",
     "Fetch a stored credential (cloud provider key, generic API key) that the workspace owner has shared with this agent. " +
       "Use this when you need to authenticate to a third-party service that isn't already wired through Composio — e.g. Heroku, Hetzner, custom APIs. " +
       "Pass `name` for a specific named secret OR `provider` (+ optional `kind`) for the org default. " +
-      "If you get `no access`, the workspace owner hasn't granted this agent permission to use this credential — propose connecting it via the Credentials settings page instead of retrying.",
+      "If you get `no access`, the workspace owner hasn't granted this agent permission to use this credential — propose connecting it via the Credentials settings page instead of retrying. " +
+      "High-risk credentials (cloud providers that can spend money) pause the turn for human approval before the value is returned.",
     {
       name: z.string().optional().describe(
         "Friendly name of the credential (e.g. 'production-aws', 'staging-heroku'). Use this when you know the exact label. Mutually exclusive with provider+kind."
@@ -71,6 +90,9 @@ export function buildSecretsMcpServer(agentId: number) {
       ),
       kind: z.enum(["cloud_provider", "generic"]).optional().describe(
         "Credential kind. Defaults to 'cloud_provider'. LLM API keys are NEVER exposed here — they're piped into the agent's env at boot."
+      ),
+      purpose: z.string().optional().describe(
+        "One short sentence explaining what you'll do with this credential. Surfaced on the approval card so the user knows what they're greenlighting."
       ),
     },
     async (args) => {
@@ -99,6 +121,7 @@ export function buildSecretsMcpServer(agentId: number) {
       if (args.provider) params.set("provider", args.provider);
       if (args.kind)     params.set("kind", args.kind);
 
+      let data: SecretResponse;
       try {
         const res = await fetch(`${railsUrl()}/api/secrets?${params.toString()}`, {
           headers: { "X-Engine-Secret": secret },
@@ -129,9 +152,7 @@ export function buildSecretsMcpServer(agentId: number) {
           };
         }
 
-        const data = (await res.json()) as SecretResponse;
-        cache.set(ck, { at: Date.now(), value: data });
-        return successResponse(data);
+        data = (await res.json()) as SecretResponse;
       } catch (err) {
         logger.error("secrets.get fetch failed", { error: (err as Error).message });
         return {
@@ -139,6 +160,31 @@ export function buildSecretsMcpServer(agentId: number) {
           isError: true,
         };
       }
+
+      // High-risk gate. Pause the turn until the human approves; pre-cache
+      // their decision for the rest of the run so they don't get spammed by
+      // a deploy-then-check-then-deploy loop.
+      const credKey = `${data.kind}:${data.provider}:${data.name}`;
+      if (data.requires_approval && !approvedThisRun.has(credKey)) {
+        const decision = await gateWithApproval({
+          ctx: { agentId, orgId, origin },
+          cred: data,
+          purpose: args.purpose,
+        });
+        if (decision === "rejected") {
+          return {
+            content: [{
+              type: "text",
+              text: `denied by user — they declined to share the ${data.name} credential. Don't retry; consider asking the user directly or doing the work some other way.`,
+            }],
+            isError: true,
+          };
+        }
+        approvedThisRun.add(credKey);
+      }
+
+      cache.set(ck, { at: Date.now(), value: data });
+      return successResponse(data);
     },
   );
 
@@ -147,6 +193,74 @@ export function buildSecretsMcpServer(agentId: number) {
     version: "1.0.0",
     tools: [getTool],
   });
+}
+
+// Pushes a request_approval card to the chat and waits for the user's
+// decision. Reuses the same `pending_approvals` table + cable event the
+// generic request_approval tool uses, so the inline approval UI already
+// renders it without any new frontend wiring.
+async function gateWithApproval(opts: {
+  ctx: SecretsContext;
+  cred: SecretResponse;
+  purpose?: string;
+}): Promise<"approved" | "rejected"> {
+  const { ctx, cred, purpose } = opts;
+  const summary = `Hand the agent the ${cred.provider} credential “${cred.name}”${purpose ? ` — ${purpose}` : ""}`;
+  const payload: Record<string, unknown> = {
+    credential_kind: cred.kind,
+    credential_provider: cred.provider,
+    credential_name: cred.name,
+    field_names: cred.fields ? Object.keys(cred.fields) : ["value"],
+    purpose: purpose ?? null,
+    _preview_markdown:
+      `**Agent wants to use the ${cred.provider} credential \`${cred.name}\`.**\n\n` +
+      (purpose ? `Why: ${purpose}\n\n` : "") +
+      `Fields: ${(cred.fields ? Object.keys(cred.fields) : ["value"]).join(", ")}\n\n` +
+      `Approving hands the value(s) to the model so it can call the upstream API. ` +
+      `Reject if you'd rather do this manually.`,
+  };
+  const { id: localId, promise } = createActionApproval(summary, "destructive_action");
+
+  try {
+    const dbRow = await host.createPendingActionApproval({
+      orgId: ctx.orgId,
+      agentId: ctx.agentId,
+      summary,
+      payloadType: "destructive_action",
+      payload,
+      options: [
+        { label: "Allow", value: "approve" },
+        { label: "Deny", value: "reject" },
+      ],
+      riskTier: "high",
+      approvalToken: localId,
+      allowAmendment: false,
+      origin: ctx.origin,
+    });
+    logger.info("secrets.get gated", {
+      credential: `${cred.kind}:${cred.provider}:${cred.name}`,
+      approval: localId,
+      dbId: dbRow?.id,
+    });
+  } catch (err) {
+    logger.warn("secrets.get: failed to persist approval row", { error: (err as Error).message });
+  }
+
+  emitActionApproval({
+    approvalToken: localId,
+    summary,
+    payloadType: "destructive_action",
+    payload,
+    options: [
+      { label: "Allow", value: "approve" },
+      { label: "Deny", value: "reject" },
+    ],
+    riskTier: "high",
+    allowAmendment: false,
+  });
+
+  const decision = await promise;
+  return decision.value === "approve" ? "approved" : "rejected";
 }
 
 function successResponse(data: SecretResponse) {

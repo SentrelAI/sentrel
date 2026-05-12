@@ -1396,7 +1396,11 @@ async function buildQueryOptions(
   // (Api::SecretsController) enforces the ACL via agent_credential_grants;
   // every fetch writes an audit_logs row. Always-on — the ACL is the gate,
   // not the tool's availability.
-  const secretsServer = buildSecretsMcpServer(agent.id);
+  const secretsServer = buildSecretsMcpServer({
+    agentId: agent.id,
+    orgId: agent.organization_id,
+    origin: taskOrigin,
+  });
   mcpServers.secrets = secretsServer;
   baseMcpServers.secrets = secretsServer;
 
