@@ -20,6 +20,7 @@ import { resolveActionApproval } from "./security/action-approval.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
+import { buildSecretsMcpServer } from "./tools/secrets.js";
 import { detectIntegrationIntents, hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
@@ -1389,6 +1390,15 @@ async function buildQueryOptions(
     mcpServers.knowledge = knowledgeServer;
     baseMcpServers.knowledge = knowledgeServer;
   }
+
+  // Stored-credentials access — exposes `secrets.get` so the agent can fetch
+  // cloud-provider / generic API keys the workspace owner has stored. Rails
+  // (Api::SecretsController) enforces the ACL via agent_credential_grants;
+  // every fetch writes an audit_logs row. Always-on — the ACL is the gate,
+  // not the tool's availability.
+  const secretsServer = buildSecretsMcpServer(agent.id);
+  mcpServers.secrets = secretsServer;
+  baseMcpServers.secrets = secretsServer;
 
   // Integrations capability gates both `integrations` (search) and
   // `composio` (actual execution tools). Disable the capability to
