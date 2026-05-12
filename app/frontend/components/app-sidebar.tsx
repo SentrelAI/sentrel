@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   KeyRound,
+  BookMarked,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
@@ -54,6 +55,7 @@ const workNavItems: NavItem[] = [
   { title: "Agents", href: agentsPath(), icon: Bot },
   { title: "Tasks", href: tasksPath(), icon: CheckSquare },
   { title: "Integrations", href: integrationsPath(), icon: Plug },
+  { title: "Templates", href: "/agent_templates", icon: BookMarked },
   { title: "Reports", href: "/reports", icon: TrendingUp },
 ]
 

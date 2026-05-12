@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Head, Link, useForm } from "@inertiajs/react"
+import { BookMarked } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -138,6 +139,7 @@ export default function AgentEdit({ agent, agents = [], org_credentials = [], gr
         eyebrow="Configure"
         title={`Edit ${agent.name}`}
         description="Tune the agent's identity, model, permissions, and capabilities."
+        action={<SaveAsTemplateButton agentId={agent.id} agentName={agent.name} />}
       />
 
       <EditTabs onSubmit={handleSubmit} processing={processing} agentId={agent.id} />
@@ -505,5 +507,109 @@ function CredentialsGrantSection({
         </div>
       ))}
     </div>
+  )
+}
+
+// Snapshots the current agent's identity/personality/instructions/capabilities/
+// skills into a new AgentTemplate row owned by the current user. Opens a small
+// dialog for a name + category + public toggle. Successful save redirects to
+// the new template's detail page (server handles that).
+function SaveAsTemplateButton({ agentId, agentName }: { agentId: string | number; agentName: string }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(`${agentName} (saved)`)
+  const [category, setCategory] = useState("starter")
+  const [published, setPublished] = useState(true)
+  const [description, setDescription] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  function csrf(): string {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    fetch(`/agent_templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
+      body: JSON.stringify({ agent_id: agentId, name, category, published, description }),
+    })
+      .then((res) => {
+        if (res.redirected) window.location.href = res.url
+        else if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      })
+      .catch((err) => alert(`Save failed: ${(err as Error).message}`))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => setOpen(true)}>
+        <BookMarked className="size-3.5" />
+        Save as template
+      </Button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"
+          onClick={() => !busy && setOpen(false)}
+        >
+          <form
+            onSubmit={submit}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-background rounded-lg border border-border max-w-md w-full p-5 space-y-3"
+          >
+            <h2 className="text-base font-semibold">Save as template</h2>
+            <p className="text-xs text-muted-foreground">
+              Snapshots this agent's identity, personality, instructions, capabilities, and skill
+              list into a new template. Teammates in your workspace can install it from /templates
+              when "Publish" is on.
+            </p>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label className="text-xs">Category</Label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                >
+                  {["starter","sales","support","marketing","engineering","people","personal","ops"].map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Visibility</Label>
+                <label className="flex items-center gap-2 text-xs py-1.5">
+                  <input
+                    type="checkbox"
+                    className="size-3.5"
+                    checked={published}
+                    onChange={(e) => setPublished(e.target.checked)}
+                  />
+                  Publish to workspace
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Description (optional)</Label>
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this template is good for" />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+              <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save template"}</Button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
   )
 }

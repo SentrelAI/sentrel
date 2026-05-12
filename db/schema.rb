@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_12_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_12_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -87,13 +87,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_120000) do
 
   create_table "agent_templates", force: :cascade do |t|
     t.jsonb "capabilities", default: {}, null: false
+    t.string "category"
     t.datetime "created_at", null: false
+    t.bigint "created_by_user_id"
     t.text "description"
     t.string "icon"
     t.text "identity_md"
+    t.integer "install_count", default: 0, null: false
     t.text "instructions_md"
     t.string "name", null: false
+    t.bigint "organization_id"
     t.text "personality_md"
+    t.boolean "published", default: false, null: false
     t.string "role", null: false
     t.string "slug", null: false
     t.string "suggested_manager_role"
@@ -103,6 +108,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_120000) do
     t.boolean "system_template", default: true, null: false
     t.datetime "updated_at", null: false
     t.jsonb "variables", default: [], null: false
+    t.index ["category"], name: "index_agent_templates_on_category"
+    t.index ["organization_id"], name: "index_agent_templates_on_organization_id"
+    t.index ["published"], name: "index_agent_templates_on_published"
     t.index ["role"], name: "index_agent_templates_on_role"
     t.index ["slug"], name: "index_agent_templates_on_slug", unique: true
   end
@@ -597,6 +605,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_12_120000) do
   add_foreign_key "agent_skills", "skill_definitions"
   add_foreign_key "agent_summaries", "agents"
   add_foreign_key "agent_summaries", "organizations"
+  add_foreign_key "agent_templates", "organizations", validate: false
+  add_foreign_key "agent_templates", "users", column: "created_by_user_id", validate: false
   add_foreign_key "agent_tool_policies", "agents"
   add_foreign_key "agent_tool_policies", "organizations"
   add_foreign_key "agents", "agents", column: "manager_id"

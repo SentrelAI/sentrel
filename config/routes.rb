@@ -121,7 +121,11 @@ Rails.application.routes.draw do
         end
       end
     end
-    resources :agent_templates, only: [:index, :show]
+    # Community + system templates. System seeds (organization_id IS NULL,
+    # system_template = true) are visible to every org; org-owned templates
+    # (created via "Save as template" on the agent edit page) stay private
+    # to the org unless published = true.
+    resources :agent_templates, only: [:index, :show, :create, :update, :destroy]
 
     # Fleet-wide ops: roll-update every agent's engine image in the org.
     post "ops/roll_engine", to: "ops#roll_engine", as: :ops_roll_engine
