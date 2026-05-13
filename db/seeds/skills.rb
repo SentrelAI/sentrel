@@ -42,8 +42,23 @@ Dir.glob(File.join(skills_dir, "**/*.md")).sort.each do |path|
     requires_connections: Array(meta["requires_connections"]),
     source: "built_in",
     skill_md: body,
+    # Built-in seeds are marketplace-published by default so every org sees
+    # them under the System tab. The earlier migration backfilled this for
+    # existing rows; new seeds added later (e.g. skill-creator) need it set
+    # explicitly here, otherwise they default to private + unpublished and
+    # don't show up anywhere.
+    visibility: "marketplace",
+    published: true,
   )
   record.save!
+
+  # Make sure the SKILL.md content is reflected as a SkillFile row so the
+  # multi-file editor + engine sync see it. Update the file in place when
+  # the markdown body changed since the last seed run.
+  primary = record.skill_files.find_or_initialize_by(path: "SKILL.md")
+  primary.assign_attributes(content: body, file_type: "md", position: 0)
+  primary.save!
+
   is_new ? created += 1 : updated += 1
 end
 
