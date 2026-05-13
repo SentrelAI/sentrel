@@ -357,6 +357,8 @@ function CredentialModal({
   const [name, setName] = useState(cred?.name ?? "")
   const [fields, setFields] = useState<Record<string, string>>({})
   const [revealMap, setRevealMap] = useState<Record<string, boolean>>({})
+  const [baseUrl, setBaseUrl] = useState<string>((cred?.meta?.base_url as string) ?? "")
+  const [usageMd, setUsageMd] = useState<string>((cred?.meta?.usage_md as string) ?? "")
   const [busy, setBusy] = useState(false)
 
   const schema = useMemo<FieldDef[]>(
@@ -365,7 +367,8 @@ function CredentialModal({
   )
 
   // Reset field values when provider changes so AWS keys don't leak into
-  // a Heroku payload.
+  // a Heroku payload. base_url + usage_md are user-typed context, not
+  // secret material, so they survive the provider switch.
   useEffect(() => {
     setFields({})
     setRevealMap({})
@@ -389,7 +392,10 @@ function CredentialModal({
   function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const payload = { credential: { kind, provider, name, fields } }
+    const meta: Record<string, string> = {}
+    if (baseUrl.trim()) meta.base_url = baseUrl.trim()
+    if (usageMd.trim()) meta.usage_md = usageMd.trim()
+    const payload = { credential: { kind, provider, name, fields, meta } }
     if (mode === "create") {
       router.post("/settings/credentials", payload, {
         headers: { "X-CSRF-Token": csrf() },
@@ -516,6 +522,51 @@ function CredentialModal({
                   </div>
                 )
               })}
+            </div>
+
+            {/* Context the agent reads at runtime. base_url tells secrets.get
+                consumers where to POST; usage_md is a short markdown blob
+                describing what the credential is for and how to use it (auth
+                header shape, slug rules, idempotency hints). Without this,
+                agents get a raw key and have no idea what to do with it. */}
+            <div className="border-t border-border/60 pt-4 space-y-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Agent context · shown when an agent fetches this credential
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">
+                  Base URL <span className="text-muted-foreground font-normal">· optional</span>
+                </Label>
+                <Input
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://api.example.com"
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">
+                  Usage notes (markdown) <span className="text-muted-foreground font-normal">· optional but recommended</span>
+                </Label>
+                <textarea
+                  rows={5}
+                  value={usageMd}
+                  onChange={(e) => setUsageMd(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                  placeholder={`Short markdown the agent reads at fetch time. E.g.:
+
+# ScribeMD Articles API
+- Base: https://api.scribemd.ai/api/v1/articles
+- Auth: Bearer <api_key> in Authorization header
+- POST to create, PATCH /:slug to update
+- Slug rule: ^[a-z0-9-]+$
+- Default published: false (draft first, then PATCH to publish)`}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Tell the agent what this credential is for and how to use it. Endpoint, auth shape,
+                  any rules. Saves you having to repeat it in every prompt.
+                </p>
+              </div>
             </div>
 
             <DialogFooter className="-mx-6 px-6 pt-3 pb-1 border-t border-border/60">

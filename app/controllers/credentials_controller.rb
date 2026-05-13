@@ -40,6 +40,7 @@ class CredentialsController < ApplicationController
     attrs = credential_params.to_h
     fields = normalize_fields(attrs.delete("fields"))
     legacy_value = attrs.delete("value")
+    meta_input = attrs.delete("meta") || {}
     # Tolerate the legacy single `value` param so older callers still work.
     if attrs["kind"].present? && attrs["provider"].present? && fields.empty? && legacy_value.present?
       schema = Credential.field_schema_for(attrs["kind"], attrs["provider"])
@@ -49,6 +50,7 @@ class CredentialsController < ApplicationController
 
     cred = current_tenant.credentials.new(attrs)
     cred.created_by_user_id = current_user.id
+    cred.meta = sanitize_meta(meta_input)
     cred.fields = fields if fields.any?
     if cred.save
       retrigger_dependent_engine_syncs(cred)
@@ -68,11 +70,13 @@ class CredentialsController < ApplicationController
     new_fields = normalize_fields(attrs.delete("fields"))
     legacy_value = attrs.delete("value")
     new_fields[cred.primary_field_name] ||= legacy_value if legacy_value.present?
+    meta_input = attrs.delete("meta")
 
     # Merge — rotating just one field shouldn't wipe the rest. Blank values
     # in the submitted hash are ignored (Credential#fields= drops them).
     cred.assign_attributes(attrs)
     cred.merge_fields!(new_fields) if new_fields.any?
+    cred.meta = (cred.meta || {}).merge(sanitize_meta(meta_input)) if meta_input
 
     if cred.save
       retrigger_dependent_engine_syncs(cred)
@@ -110,6 +114,26 @@ class CredentialsController < ApplicationController
     h.each_with_object({}) do |(k, v), acc|
       val = v.is_a?(String) ? v : v.to_s
       acc[k.to_s] = val unless val.strip.empty?
+    end
+  end
+
+  # Only the explicit meta keys the UI sets are carried through. Anything
+  # else the agent or a future feature dumps stays untouched (we merge into
+  # the existing meta on update — never wipe it).
+  ALLOWED_META_KEYS = %w[base_url usage_md requires_approval].freeze
+
+  def sanitize_meta(raw)
+    return {} if raw.blank?
+    h = raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw.to_h rescue {}
+    h.each_with_object({}) do |(k, v), acc|
+      key = k.to_s
+      next unless ALLOWED_META_KEYS.include?(key)
+      if key == "requires_approval"
+        acc[key] = ActiveModel::Type::Boolean.new.cast(v)
+      else
+        str = v.to_s.strip
+        acc[key] = str unless str.empty?
+      end
     end
   end
 

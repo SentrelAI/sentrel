@@ -47,17 +47,21 @@ class Api::SecretsController < ApplicationController
     # Always return the full fields map — agents that only care about a
     # single canonical value can read `value` (the primary field). Multi-
     # field creds (AWS, Twilio, Stripe) get every component in `fields`.
+    #
+    # usage_md + base_url come from the credential's meta. They give the
+    # agent just-in-time context about WHAT this credential is for and HOW
+    # to use it — endpoint, auth header shape, slug rules, anything the
+    # workspace owner pasted into the "Usage notes" textarea. Without this,
+    # the agent gets a raw key and has no way to know it's an API token vs
+    # a webhook secret vs something else.
     render json: {
-      value:    cred.value,
-      fields:   cred.fields,
-      kind:     cred.kind,
-      provider: cred.provider,
-      name:     cred.name,
-      # Hint to the engine — when true, the engine pauses the agent's turn
-      # and surfaces a request_approval card to the human user before the
-      # value gets handed to the model. Default = true for cloud providers
-      # (which can spend money / mutate infra) unless the credential
-      # explicitly opts out via meta.requires_approval = false.
+      value:     cred.value,
+      fields:    cred.fields,
+      kind:      cred.kind,
+      provider:  cred.provider,
+      name:      cred.name,
+      base_url:  cred.meta && cred.meta["base_url"].presence,
+      usage_md:  cred.meta && cred.meta["usage_md"].presence,
       requires_approval: requires_approval?(cred),
     }
   rescue ActiveRecord::RecordNotFound
