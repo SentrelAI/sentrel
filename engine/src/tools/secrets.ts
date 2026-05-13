@@ -40,6 +40,12 @@ interface SecretResponse {
   kind: string;
   provider: string;
   name: string;
+  // Usage context the workspace owner pasted in. base_url tells the agent
+  // where to POST; usage_md is a short markdown blob describing endpoints,
+  // auth header shape, payload rules. Both flow into the tool result so
+  // the agent has just-in-time docs without us building a per-API skill.
+  base_url?: string | null;
+  usage_md?: string | null;
   requires_approval?: boolean;
 }
 
@@ -271,6 +277,11 @@ function successResponse(data: SecretResponse) {
     ? Object.entries(data.fields).map(([k, v]) => `${k}: ${v}`).join("\n")
     : `value: ${data.value}`;
 
+  const contextBlock = [
+    data.base_url ? `base_url: ${data.base_url}` : null,
+    data.usage_md ? `\n## Usage notes\n${data.usage_md}` : null,
+  ].filter(Boolean).join("\n");
+
   return {
     content: [{
       type: "text" as const,
@@ -279,8 +290,9 @@ function successResponse(data: SecretResponse) {
         `name: ${data.name}\n` +
         `kind: ${data.kind}\n` +
         `provider: ${data.provider}\n` +
-        `${fieldsBlock}\n\n` +
-        `Do not print these values back to the user. Use them in headers or environment-variable form when you make the upstream API call.`,
+        `${fieldsBlock}\n` +
+        (contextBlock ? `\n${contextBlock}\n` : "") +
+        `\nDo not print these values back to the user. Use them in headers or environment-variable form when you make the upstream API call.`,
     }],
   };
 }
