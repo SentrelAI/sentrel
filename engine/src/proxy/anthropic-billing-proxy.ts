@@ -504,6 +504,11 @@ export function startAnthropicBillingProxy(): void {
   server = Bun.serve({
     port: PROXY_PORT,
     hostname: "127.0.0.1",
+    // Anthropic responses for long prompts (Read SKILL.md + tool decision)
+    // can take 30–60s. Bun's default idleTimeout is 10s, which closes the
+    // socket mid-response — the SDK then sees "connection closed
+    // unexpectedly". 255 is Bun's max; effectively no timeout.
+    idleTimeout: 255,
     async fetch(req) {
       const url = new URL(req.url);
 
