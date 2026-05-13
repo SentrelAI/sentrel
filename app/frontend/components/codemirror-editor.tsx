@@ -54,6 +54,29 @@ export function CodeMirrorEditor({
   useEffect(() => {
     if (!hostRef.current) return
 
+    // Custom theme: fits the host element (parent decides height; .cm-scroller
+    // gets the overflow so the editor scrolls instead of pushing the page).
+    // Font is 13px monospace to match the rest of the dev surface — One Dark's
+    // default 15-16px reads as a giant typewriter on a skill editor surface.
+    const compactTheme = EditorView.theme({
+      "&": {
+        height: "100%",
+        fontSize: "13px",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      },
+      ".cm-scroller": {
+        overflow: "auto",
+        fontFamily: "inherit",
+        lineHeight: "1.5",
+      },
+      ".cm-content": {
+        padding: "8px 0",
+      },
+      ".cm-gutters": {
+        fontSize: "12px",
+      },
+    })
+
     const langFactory = LANGUAGE_FOR_TYPE[fileType]
     const extensions = [
       lineNumbers(),
@@ -78,6 +101,7 @@ export function CodeMirrorEditor({
         onChangeRef.current(update.state.doc.toString())
       }),
       EditorState.readOnly.of(readOnly),
+      compactTheme,
     ]
     if (langFactory) extensions.push(langFactory())
     if (dark) extensions.push(oneDark)

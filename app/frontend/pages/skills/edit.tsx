@@ -219,7 +219,12 @@ export default function SkillEdit({ skill }: Props) {
     >
       <Head title={`${skill.name} · editor`} />
 
-      <div className="flex h-full min-h-0">
+      {/* The outer flex needs an explicit viewport-relative height because
+          AppLayout's <main> is flex-1 inside SidebarInset, but the layout
+          tree above us isn't always tall enough for h-full to resolve to
+          a real number. Subtract the top-bar (~52px) so this fits the
+          viewport without overflowing. */}
+      <div className="flex min-h-0" style={{ height: "calc(100vh - 52px)" }}>
         {/* Left: file tree + metadata */}
         <aside className="w-64 shrink-0 border-r border-border flex flex-col bg-muted/20">
           <div className="p-3 space-y-3 border-b border-border">
