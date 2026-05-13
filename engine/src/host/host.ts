@@ -29,11 +29,22 @@ export interface PendingApproval {
 }
 
 // Sprint 6 — skills
+export interface SkillFile {
+  path: string;        // relative within the skill dir, e.g. "SKILL.md" or "helpers/parser.py"
+  content: string;
+  file_type: string;   // md | py | js | ts | json | yaml | sh | rb | text | other
+}
+
 export interface AgentSkill {
   slug: string;
   name: string;
   description: string;
+  // Legacy single-file content — kept in lockstep with files[0].content for
+  // SKILL.md so older consumers (system_prompt_builder) keep working.
   skill_md: string;
+  // Multi-file bundle. Always includes a SKILL.md entry; may include helper
+  // scripts / schemas / docs under arbitrary relative paths.
+  files: SkillFile[];
   category: string;
   requires_connections: string[];
   enabled: boolean;

@@ -433,7 +433,7 @@ export class PostgresHost implements Host {
 
   async getAgentSkills(agentId: number): Promise<AgentSkill[]> {
     const { rows } = await this.pool.query(
-      `SELECT sd.slug, sd.name, sd.description, sd.skill_md, sd.category,
+      `SELECT sd.id, sd.slug, sd.name, sd.description, sd.skill_md, sd.category,
               sd.requires_connections, sd.required_capabilities, sd.required_integrations,
               sd.system_prompt_fragment, ags.enabled
        FROM agent_skills ags
@@ -442,18 +442,46 @@ export class PostgresHost implements Host {
        ORDER BY sd.category, sd.name`,
       [agentId],
     );
-    return rows.map((r): AgentSkill => ({
-      slug: r.slug,
-      name: r.name,
-      description: r.description,
-      skill_md: r.skill_md,
-      category: r.category,
-      requires_connections: r.requires_connections || [],
-      required_capabilities: r.required_capabilities || [],
-      required_integrations: r.required_integrations || [],
-      system_prompt_fragment: r.system_prompt_fragment || null,
-      enabled: r.enabled,
-    }));
+    if (rows.length === 0) return [];
+
+    // Fetch all files for the matching skills in one query, then bucket
+    // them by skill id. Avoids N+1.
+    const skillIds = rows.map((r) => r.id);
+    const fileRes = await this.pool.query(
+      `SELECT skill_definition_id, path, content, file_type, position
+         FROM skill_files
+        WHERE skill_definition_id = ANY($1)
+        ORDER BY position ASC, path ASC`,
+      [skillIds],
+    );
+    const filesBySkill = new Map<number, { path: string; content: string; file_type: string }[]>();
+    for (const f of fileRes.rows) {
+      const arr = filesBySkill.get(f.skill_definition_id) || [];
+      arr.push({ path: f.path, content: f.content ?? "", file_type: f.file_type ?? "other" });
+      filesBySkill.set(f.skill_definition_id, arr);
+    }
+
+    return rows.map((r): AgentSkill => {
+      // Fall back to a one-element SKILL.md array when no file rows exist
+      // (pre-migration data). Keeps the engine sync happy whether or not
+      // skill_files has been populated.
+      const files = filesBySkill.get(r.id) ?? [
+        { path: "SKILL.md", content: r.skill_md ?? "", file_type: "md" },
+      ];
+      return {
+        slug: r.slug,
+        name: r.name,
+        description: r.description,
+        skill_md: r.skill_md,
+        files,
+        category: r.category,
+        requires_connections: r.requires_connections || [],
+        required_capabilities: r.required_capabilities || [],
+        required_integrations: r.required_integrations || [],
+        system_prompt_fragment: r.system_prompt_fragment || null,
+        enabled: r.enabled,
+      };
+    });
   }
 
   async getAgentToolPolicies(agentId: number): Promise<Array<{

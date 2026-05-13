@@ -45,6 +45,12 @@ export function provisionSkills(agent: Agent): void {
 // Sprint 6: sync skills from DB to workspace. Called per-job AND from the
 // /sync HTTP handler so dashboard changes (install / uninstall / disable)
 // take effect immediately. Writes installed skills, removes orphans.
+//
+// Multi-file (post skills-marketplace sprint): each skill ships an array
+// of files (paths relative to the skill dir). SKILL.md is mandatory; helpers
+// like helpers/parser.py or schemas/request.json are written alongside.
+// Path normalization rejects ../ escapes defensively even though the model
+// validates the same on save.
 export async function syncSkillsFromDb(agentId: number): Promise<AgentSkill[]> {
   const skills = await host.getAgentSkills(agentId);
 
@@ -57,23 +63,50 @@ export async function syncSkillsFromDb(agentId: number): Promise<AgentSkill[]> {
   fs.mkdirSync(targetDir, { recursive: true });
 
   const installedSlugs = new Set<string>();
-  let written = 0;
+  let writtenSkills = 0;
+  let writtenFiles = 0;
   let blocked = 0;
 
   for (const skill of skills) {
-    // Phase S P2 — scan skill content for injection
-    const threats = scanForInjection(skill.skill_md, `skill:${skill.slug}`);
+    const filesToWrite = (skill.files && skill.files.length > 0)
+      ? skill.files
+      : [{ path: "SKILL.md", content: skill.skill_md, file_type: "md" }];
+
+    // Per-file injection scan. If ANY file in the bundle trips the
+    // scanner we skip the whole skill — partial installs are confusing.
+    const threats = filesToWrite.flatMap((f) =>
+      scanForInjection(f.content || "", `skill:${skill.slug}:${f.path}`),
+    );
     if (threats.length > 0) {
-      logger.warn(`⚠️ Injection threats in skill ${skill.slug}: ${threats.map(t => t.category).join(", ")} — skipping`);
+      logger.warn(`⚠️ Injection threats in skill ${skill.slug}: ${threats.map((t) => t.category).join(", ")} — skipping`);
       blocked++;
-      continue; // Don't write unsafe skills
+      continue;
     }
 
     installedSlugs.add(skill.slug);
     const skillDir = path.join(targetDir, skill.slug);
     fs.mkdirSync(skillDir, { recursive: true });
-    fs.writeFileSync(path.join(skillDir, "SKILL.md"), skill.skill_md);
-    written++;
+
+    // Wipe the on-disk skill dir before re-writing so files removed in the
+    // editor go away. mkdirSync above re-creates it.
+    try {
+      for (const entry of fs.readdirSync(skillDir, { withFileTypes: true })) {
+        const p = path.join(skillDir, entry.name);
+        fs.rmSync(p, { recursive: true, force: true });
+      }
+    } catch {
+      // first install — nothing to wipe
+    }
+
+    for (const f of filesToWrite) {
+      const safe = sanitizeRelPath(f.path);
+      if (!safe) continue; // dropped malicious / empty path
+      const filePath = path.join(skillDir, safe);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, f.content ?? "");
+      writtenFiles++;
+    }
+    writtenSkills++;
   }
 
   // Remove on-disk skill folders that are no longer installed in the DB.
@@ -94,9 +127,20 @@ export async function syncSkillsFromDb(agentId: number): Promise<AgentSkill[]> {
   }
 
   logger.info(
-    `Skills synced from DB: ${written} installed, ${removed} orphans removed${blocked ? `, ${blocked} blocked` : ""} (${skills.map((s) => s.slug).join(", ")})`,
+    `Skills synced from DB: ${writtenSkills} skills / ${writtenFiles} files, ${removed} orphans removed${blocked ? `, ${blocked} blocked` : ""} (${skills.map((s) => s.slug).join(", ")})`,
   );
   return skills;
+}
+
+// Strip ../ escapes + absolute paths defensively. Server side validates the
+// same; this is belt-and-suspenders so a misconfigured / hand-edited skill
+// row can't reach outside its own dir.
+function sanitizeRelPath(raw: string): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (cleaned.split("/").includes("..")) return null;
+  if (cleaned.length === 0 || cleaned.length > 200) return null;
+  return cleaned;
 }
 
 // Get default skill slugs for a role (used when creating a new agent)
