@@ -2,10 +2,10 @@ class SkillDefinition < ApplicationRecord
   VISIBILITIES = %w[private org marketplace].freeze
   SLUG_REGEX = /\A[a-z][a-z0-9-]{1,63}\z/
 
-  # Org-scoped via acts_as_tenant (optional — system seeds have organization_id = NULL).
-  # Tenant filtering kicks in only when there's a current tenant on the request,
-  # so engine-side queries that walk all orgs still work via with_tenant blocks.
-  acts_as_tenant :organization, optional: true
+  # NOT acts_as_tenant — system seeds (organization_id NULL) need to be
+  # visible across every org, and acts_as_tenant's default scope filters
+  # them out regardless of `optional: true`. Use the explicit visible_to(org)
+  # scope instead of relying on a global default scope.
   belongs_to :organization, optional: true
   belongs_to :created_by_user, class_name: "User", optional: true
 
@@ -28,15 +28,12 @@ class SkillDefinition < ApplicationRecord
 
   # Visible to an org: their own (any state) + marketplace seeds (published)
   # + any other org's marketplace skills they've explicitly chosen to install.
-  # Two paths because acts_as_tenant adds a scope on org_id we have to escape.
   def self.visible_to(org)
     return marketplace if org.nil?
-    ActsAsTenant.without_tenant do
-      where(
-        "(organization_id = ?) OR (visibility = 'marketplace' AND published = TRUE)",
-        org.id,
-      )
-    end
+    where(
+      "(organization_id = ?) OR (visibility = 'marketplace' AND published = TRUE)",
+      org.id,
+    )
   end
 
   # Returns which required pieces are missing, given an agent's current

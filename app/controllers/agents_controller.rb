@@ -207,8 +207,10 @@ class AgentsController < ApplicationController
       },
       knowledge_documents: fetch_knowledge_documents(@agent),
       # Sprint 6 — skills
-      installed_skills: @agent.agent_skills.includes(:skill_definition).map { |as|
-        as.skill_definition.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
+      installed_skills: @agent.agent_skills.includes(:skill_definition).filter_map { |as|
+        sd = as.skill_definition
+        next nil unless sd # orphaned grant — skip silently, surfaced for cleanup elsewhere
+        sd.as_json(only: [:id, :slug, :name, :description, :category, :icon, :requires_connections])
           .merge(enabled: as.enabled, agent_skill_id: as.id)
       },
       # Available skills = anything the org can see (own skills + system seeds
