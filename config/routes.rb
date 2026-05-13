@@ -43,6 +43,14 @@ Rails.application.routes.draw do
     # ACL: Credential.find_for resolves per-agent grant first, falls back to
     # org default. Every fetch writes an audit log row.
     get "secrets", to: "secrets#show"
+    # Skill self-authoring — agents create + install skills via the engine's
+    # skills.create / skills.install_on_me MCP tools. Both require the
+    # engine secret; org scoping flows from agent_id → agent.organization_id.
+    resources :skills, only: [:create] do
+      collection do
+        post :install_on_agent
+      end
+    end
   end
 
   # Webhook gateway (external services + dashboard chat)
