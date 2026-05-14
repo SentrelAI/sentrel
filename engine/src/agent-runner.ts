@@ -586,6 +586,23 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
     const isSilent = job.payload?.instruction?.trim().startsWith("[SILENT]") ?? false;
     if (isInbound && !isSilent) {
       emitDone(jobId, finalResponse);
+
+      // Slack-as-channel: emitDone only fires in-process listeners (web chat).
+      // For Slack, post the final response to the channel the inbound message
+      // came from. Threading respects the inbound ts so reply lands in-thread
+      // when the user @mentioned in a thread, top-level otherwise.
+      if (job.channel === "slack" && finalResponse?.trim()) {
+        const meta = (job.payload?.metadata || {}) as Record<string, unknown>;
+        const channel = (meta.channel as string) || "";
+        const threadTs = (meta.thread_ts as string) || (meta.ts as string) || undefined;
+        const { deliverSlackReply } = await import("./channels/slack.js");
+        await deliverSlackReply({
+          agentId: agent.id,
+          channel,
+          text: finalResponse,
+          thread_ts: threadTs,
+        }).catch((err) => logger.error("Slack reply delivery failed", err));
+      }
     } else if (isSilent) {
       logger.info(`[SILENT] job ${jobId} — suppressing emitDone (${finalResponse.length} chars)`);
     }
@@ -1754,6 +1771,28 @@ async function deliverScheduledResponse(agent: Agent, job: JobData, content: str
     const { sendMessage } = await import("./channels/whatsapp.js");
     await sendMessage(from, content);
     logger.info(`Scheduled delivery: sent to WhatsApp ${from} (${content.length} chars)`);
+    return;
+  }
+
+  if (channel === "slack") {
+    const slackChannel = (meta.channel as string) || "";
+    if (!slackChannel) {
+      // Fall back to the agent's bound channel — Rails resolves it when the
+      // payload omits `channel`. Reasonable for scheduled tasks ("every Monday
+      // post the report") where the agent didn't originate from a thread.
+      const { deliverSlackReply } = await import("./channels/slack.js");
+      await deliverSlackReply({ agentId: agent.id, channel: "", text: content });
+      logger.info(`Scheduled delivery: posted to Slack (agent home channel, ${content.length} chars)`);
+      return;
+    }
+    const { deliverSlackReply } = await import("./channels/slack.js");
+    await deliverSlackReply({
+      agentId: agent.id,
+      channel: slackChannel,
+      text: content,
+      thread_ts: (meta.thread_ts as string) || undefined,
+    });
+    logger.info(`Scheduled delivery: posted to Slack ${slackChannel} (${content.length} chars)`);
     return;
   }
 
