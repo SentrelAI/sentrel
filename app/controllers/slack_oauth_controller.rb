@@ -200,9 +200,10 @@ class SlackOauthController < ApplicationController
 
   def resolve_agent(id)
     return nil if id.blank?
-    current_tenant.agents.find_by(id: id) ||
-      (current_tenant.agents.respond_to?(:from_prefixed_id) ? current_tenant.agents.from_prefixed_id(id) : nil)
-  rescue StandardError
+    # The frontend ships the prefixed string id (agt_xxx) — find_by_public_id!
+    # decodes it through the PrefixedIds gem and scopes to current_tenant.
+    find_by_public_id!(current_tenant.agents, id)
+  rescue ActiveRecord::RecordNotFound, StandardError
     nil
   end
 
