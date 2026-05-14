@@ -25,7 +25,7 @@ interface SlackChannelContext {
 
 async function postMessage(args: {
   agent_id: number;
-  channel: string;
+  channel?: string;
   text: string;
   thread_ts?: string;
 }): Promise<unknown> {
@@ -62,12 +62,13 @@ export function createSlackChannelMcpServer(ctx: SlackChannelContext) {
     tools: [
       tool(
         "slack.post",
-        "Send a Slack message as your bot user. Use `thread_ts` to reply in-thread to the parent message.",
+        "Send a Slack message in your own dedicated channel (auto-routed). Pass an explicit `channel` only when replying to a message in a different channel — e.g. a thread in #general where you were @mentioned. Use `thread_ts` to reply in-thread to the parent message.",
         {
+          text: z.string().describe("Message body. Markdown subset supported by Slack (`*bold*`, `_italic_`, `\\`code\\``, lists)."),
           channel: z
             .string()
-            .describe("Slack channel id (C…) or DM channel id (D…). Use the channel id from the incoming message metadata."),
-          text: z.string().describe("Message body. Markdown subset supported by Slack (`*bold*`, `_italic_`, `\\`code\\``, lists)."),
+            .optional()
+            .describe("Slack channel id (C…) or DM channel id (D…). Default: your own bound channel. Override only when replying outside your home channel — use the `channel` from incoming message metadata."),
           thread_ts: z
             .string()
             .optional()
