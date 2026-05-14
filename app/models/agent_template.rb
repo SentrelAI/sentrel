@@ -38,10 +38,18 @@ class AgentTemplate < ApplicationRecord
   end
 
   # Snapshot an agent's current configuration into a fresh template row owned
-  # by the actor's org / user. Skill slugs are taken from currently-installed
-  # AgentSkill rows so the recipient gets the same toolbox at install time.
+  # by the actor's org / user. Bundles skill slugs, integration service names,
+  # capabilities, and the signature so the recipient gets the same toolbox +
+  # voice at install time. Credential grants are intentionally NOT copied —
+  # secrets are org-private; the recipient picks their own.
   def self.snapshot_from(agent, user:, name:, category: nil, description: nil, published: false)
     slug = unique_slug_for(name, agent.organization_id, user.id)
+
+    integrations_used = if agent.organization
+      agent.organization.integrations.pluck(:service_name).uniq
+    else
+      []
+    end
 
     create!(
       slug: slug,
@@ -57,13 +65,25 @@ class AgentTemplate < ApplicationRecord
       identity_md: agent.identity_md,
       personality_md: agent.personality_md,
       instructions_md: agent.instructions_md,
+      email_signature_md: agent.email_signature_md,
       capabilities: agent.capabilities.presence || {},
       suggested_skill_slugs: agent.skill_definitions.pluck(:slug),
+      suggested_integrations: integrations_used,
       suggested_manager_role: agent.manager&.role,
       suggested_provider: agent.ai_config&.provider.presence || "anthropic",
       suggested_model: agent.ai_config&.model_id,
       variables: [],
     )
+  end
+
+  # Integration service names this template expects to be connected. The
+  # new-agent flow can surface these as a "Connect these to fully enable this
+  # agent" hint after creation — we don't auto-connect because Composio
+  # requires user-driven OAuth.
+  def missing_integrations_for(org)
+    return [] if suggested_integrations.blank?
+    connected = org.integrations.pluck(:service_name).map(&:downcase).to_set
+    suggested_integrations.reject { |s| connected.include?(s.to_s.downcase) }
   end
 
   # Atomic counter — bumped when a user installs this template.

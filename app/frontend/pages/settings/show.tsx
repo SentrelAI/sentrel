@@ -356,7 +356,7 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
   // your own. The picker stays on this page even after a domain is
   // connected (via the "Change" button on the connected card → reset →
   // pick again). Tab selection drives which form renders below.
-  const [domainMode, setDomainMode] = useState<"managed" | "byo">("managed")
+  const [domainMode, setDomainMode] = useState<"managed" | "byo">("byo")
   const hasManagedZones = !!(managedDns?.zones && managedDns.zones.length > 0)
 
   return (
@@ -397,10 +397,10 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-sm">Managed subdomain</span>
-                  <Badge variant="secondary" className="text-[9px]">Recommended</Badge>
+                  <Badge variant="secondary" className="text-[9px]">Quick start</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Pick a free <span className="font-mono">.{managedDns?.zones?.[0]?.zone ?? "—"}</span> subdomain and we auto-configure DNS in seconds. Zero copy/paste.
+                  Pick a free <span className="font-mono">.{managedDns?.zones?.[0]?.zone ?? "—"}</span> subdomain and we auto-configure DNS in seconds. Good for trying things out.
                 </p>
               </button>
               <button
@@ -414,9 +414,10 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-sm">Bring your own domain</span>
+                  <Badge variant="secondary" className="text-[9px]">Recommended</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Use a subdomain on a domain you already own. You'll paste 6 DNS records into your DNS provider once.
+                  Use a subdomain on a domain you already own — agents send from <span className="font-mono">@yourcompany.com</span>. You'll paste 6 DNS records into your DNS provider once.
                 </p>
               </button>
             </div>

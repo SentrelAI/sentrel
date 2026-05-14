@@ -937,11 +937,25 @@ export default function OnboardingShow({
                     Pick a domain
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Two options: take a free subdomain on one of our managed zones (auto-configured DNS, ready in seconds) or bring a subdomain on a domain you already own (you'll paste a few DNS records once).
+                    Use a domain you already own (recommended — agents send from your own brand) or claim a free subdomain on one of our managed zones to start fast.
                   </p>
                 </div>
 
                 <div className="grid gap-3">
+                  <button
+                    onClick={() => setStep("mailbox_subdomain")}
+                    className="group rounded-lg border-2 border-[var(--color-indigo)]/60 bg-card p-4 text-left transition-colors hover:border-[var(--color-indigo)]"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">Bring your own domain</span>
+                      <span className="rounded-sm bg-[var(--indigo-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-indigo)]">
+                        Recommended
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Use a subdomain on the domain you already own — agents send from <span className="font-mono">@yourcompany.com</span>. We'll generate 6 DNS records to paste into your DNS provider.
+                    </p>
+                  </button>
                   {managedZone && (
                     <button
                       onClick={() => setStep("mailbox_managed")}
@@ -949,26 +963,15 @@ export default function OnboardingShow({
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium text-sm">Managed subdomain</span>
-                        <span className="rounded-sm bg-[var(--indigo-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-indigo)]">
-                          Recommended · instant
+                        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          Quick start
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Pick a free <span className="font-mono">.{managedZone}</span> subdomain. We auto-configure DNS — zero copy/paste, ready in seconds.
+                        Pick a free <span className="font-mono">.{managedZone}</span> subdomain. We auto-configure DNS — zero copy/paste, ready in seconds. Good for trying things out.
                       </p>
                     </button>
                   )}
-                  <button
-                    onClick={() => setStep("mailbox_subdomain")}
-                    className="group rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-[var(--color-indigo)]"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">Bring your own domain</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Use a subdomain on the domain you already own. We'll generate the 6 DNS records to paste into your DNS provider.
-                    </p>
-                  </button>
                 </div>
 
                 <div className="flex justify-between">

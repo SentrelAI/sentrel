@@ -123,14 +123,16 @@ export default function InvitationsIndex({ invitations, members, current_role }:
               <Label className="text-xs">Role</Label>
               <Select value={role} onValueChange={setRole}>
                 <SelectTrigger className="mt-1 h-9">
-                  <SelectValue />
+                  <SelectValue placeholder="Pick a role">
+                    {ROLE_OPTIONS.find((r) => r.value === role)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ROLE_OPTIONS.map((r) => (
-                    <SelectItem key={r.value} value={r.value}>
-                      <div>
-                        <div className="font-medium">{r.label}</div>
-                        <div className="text-xs text-muted-foreground">{r.hint}</div>
+                    <SelectItem key={r.value} value={r.value} textValue={r.label}>
+                      <div className="flex flex-col gap-0.5 max-w-[18rem]">
+                        <span className="font-medium">{r.label}</span>
+                        <span className="text-xs text-muted-foreground whitespace-normal leading-snug">{r.hint}</span>
                       </div>
                     </SelectItem>
                   ))}

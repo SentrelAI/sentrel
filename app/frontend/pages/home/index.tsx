@@ -43,6 +43,7 @@ export default function LandingPage() {
       <LandingNav />
 
       <Hero />
+      <PressStrip />
       <LogoMarquee />
       <ProductDemo />
       <FeatureGrid />
@@ -352,6 +353,45 @@ function OrgGraphCard() {
 /* ═════════════════════════════════════════════════════════════
    2 — LOGO MARQUEE
    ═════════════════════════════════════════════════════════════ */
+// TODO(press): Replace placeholder text logos with actual press SVGs once
+// coverage lands. Expected: Silicon, TechCrunch, Product Hunt feature, etc.
+// Drop SVGs into public/press/<slug>.svg and swap the <span> for <img>.
+function PressStrip() {
+  const outlets = [
+    { name: "Silicon", todo: true },
+    { name: "TechCrunch", todo: true },
+    { name: "Product Hunt", todo: true },
+    { name: "Hacker News", todo: true },
+  ]
+  return (
+    <section className="border-b bg-muted/20 py-8">
+      <div className="mx-auto w-full max-w-5xl px-6">
+        <p className="mb-5 text-center font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+          As featured in
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+          {outlets.map((o) => (
+            <span
+              key={o.name}
+              className="relative font-display text-lg font-semibold tracking-tight text-muted-foreground/70"
+            >
+              {o.name}
+              {o.todo && (
+                <span className="absolute -top-2 -right-7 rounded-sm bg-amber-500/15 px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider text-amber-600">
+                  todo
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// TODO(logo-marquee): Swap the text-only logos for real brand SVGs. Composio
+// supports 250+ integrations — pick the top ~18 most visually recognizable
+// and drop their wordmarks into public/logos/<slug>.svg.
 function LogoMarquee() {
   const logos = [
     "Linear", "Slack", "Notion", "Stripe", "HubSpot", "Salesforce",
@@ -1041,6 +1081,10 @@ function Security() {
 /* ═════════════════════════════════════════════════════════════
    9 — TESTIMONIAL
    ═════════════════════════════════════════════════════════════ */
+// TODO(case-study): Swap the Priya/Acme placeholder for a real case study
+// sourced from the early-access cohort. Pull a name from the PR launch
+// participants list — quote, headshot, role, and a concrete metric they
+// hit in their first week.
 function Testimonial() {
   return (
     <section className="relative overflow-hidden border-b py-24 md:py-32">
@@ -1053,7 +1097,7 @@ function Testimonial() {
         }}
       />
       <div className="relative mx-auto w-full max-w-5xl px-6 text-center">
-        <Overline accent dot>Case study · Acme</Overline>
+        <Overline accent dot>Case study · Placeholder — swap for real customer</Overline>
         <blockquote className="mt-8 font-display text-3xl font-medium leading-[1.1] tracking-[-0.025em] text-foreground md:text-[3.25rem]">
           "We hired Alex on Thursday.
           <br />
@@ -1064,7 +1108,7 @@ function Testimonial() {
           <div className="size-11 rounded-full border bg-[var(--indigo-surface)]" />
           <div className="text-left">
             <div className="font-display text-sm font-semibold text-foreground">
-              Priya Shah
+              Priya Shah <span className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 align-middle font-mono text-[9px] uppercase tracking-wider text-amber-600">TODO</span>
             </div>
             <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
               Head of Growth · Acme

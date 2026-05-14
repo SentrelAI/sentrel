@@ -271,9 +271,10 @@ class AgentsController < ApplicationController
         user_name: current_user.name,
         role: @agent.role.presence || template.role,
       )
-      @agent.identity_md     ||= rendered[:identity_md]
-      @agent.personality_md  ||= rendered[:personality_md]
-      @agent.instructions_md ||= rendered[:instructions_md]
+      @agent.identity_md       ||= rendered[:identity_md]
+      @agent.personality_md    ||= rendered[:personality_md]
+      @agent.instructions_md   ||= rendered[:instructions_md]
+      @agent.email_signature_md ||= template.email_signature_md if template.respond_to?(:email_signature_md)
       @agent.role = template.role if @agent.role.blank?
       @agent.capabilities = template.capabilities.deep_merge(@agent.capabilities || {})
     end
@@ -301,7 +302,12 @@ class AgentsController < ApplicationController
       # Hetzner's 60s boot. Instance row flips to "running" when the engine
       # pings /api/agent_instances/ready after boot.
       ProvisionAgentJob.perform_later(@agent.id)
-      redirect_to agent_path(@agent), notice: "Agent created — machine provisioning in background"
+
+      missing = template&.respond_to?(:missing_integrations_for) ? template.missing_integrations_for(current_tenant) : []
+      template.respond_to?(:increment_installs!) && template&.increment_installs!
+      msg = "Agent created — machine provisioning in background"
+      msg += ". Connect these integrations to fully enable: #{missing.map(&:titleize).join(', ')}" if missing.any?
+      redirect_to agent_path(@agent), notice: msg
     else
       redirect_back fallback_location: new_agent_path, alert: @agent.errors.full_messages.join(", ")
     end
@@ -403,6 +409,7 @@ class AgentsController < ApplicationController
       icon: t.icon,
       capabilities: t.capabilities,
       suggested_skill_slugs: t.suggested_skill_slugs,
+      suggested_integrations: t.respond_to?(:suggested_integrations) ? (t.suggested_integrations || []) : [],
       suggested_manager_role: t.suggested_manager_role,
       suggested_provider: t.suggested_provider,
       suggested_model: t.suggested_model,

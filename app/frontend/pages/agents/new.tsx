@@ -21,6 +21,7 @@ interface Template {
   icon: string
   capabilities: Record<string, { enabled?: boolean; [k: string]: unknown }>
   suggested_skill_slugs: string[]
+  suggested_integrations?: string[]
   suggested_manager_role: string | null
   suggested_provider: string | null
   suggested_model: string | null
@@ -118,7 +119,7 @@ const CAPABILITIES: Array<{ key: string; label: string; description: string }> =
   },
 ]
 
-type Step = "intro" | "template" | "details"
+type Step = "intro" | "details"
 
 export default function AgentNew({ templates, agents, org_email_domain }: Props) {
   const [step, setStep] = useState<Step>("intro")
@@ -134,6 +135,16 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
   const [drafting, setDrafting] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
   const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
+
+  // Collapsible side panel on the intro step — lets users browse the
+  // template marketplace without leaving the scratch wizard.
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false)
+  const [templateSearch, setTemplateSearch] = useState("")
+  const filteredTemplates = templateSearch.trim()
+    ? templates.filter((t) =>
+        [t.name, t.role, t.description].join(" ").toLowerCase().includes(templateSearch.trim().toLowerCase()),
+      )
+    : templates
 
   const { data, setData, post, processing, transform } = useForm({
     name: "",
@@ -194,6 +205,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       icon: "User",
       capabilities: {},
       suggested_skill_slugs: [],
+      suggested_integrations: [],
       suggested_manager_role: null,
       suggested_provider: null,
       suggested_model: null,
@@ -336,17 +348,32 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     return (
       <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
         <Head title="New agent" />
-        <PageHeader
-          eyebrow="Hire"
-          title="Describe your new agent"
-          description="Tell us what you want this teammate to do. We'll match it to the right template, skills, and model — you can fine-tune everything in the next step."
-        />
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <PageHeader
+            eyebrow="New agent"
+            title="What should this agent do?"
+            description="Describe the role in plain English. We'll match it to a template, suggest skills, and pre-fill identity + model — fine-tune anything in the next step."
+          />
+          {templates.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 gap-1.5 shrink-0"
+              onClick={() => setShowTemplatePanel((v) => !v)}
+            >
+              <icons.LayoutGrid className="size-3.5" />
+              {showTemplatePanel ? "Hide templates" : "Browse templates"}
+            </Button>
+          )}
+        </div>
 
-        <form onSubmit={handleIntroSubmit} className="max-w-2xl space-y-6">
+      <div className={`flex gap-6 ${showTemplatePanel ? "items-start" : ""}`}>
+        <form onSubmit={handleIntroSubmit} className={`space-y-6 ${showTemplatePanel ? "flex-1 min-w-0 max-w-2xl" : "max-w-2xl"}`}>
           <section>
-            <Overline className="mb-3">What should this agent do?</Overline>
+            <Overline className="mb-3">Job description</Overline>
             <div className="rounded-lg border bg-card p-5 space-y-2">
-              <Label htmlFor="description">Job description</Label>
+              <Label htmlFor="description" className="sr-only">Job description</Label>
               <textarea
                 id="description"
                 rows={5}
@@ -474,14 +501,14 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
             </div>
           )}
 
-          <div className="flex justify-between items-center pb-8 max-w-2xl">
-            {templates.length > 0 ? (
+          <div className="flex justify-between items-center pb-8">
+            {templates.length > 0 && !showTemplatePanel ? (
               <button
                 type="button"
-                onClick={() => setStep("template")}
+                onClick={() => setShowTemplatePanel(true)}
                 className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
               >
-                Browse templates instead →
+                Or start from a template →
               </button>
             ) : (
               <span />
@@ -491,65 +518,76 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
             </Button>
           </div>
         </form>
+
+        {showTemplatePanel && (
+          <aside className="w-[20rem] lg:w-[22rem] shrink-0 sticky top-4 self-start">
+            <div className="rounded-lg border bg-card">
+              <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <icons.LayoutGrid className="size-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium">Template library</span>
+                  <span className="text-[10px] text-muted-foreground">({templates.length})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatePanel(false)}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted"
+                  aria-label="Close template panel"
+                >
+                  <icons.X className="size-3.5" />
+                </button>
+              </div>
+              <div className="px-3 py-2 border-b">
+                <Input
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  placeholder="Search templates…"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-2 space-y-1.5">
+                {filteredTemplates.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground text-center py-6">No templates match "{templateSearch}".</p>
+                )}
+                {filteredTemplates.map((t) => {
+                  const Icon = (icons as any)[t.icon] || icons.User
+                  return (
+                    <button
+                      key={t.slug}
+                      type="button"
+                      onClick={() => chooseTemplate(t)}
+                      className="w-full group rounded-md border bg-background p-2.5 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="size-6 rounded-sm bg-muted flex items-center justify-center shrink-0">
+                          <Icon className="size-3" />
+                        </div>
+                        <div className="font-medium text-xs truncate">{t.name}</div>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-2 leading-snug">{t.description}</p>
+                      {t.suggested_skill_slugs.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {t.suggested_skill_slugs.slice(0, 3).map((s) => (
+                            <span key={s} className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground truncate max-w-[7rem]">{s}</span>
+                          ))}
+                          {t.suggested_skill_slugs.length > 3 && (
+                            <span className="text-[9px] text-muted-foreground">+{t.suggested_skill_slugs.length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </aside>
+        )}
+      </div>
       </AppLayout>
     )
   }
 
-  // ── Step 2a: template grid (legacy/manual path) ────────────────────────
-  if (step === "template") {
-    return (
-      <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
-        <Head title="New agent" />
-        <PageHeader
-          eyebrow="Hire"
-          title="Pick a role"
-          description="Each template ships with ready-made identity, personality, instructions, and a suggested skill pack. You can edit them once the agent is created."
-        />
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={() => setStep("intro")}
-            className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-          >
-            ← Back to describe your agent
-          </button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
-          {templates.map((t) => {
-            const Icon = (icons as any)[t.icon] || icons.User
-            return (
-              <button
-                key={t.slug}
-                type="button"
-                onClick={() => chooseTemplate(t)}
-                className="group rounded-lg border bg-card p-4 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30"
-              >
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="size-8 rounded-md bg-muted flex items-center justify-center">
-                    <Icon className="size-4" />
-                  </div>
-                  <div className="font-medium text-sm">{t.name}</div>
-                </div>
-                <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{t.description}</p>
-                <div className="flex flex-wrap gap-1">
-                  {t.suggested_manager_role && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                      reports to {t.suggested_manager_role}
-                    </span>
-                  )}
-                  {t.suggested_skill_slugs.slice(0, 3).map((s) => (
-                    <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{s}</span>
-                  ))}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </AppLayout>
-    )
-  }
-
-  // ── Step 3: details (pre-filled from intro draft or template grid) ────
+  // ── Step 2: details (pre-filled from intro draft or template panel) ───
   if (!picked) {
     // Defensive: if we somehow landed here without a picked template, send
     // the user back to the intro.
@@ -562,8 +600,8 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
       <Head title={`New ${picked.name}`} />
       <PageHeader
-        eyebrow={picked.name}
-        title={`Hire your ${data.role || picked.role}`}
+        eyebrow={`${picked.name} template`}
+        title={`Configure your ${data.role || picked.role}`}
         description={picked.description}
       />
 
@@ -589,6 +627,22 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                 Start over
               </Button>
             </div>
+
+            {(picked.suggested_skill_slugs.length > 0 || (picked.suggested_integrations?.length ?? 0) > 0) && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2.5 text-xs">
+                <div className="font-medium text-foreground mb-1">This template bundles:</div>
+                {picked.suggested_skill_slugs.length > 0 && (
+                  <div className="text-muted-foreground">
+                    <span className="font-medium">Skills:</span> {picked.suggested_skill_slugs.join(", ")}
+                  </div>
+                )}
+                {(picked.suggested_integrations?.length ?? 0) > 0 && (
+                  <div className="text-muted-foreground">
+                    <span className="font-medium">Integrations to connect:</span> {(picked.suggested_integrations || []).map((s) => s.replace(/_/g, " ")).join(", ")}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -771,7 +825,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         <div className="flex justify-end gap-2 pb-8 max-w-2xl">
           <Button type="button" variant="ghost" onClick={() => setStep("intro")}>Back</Button>
           <Button type="submit" disabled={processing || !data.name}>
-            {processing ? "Creating…" : `Hire ${data.name || picked.name}`}
+            {processing ? "Creating…" : "Create agent"}
           </Button>
         </div>
       </form>

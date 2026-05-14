@@ -99,7 +99,14 @@ class SkillsController < ApplicationController
   # DELETE /skills/:slug — owner only.
   def destroy
     forbid_unless_editor!
+    # Capture agent IDs BEFORE destroy — the FK cascade on agent_skills
+    # wipes the join rows so we'd lose the fan-out target after the fact.
+    dependent_agent_ids = AgentSkill.where(skill_definition_id: @skill.id).distinct.pluck(:agent_id)
     @skill.destroy!
+    dependent_agent_ids.each do |agent_id|
+      agent = Agent.find_by(id: agent_id)
+      EngineSync.trigger(agent) if agent
+    end
     redirect_to skills_path, notice: "Skill removed"
   end
 
