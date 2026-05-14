@@ -116,6 +116,8 @@ export interface ScheduledWorkItem {
   active: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
+  created_at: string | null;       // gate cron backfill: don't fire ticks
+                                   // that happened before the row existed
   payload_extra: Record<string, unknown>;
 }
 

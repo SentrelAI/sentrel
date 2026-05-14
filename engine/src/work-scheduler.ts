@@ -9,11 +9,18 @@
 //   interval → queue.add(..., { repeat: { every }, jobId })
 //   once     → queue.add(..., { delay, jobId })  (if fire_at is in the future)
 
+import { CronExpressionParser } from "cron-parser";
 import { queue } from "./queue.js";
 import { config } from "./config.js";
 import { host } from "./host/index.js";
 import { logger } from "./logger.js";
 import type { ScheduledWorkItem } from "./types.js";
+
+// How far back we'll look for a missed cron tick. If the previous expected
+// tick was within this window AND we haven't recorded a run past it, fire
+// it immediately on engine boot. Beyond this we assume the schedule isn't
+// time-sensitive ("daily report" from 3 days ago = stale, drop it).
+const CRON_BACKFILL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -98,6 +105,36 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
   switch (item.mode) {
     case "cron": {
       const tz = item.timezone || "UTC";
+
+      // Backfill: if the previous expected tick passed while the engine was
+      // asleep AND we haven't already serviced it, fire immediately. BullMQ's
+      // repeat:{pattern} does NOT backfill missed ticks on its own — once a
+      // tick passes with no worker, it's lost. Critical for "send X in 5 min"
+      // intents on agents whose machines auto-stop when idle.
+      try {
+        const interval = CronExpressionParser.parse(item.cron_expression!, { tz, currentDate: new Date() });
+        const prevDate = interval.prev().toDate();
+        const prevMs = prevDate.getTime();
+        const lastRunMs = item.last_run_at ? new Date(item.last_run_at).getTime() : 0;
+        // Don't backfill ticks that happened before the schedule existed —
+        // e.g. a "daily at 9am" schedule created at noon shouldn't fire as if
+        // it ran this morning.
+        const createdMs = item.created_at ? new Date(item.created_at).getTime() : 0;
+        const ageMs = Date.now() - prevMs;
+        if (ageMs >= 0 && ageMs <= CRON_BACKFILL_WINDOW_MS && prevMs > lastRunMs && prevMs >= createdMs) {
+          await queue.add(jobType, payload, {
+            jobId: `work-cron-${item.id}-backfill-${prevMs}`,
+            removeOnComplete: { count: 5 },
+            removeOnFail: { count: 3 },
+          });
+          logger.info(
+            `Work scheduler: backfilled missed cron tick for #${item.id} (prev=${prevDate.toISOString()}, ${Math.round(ageMs / 1000)}s ago)`,
+          );
+        }
+      } catch (err) {
+        logger.warn(`Work scheduler: cron backfill check failed for #${item.id}`, { error: (err as Error).message });
+      }
+
       await queue.add(jobType, payload, {
         repeat: { pattern: item.cron_expression!, tz },
         jobId: `work-cron-${item.id}`,

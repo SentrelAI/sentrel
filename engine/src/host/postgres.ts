@@ -582,7 +582,7 @@ export class PostgresHost implements Host {
 
   async getScheduledWork(agentId: number): Promise<ScheduledWorkItem[]> {
     const { rows } = await this.pool.query(
-      `SELECT id, mode, name, instruction, cron_expression, timezone, fire_at, interval_seconds, active, last_run_at, next_run_at, payload_extra
+      `SELECT id, mode, name, instruction, cron_expression, timezone, fire_at, interval_seconds, active, last_run_at, next_run_at, created_at, payload_extra
        FROM scheduled_work WHERE agent_id = $1 AND active = true ORDER BY created_at`,
       [agentId],
     );
@@ -598,6 +598,7 @@ export class PostgresHost implements Host {
       active: r.active,
       last_run_at: r.last_run_at?.toISOString() ?? null,
       next_run_at: r.next_run_at?.toISOString() ?? null,
+      created_at: r.created_at?.toISOString() ?? null,
       payload_extra: r.payload_extra || {},
     }));
   }
