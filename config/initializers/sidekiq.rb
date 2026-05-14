@@ -14,6 +14,12 @@ Sidekiq.configure_server do |config|
       "ArchiveDormantConversationsJob"   => { "cron" => "0 3 * * *",   "class" => "ArchiveDormantConversationsJob" },   # daily 3am
       "RefreshOauthTokensJob"            => { "cron" => "*/30 * * * *", "class" => "RefreshOauthTokensJob" },           # every 30 min
       "RefreshComposioCacheJob"          => { "cron" => "0 * * * *",   "class" => "RefreshComposioCacheJob" },          # hourly
+      # Wake stopped agent machines ~30s before their scheduled work is due.
+      # Fly auto-start only fires on HTTP traffic; our engine consumes Redis,
+      # so a delayed BullMQ job in a sleeping machine never fires on its own.
+      # This sweep finds scheduled_work due within 90s and pokes the machine
+      # via the Fly API. See WakeSweepJob + docs in scheduled work flow.
+      "WakeSweepJob"                     => { "cron" => "* * * * *",   "class" => "WakeSweepJob" },                     # every minute
     }
     Sidekiq::Cron::Job.load_from_hash!(schedule)
   end
