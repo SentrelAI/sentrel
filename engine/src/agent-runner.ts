@@ -1553,6 +1553,12 @@ async function buildQueryOptions(
     // brings in personal MCP servers like Linear/Sentry/Gmail and pollutes
     // the agent's tool list with 60+ unrelated tools).
     settingSources: [],
+    // Block the SDK's built-in scheduling primitives. They schedule in-process
+    // and DON'T persist past this conversation, so when the agent calls them
+    // for "send X in 5 minutes" the work vanishes the moment the SDK closes
+    // the session or the engine machine sleeps. Force the agent to our
+    // persistent mcp__scheduling__* tools instead.
+    disallowedTools: ["CronCreate", "CronDelete", "CronList", "CronUpdate", "ScheduleWakeup"],
     allowedTools: [
       ...builtinTools,
       // Capability-gated MCP tools — only listed when their server is registered

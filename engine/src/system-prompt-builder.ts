@@ -146,13 +146,13 @@ export function buildSystemPrompt(
   if (caps.scheduling.enabled) {
     parts.push(
       `# Scheduling & Reminders\n` +
-      `You can schedule recurring tasks and one-time reminders:\n` +
-      `- schedule_task({ name, instruction, cron_expression, timezone? }) — recurring cron schedule\n` +
-      `- set_reminder({ name, instruction, datetime, timezone? }) — one-time reminder at a specific time\n` +
-      `- list_schedules() — see all active schedules\n` +
-      `- delete_schedule({ id }) — remove a schedule\n` +
-      `Convert natural language times to cron/ISO 8601 using the current date in your system prompt.\n` +
-      `Examples: "every Monday 9am" → cron "0 9 * * 1", "Friday at 2pm" → ISO "2026-04-18T14:00:00"`
+      `You can schedule recurring tasks and one-time reminders. **ALWAYS use these MCP tools** — never use the SDK's built-in CronCreate, CronList, CronDelete, or ScheduleWakeup. Those tools don't persist past this conversation and your scheduled work will be silently dropped when this session ends.\n` +
+      `- mcp__scheduling__schedule_task({ name, instruction, cron_expression, timezone? }) — recurring cron schedule\n` +
+      `- mcp__scheduling__set_reminder({ name, instruction, datetime, timezone? }) — one-time reminder at a specific time. Use this for "in N minutes", "tomorrow at 9am", "Friday at 2pm" — anything non-recurring.\n` +
+      `- mcp__scheduling__list_schedules() — see all active schedules\n` +
+      `- mcp__scheduling__delete_schedule({ id }) — remove a schedule\n` +
+      `Convert natural language times to ISO 8601 using the current time in your system prompt.\n` +
+      `Examples: "send report in 2 minutes" → set_reminder(datetime: now + 2 min), "every Monday 9am" → schedule_task(cron_expression: "0 9 * * 1"), "Friday at 2pm" → set_reminder(datetime: "2026-04-18T14:00:00")`
     );
   }
 
