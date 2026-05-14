@@ -23,14 +23,39 @@ class SettingsController < ApplicationController
     render json: { available: true, full: full }
   end
 
+  # GET /settings/email_change_impact
+  # Returns the list of agents whose email channel addresses are on the org's
+  # current email_domain — used to preview a domain change before committing.
+  def email_change_impact
+    agents = Email::DomainMigration.impact_for(current_tenant, domain: current_tenant.email_domain)
+    render json: { current_domain: current_tenant.email_domain, agents: agents }
+  end
+
   # POST /settings/reset_email_domain
-  # Clears the org's email_domain so the picker shows again. We don't
-  # touch the SES identity / Route 53 records — those are cheap and
-  # idempotent on re-pick. If the user re-claims the same name they
-  # land on a fully-verified state immediately.
+  # Clears the org's email_domain so the picker shows again. Accepts a `mode`
+  # param that drives what happens to existing email channels:
+  #   migrate     — default; remember the old domain so the next domain set
+  #                 auto-renames addresses (sarah@old → sarah@new).
+  #   disconnect  — immediately drop every email ChannelConfig; user re-adds
+  #                 them after picking the new domain.
+  # We don't touch SES identity / Route 53 records — those are idempotent on
+  # re-pick; re-claiming the same name lands on a fully-verified state.
   def reset_email_domain
+    mode = params[:mode].to_s.presence_in(%w[migrate disconnect]) || "migrate"
+    previous_domain = current_tenant.email_domain
+
+    if mode == "disconnect" && previous_domain.present?
+      Email::DomainMigration.disconnect!(current_tenant)
+      session[:pending_email_migration_from] = nil
+    elsif mode == "migrate" && previous_domain.present?
+      session[:pending_email_migration_from] = previous_domain
+    end
+
     current_tenant.update!(email_domain: nil, email_domain_verified: false)
-    redirect_to settings_path, notice: "Email domain cleared — pick a new subdomain to start over"
+    msg = mode == "disconnect" ?
+      "Email domain cleared and agent inboxes disconnected — pick a new domain to start fresh." :
+      "Email domain cleared — agents will move to the new domain automatically once you pick one."
+    redirect_to settings_path, notice: msg
   end
 
   # POST /settings/claim_managed_subdomain
@@ -63,7 +88,10 @@ class SettingsController < ApplicationController
     end
 
     current_tenant.update!(email_domain: requested, email_domain_verified: false)
-    redirect_to settings_path(connect: 1), notice: "Claimed #{requested}; we'll auto-configure DNS now."
+    migrated = run_pending_email_migration!(requested)
+    notice = "Claimed #{requested}; we'll auto-configure DNS now."
+    notice += " Moved #{migrated} agent #{'inbox'.pluralize(migrated)} to the new domain." if migrated.positive?
+    redirect_to settings_path(connect: 1), notice: notice
   end
 
   # GET /settings/ses_status?region=us-east-1
@@ -121,7 +149,10 @@ class SettingsController < ApplicationController
 
   def update
     if current_tenant.update(organization_params)
-      redirect_to settings_path, notice: "Settings updated"
+      migrated = run_pending_email_migration!(current_tenant.email_domain)
+      notice = "Settings updated"
+      notice += " — moved #{migrated} agent #{'inbox'.pluralize(migrated)} to the new domain." if migrated.positive?
+      redirect_to settings_path, notice: notice
     else
       redirect_back fallback_location: settings_path, alert: current_tenant.errors.full_messages.join(", ")
     end
@@ -205,6 +236,18 @@ class SettingsController < ApplicationController
   end
 
   private
+
+  # If reset_email_domain stashed an old domain in the session, replay it now
+  # that a new domain is set — renames every email ChannelConfig over and
+  # EngineSyncs each affected agent.
+  def run_pending_email_migration!(new_domain)
+    from = session.delete(:pending_email_migration_from)
+    return 0 if from.blank? || new_domain.blank? || from.casecmp(new_domain).zero?
+    Email::DomainMigration.migrate!(current_tenant, from: from, to: new_domain)
+  rescue StandardError => e
+    Rails.logger.warn "[Settings] email-domain auto-migration failed: #{e.class}: #{e.message}"
+    0
+  end
 
   def organization_params
     params.require(:organization).permit(:name, :email_domain, :context_md)

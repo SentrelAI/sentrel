@@ -213,6 +213,14 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const pollAbortRef = useRef<{ cancelled: boolean }>({ cancelled: false })
 
+  // "Change domain" confirmation modal. We preflight which agents own an
+  // email channel on the current domain so the user can pick migrate vs
+  // disconnect with full awareness of the impact.
+  const [changeModalOpen, setChangeModalOpen] = useState(false)
+  const [changeMode, setChangeMode] = useState<"migrate" | "disconnect">("migrate")
+  const [impact, setImpact] = useState<{ agents: Array<{ id: string; name: string; role: string; address: string }> } | null>(null)
+  const [impactLoading, setImpactLoading] = useState(false)
+
   // Auto-poll verification once we've connected the identity (or DNS auto-
   // applied). 5s interval, stops on Success or after 5 minutes.
   function startVerificationPoll() {
@@ -303,7 +311,24 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function resetEmailDomain() {
+  // Open the confirmation modal; preload the impact so the user sees which
+  // agents will be touched before they commit.
+  async function openChangeModal() {
+    setChangeModalOpen(true)
+    setImpactLoading(true)
+    setChangeMode("migrate")
+    try {
+      const res = await fetch("/settings/email_change_impact", { headers: { Accept: "application/json" } })
+      const data = await res.json()
+      setImpact({ agents: data.agents || [] })
+    } catch {
+      setImpact({ agents: [] })
+    } finally {
+      setImpactLoading(false)
+    }
+  }
+
+  async function resetEmailDomain(mode: "migrate" | "disconnect") {
     setLoading(true)
     setErrorMsg(null)
     try {
@@ -315,6 +340,11 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
       csrfInput.name = "authenticity_token"
       csrfInput.value = csrf()
       form.appendChild(csrfInput)
+      const modeInput = document.createElement("input")
+      modeInput.type = "hidden"
+      modeInput.name = "mode"
+      modeInput.value = mode
+      form.appendChild(modeInput)
       document.body.appendChild(form)
       form.submit()
     } catch (e) {
@@ -372,7 +402,22 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
             recordsLoaded={dnsRecords.length > 0}
             onConnect={connectDomain}
             onVerify={checkVerification}
-            onReset={resetEmailDomain}
+            onReset={openChangeModal}
+          />
+        )}
+
+        {changeModalOpen && (
+          <ChangeDomainModal
+            currentDomain={organization.email_domain || ""}
+            agents={impact?.agents || []}
+            loading={impactLoading}
+            mode={changeMode}
+            onModeChange={setChangeMode}
+            onCancel={() => setChangeModalOpen(false)}
+            onConfirm={() => {
+              setChangeModalOpen(false)
+              resetEmailDomain(changeMode)
+            }}
           />
         )}
 
@@ -665,6 +710,108 @@ function ConnectedDomainCard({
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Confirmation modal shown before clearing the org email_domain. Lists the
+// agents that have email channels on the current domain and asks whether to
+// migrate their addresses to the new domain or disconnect them outright.
+function ChangeDomainModal({
+  currentDomain,
+  agents,
+  loading,
+  mode,
+  onModeChange,
+  onCancel,
+  onConfirm,
+}: {
+  currentDomain: string
+  agents: Array<{ id: string; name: string; role: string; address: string }>
+  loading: boolean
+  mode: "migrate" | "disconnect"
+  onModeChange: (m: "migrate" | "disconnect") => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
+      <div
+        className="w-full max-w-lg rounded-lg border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b px-4 py-3">
+          <h3 className="font-display text-sm font-semibold">Change email domain</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            You're leaving <span className="font-mono">{currentDomain || "—"}</span>. Pick what happens to existing agent inboxes.
+          </p>
+        </div>
+
+        <div className="px-4 py-3 space-y-3">
+          {loading && (
+            <p className="text-xs text-muted-foreground">Checking which agents are affected…</p>
+          )}
+          {!loading && agents.length === 0 && (
+            <p className="text-xs text-muted-foreground">No agents have email channels on this domain — safe to change.</p>
+          )}
+          {!loading && agents.length > 0 && (
+            <>
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <p className="text-[11px] font-medium mb-1.5">{agents.length} agent{agents.length === 1 ? "" : "s"} affected:</p>
+                <ul className="space-y-0.5">
+                  {agents.slice(0, 6).map((a) => (
+                    <li key={a.id} className="text-[11px] text-muted-foreground font-mono truncate">{a.address}</li>
+                  ))}
+                  {agents.length > 6 && <li className="text-[11px] text-muted-foreground">…and {agents.length - 6} more</li>}
+                </ul>
+              </div>
+
+              <label className="flex items-start gap-2.5 rounded-md border p-2.5 cursor-pointer hover:bg-muted/40">
+                <input
+                  type="radio"
+                  name="change-mode"
+                  value="migrate"
+                  checked={mode === "migrate"}
+                  onChange={() => onModeChange("migrate")}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="text-xs font-medium">Move addresses to the new domain</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    <span className="font-mono">sarah@{currentDomain}</span> becomes <span className="font-mono">sarah@new-domain</span>. Agents keep working. In-flight email threads on the old address stop routing.
+                  </div>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 rounded-md border p-2.5 cursor-pointer hover:bg-muted/40">
+                <input
+                  type="radio"
+                  name="change-mode"
+                  value="disconnect"
+                  checked={mode === "disconnect"}
+                  onChange={() => onModeChange("disconnect")}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="text-xs font-medium">Disconnect email channels</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    Remove email from every affected agent. You'll re-add it manually after picking the new domain.
+                  </div>
+                </div>
+              </label>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t px-4 py-2.5">
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="button" size="sm" className="h-7 text-xs" onClick={onConfirm}>
+            Continue
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

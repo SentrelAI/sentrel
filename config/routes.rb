@@ -226,6 +226,7 @@ Rails.application.routes.draw do
       post :reset_email_domain
       get  :subdomain_availability
       get  :ses_status
+      get  :email_change_impact
     end
 
     # BYO secrets (LLM API keys, cloud provider creds, generic API keys).
