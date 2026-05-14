@@ -22,6 +22,7 @@ import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } fr
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
 import { buildSecretsMcpServer } from "./tools/secrets.js";
 import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
+import { createSlackChannelMcpServer } from "./tools/slack-channel.js";
 import { detectIntegrationIntents, hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
@@ -1412,6 +1413,23 @@ async function buildQueryOptions(
   const skillsCreatorServer = buildSkillsCreatorMcpServer({ agentId: agent.id });
   mcpServers.skills = skillsCreatorServer;
   baseMcpServers.skills = skillsCreatorServer;
+
+  // Slack-as-channel outbound. Gated on whether this agent has a connected
+  // Slack ChannelConfig — without one, the tool would always 404 so we skip
+  // registering it. The bot_token lives only in Rails; engine never sees it.
+  try {
+    const channelConfigs = await host.getChannelConfigs(String(agent.id));
+    const hasSlack = channelConfigs.some(
+      (c: { channel_type: string; enabled?: boolean }) => c.channel_type === "slack" && c.enabled !== false,
+    );
+    if (hasSlack) {
+      const slackServer = createSlackChannelMcpServer({ agentId: agent.id });
+      mcpServers["slack-channel"] = slackServer;
+      baseMcpServers["slack-channel"] = slackServer;
+    }
+  } catch (err) {
+    logger.warn("slack-channel registration skipped:", err);
+  }
 
   // Integrations capability gates both `integrations` (search) and
   // `composio` (actual execution tools). Disable the capability to
