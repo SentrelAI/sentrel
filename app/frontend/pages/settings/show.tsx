@@ -780,7 +780,7 @@ function ByoDomainForm({
           <div className="flex items-center gap-2">
             <span className={`size-1.5 rounded-full ${ses.sandbox ? "bg-amber-500" : "bg-emerald-500"}`} />
             <span className="font-medium">
-              {ses.region}: {ses.sandbox ? "SES sandbox" : "SES production"}
+              {ses.region}: {ses.sandbox ? "Send limited (sandbox)" : "Send unlimited (production)"}
             </span>
             <span className="text-[10px] opacity-80 ml-auto">
               {ses.max_24_hour_send}/24h · {ses.max_send_rate}/s
@@ -788,15 +788,12 @@ function ByoDomainForm({
           </div>
           {ses.sandbox && (
             <p className="text-[10px] mt-1">
-              In sandbox, outbound mail only delivers to verified recipients. Request production access in the{" "}
-              <a className="underline" href={`https://${ses.region}.console.aws.amazon.com/ses/home?region=${ses.region}#/account`} target="_blank" rel="noreferrer">
-                SES console
-              </a> — usually approved in ~24h.
+              Outbound from agents in this region will only deliver to addresses our platform has pre-verified. To send to anyone, contact support to expand the region's send limits.
             </p>
           )}
           {ses.inbound_supported === false && (
             <p className="text-[10px] mt-1">
-              <span className="font-medium">Inbound not supported here.</span> Receive-from-anyone agents need us-east-1, us-west-2, or eu-west-1.
+              <span className="font-medium">Inbound not supported in {ses.region}.</span> Receive-from-anyone agents need us-east-1, us-west-2, or eu-west-1.
             </p>
           )}
         </div>
