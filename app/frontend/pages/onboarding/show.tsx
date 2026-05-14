@@ -48,6 +48,10 @@ interface Props {
     email_domain_verified: boolean
   }
   suggested_website: string | null
+  managed_dns?: {
+    zones: Array<{ zone: string; provider: string }>
+    suggested_subdomain: string | null
+  }
 }
 
 type Step =
@@ -56,6 +60,8 @@ type Step =
   | "summary"
   | "error"
   | "mailbox_intro"
+  | "mailbox_choice"   // Pick managed subdomain vs bring-your-own
+  | "mailbox_managed"  // Picker for the managed zone (auto-DNS)
   | "mailbox_subdomain"
   | "mailbox_dns"
   | "agents"
@@ -280,6 +286,7 @@ function AgentTree({ visible }: { visible: boolean }) {
 export default function OnboardingShow({
   organization,
   suggested_website,
+  managed_dns,
 }: Props) {
   useTheme()
 
@@ -297,6 +304,10 @@ export default function OnboardingShow({
     organization.detected_email_provider
   )
   const [subdomainPrefix, setSubdomainPrefix] = useState("agents")
+  const [managedLabel, setManagedLabel] = useState<string>(
+    managed_dns?.suggested_subdomain?.split(".")[0] || organization.slug || "",
+  )
+  const managedZone = managed_dns?.zones?.[0]?.zone || null
   const [mailboxDomain, setMailboxDomain] = useState<string | null>(
     organization.email_domain
   )
@@ -398,6 +409,42 @@ export default function OnboardingShow({
 
   function handleSkipMailbox() {
     handleShowAgents()
+  }
+
+  // Managed-subdomain claim — submits to /settings/claim_managed_subdomain
+  // which sets organization.email_domain + redirects with ?connect=1 so the
+  // auto-DNS apply runs. Onboarding-side we just hand-roll the form POST
+  // because Inertia would navigate away from the wizard.
+  async function handleClaimManaged(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!managedLabel.trim() || !managedZone) return
+    setSubmitting(true)
+    setMailboxError(null)
+    try {
+      const form = document.createElement("form")
+      form.method = "POST"
+      form.action = "/settings/claim_managed_subdomain"
+      const tokenInput = document.createElement("input")
+      tokenInput.type = "hidden"
+      tokenInput.name = "authenticity_token"
+      tokenInput.value = csrfToken()
+      form.appendChild(tokenInput)
+      const labelInput = document.createElement("input")
+      labelInput.type = "hidden"
+      labelInput.name = "label"
+      labelInput.value = managedLabel.trim().toLowerCase()
+      form.appendChild(labelInput)
+      const zoneInput = document.createElement("input")
+      zoneInput.type = "hidden"
+      zoneInput.name = "zone"
+      zoneInput.value = managedZone
+      form.appendChild(zoneInput)
+      document.body.appendChild(form)
+      form.submit()
+    } catch {
+      setMailboxError("Network error — please try again")
+      setSubmitting(false)
+    }
   }
 
   async function handleSetupMailbox(e?: React.FormEvent) {
@@ -506,7 +553,7 @@ export default function OnboardingShow({
                 const stages: { label: string; matches: Step[] }[] = [
                   { label: "Company website", matches: ["website"] },
                   { label: "AI analysis", matches: ["analyzing", "summary", "error"] },
-                  { label: "Email mailbox", matches: ["mailbox_intro", "mailbox_subdomain", "mailbox_dns"] },
+                  { label: "Email mailbox", matches: ["mailbox_intro", "mailbox_choice", "mailbox_managed", "mailbox_subdomain", "mailbox_dns"] },
                   { label: "Meet your team", matches: ["agents"] },
                 ]
                 const order: Step[] = [
@@ -515,6 +562,8 @@ export default function OnboardingShow({
                   "summary",
                   "error",
                   "mailbox_intro",
+                  "mailbox_choice",
+                  "mailbox_managed",
                   "mailbox_subdomain",
                   "mailbox_dns",
                   "agents",
@@ -853,7 +902,7 @@ export default function OnboardingShow({
 
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => setStep("mailbox_subdomain")}
+                    onClick={() => setStep("mailbox_choice")}
                     className="h-10 flex-1 gap-1.5"
                   >
                     Set up a mailbox <ArrowRight className="size-3.5" />
@@ -876,6 +925,102 @@ export default function OnboardingShow({
                     Skip onboarding entirely
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Step: pick managed vs BYO */}
+            {step === "mailbox_choice" && (
+              <div className="animate-fade-in space-y-6">
+                <div className="space-y-2">
+                  <Overline>Step 3 · Domain</Overline>
+                  <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
+                    Pick a domain
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Two options: take a free subdomain on one of our managed zones (auto-configured DNS, ready in seconds) or bring a subdomain on a domain you already own (you'll paste a few DNS records once).
+                  </p>
+                </div>
+
+                <div className="grid gap-3">
+                  {managedZone && (
+                    <button
+                      onClick={() => setStep("mailbox_managed")}
+                      className="group rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-[var(--color-indigo)]"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm">Managed subdomain</span>
+                        <span className="rounded-sm bg-[var(--indigo-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-indigo)]">
+                          Recommended · instant
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Pick a free <span className="font-mono">.{managedZone}</span> subdomain. We auto-configure DNS — zero copy/paste, ready in seconds.
+                      </p>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setStep("mailbox_subdomain")}
+                    className="group rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-[var(--color-indigo)]"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">Bring your own domain</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Use a subdomain on the domain you already own. We'll generate the 6 DNS records to paste into your DNS provider.
+                    </p>
+                  </button>
+                </div>
+
+                <div className="flex justify-between">
+                  <Button onClick={() => setStep("mailbox_intro")} variant="ghost">
+                    Back
+                  </Button>
+                  <Button onClick={handleSkipMailbox} variant="outline">
+                    Skip for now
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: claim a managed subdomain (auto-DNS) */}
+            {step === "mailbox_managed" && managedZone && (
+              <div className="animate-fade-in space-y-6">
+                <div className="space-y-2">
+                  <Overline>Step 3 · Managed subdomain</Overline>
+                  <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] text-foreground">
+                    Pick your subdomain
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    This becomes <span className="font-mono">&lt;agent&gt;@{managedLabel || "yourname"}.{managedZone}</span>. We'll provision SES + DNS automatically when you continue.
+                  </p>
+                </div>
+
+                <form onSubmit={handleClaimManaged} className="space-y-4">
+                  <div className="flex h-11 items-center rounded-md border bg-background focus-within:ring-2 focus-within:ring-ring">
+                    <input
+                      type="text"
+                      placeholder="yourname"
+                      value={managedLabel}
+                      onChange={(e) => setManagedLabel(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                      className="flex-1 bg-transparent px-3 text-sm focus:outline-none"
+                      autoFocus
+                    />
+                    <span className="px-3 text-sm text-muted-foreground border-l border-border">
+                      .{managedZone}
+                    </span>
+                  </div>
+                  {mailboxError && (
+                    <p className="text-xs text-destructive">{mailboxError}</p>
+                  )}
+                  <div className="flex justify-between">
+                    <Button type="button" onClick={() => setStep("mailbox_choice")} variant="ghost">
+                      Back
+                    </Button>
+                    <Button type="submit" disabled={submitting || !managedLabel.trim()}>
+                      {submitting ? "Provisioning…" : "Claim subdomain"}
+                    </Button>
+                  </div>
+                </form>
               </div>
             )}
 

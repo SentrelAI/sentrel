@@ -351,18 +351,17 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
     }
   }
 
+  // Two domain modes — managed subdomain on one of our zones, or bring
+  // your own. The picker stays on this page even after a domain is
+  // connected (via the "Change" button on the connected card → reset →
+  // pick again). Tab selection drives which form renders below.
+  const [domainMode, setDomainMode] = useState<"managed" | "byo">("managed")
+  const hasManagedZones = !!(managedDns?.zones && managedDns.zones.length > 0)
+
   return (
     <section>
       <Overline className="mb-3">Email Domain</Overline>
       <div className="rounded-lg border border-border p-4 space-y-4">
-        {!organization.email_domain && managedDns?.zones && managedDns.zones.length > 0 && (
-          <SubdomainPicker
-            defaultLabel={managedDns.suggested_subdomain?.split(".")[0] || ""}
-            zone={managedDns.zones[0].zone}
-            onProvision={(label, zone) => claimManagedSubdomain({ label, zone })}
-            loading={loading}
-          />
-        )}
         {organization.email_domain && (
           <ConnectedDomainCard
             domain={organization.email_domain}
@@ -378,26 +377,80 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
         )}
 
         {!organization.email_domain && (
-          <details className="text-[11px] text-muted-foreground">
-            <summary className="cursor-pointer hover:text-foreground transition-colors">Use your own domain instead</summary>
-            <form onSubmit={onSave} className="space-y-3 mt-3 pl-2 border-l border-border/50">
-              <div className="space-y-1">
-                <Label htmlFor="email_domain" className="text-xs">Domain</Label>
-                <Input
-                  id="email_domain"
-                  placeholder="team.company.com"
-                  value={emailDomain}
-                  onChange={(e) => onDomainChange(e.target.value)}
-                />
-                <p className="text-[10px] text-muted-foreground/80">You'll add the DNS records yourself. We'll show you what to add after Save.</p>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={processing} variant="outline" size="sm" className="h-7 text-xs">
-                  {processing ? "Saving..." : "Save Domain"}
-                </Button>
-              </div>
-            </form>
-          </details>
+          <>
+            {/* Two cards side by side — Managed (free, instant) vs BYO
+                (your own DNS). When only one option is configured server-
+                side (no managed zones) we just render BYO. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={!hasManagedZones}
+                onClick={() => setDomainMode("managed")}
+                className={`text-left rounded-lg border p-4 transition-colors ${
+                  !hasManagedZones
+                    ? "opacity-50 cursor-not-allowed border-border"
+                    : domainMode === "managed"
+                      ? "border-[var(--color-indigo)] bg-[var(--indigo-surface)]/40"
+                      : "border-border hover:border-[var(--border-strong)]"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-sm">Managed subdomain</span>
+                  <Badge variant="secondary" className="text-[9px]">Recommended</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pick a free <span className="font-mono">.{managedDns?.zones?.[0]?.zone ?? "—"}</span> subdomain and we auto-configure DNS in seconds. Zero copy/paste.
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDomainMode("byo")}
+                className={`text-left rounded-lg border p-4 transition-colors ${
+                  domainMode === "byo"
+                    ? "border-[var(--color-indigo)] bg-[var(--indigo-surface)]/40"
+                    : "border-border hover:border-[var(--border-strong)]"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-sm">Bring your own domain</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use a subdomain on a domain you already own. You'll paste 6 DNS records into your DNS provider once.
+                </p>
+              </button>
+            </div>
+
+            {domainMode === "managed" && hasManagedZones && (
+              <SubdomainPicker
+                defaultLabel={managedDns?.suggested_subdomain?.split(".")[0] || ""}
+                zone={managedDns!.zones[0].zone}
+                onProvision={(label, zone) => claimManagedSubdomain({ label, zone })}
+                loading={loading}
+              />
+            )}
+
+            {domainMode === "byo" && (
+              <form onSubmit={onSave} className="space-y-3 rounded-md border border-dashed border-border p-3">
+                <div className="space-y-1">
+                  <Label htmlFor="email_domain" className="text-xs font-medium">Domain</Label>
+                  <Input
+                    id="email_domain"
+                    placeholder="team.company.com"
+                    value={emailDomain}
+                    onChange={(e) => onDomainChange(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Pick a subdomain (e.g. <span className="font-mono">agents.example.com</span>) — using your apex domain breaks regular mail. After Save we'll show the 6 DNS records to paste into your provider.
+                  </p>
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={processing || !emailDomain.trim()} size="sm" className="h-7 text-xs">
+                    {processing ? "Saving…" : "Save & show DNS records"}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </>
         )}
 
         {errorMsg && (

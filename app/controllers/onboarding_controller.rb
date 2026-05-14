@@ -9,7 +9,13 @@ class OnboardingController < ApplicationController
         :id, :name, :slug, :website_url, :company_summary, :onboarding_completed_at,
         :detected_email_provider, :email_domain, :email_domain_verified
       ]),
-      suggested_website: suggested_website_from_email
+      suggested_website: suggested_website_from_email,
+      # Surface managed-zone info to onboarding so users can pick a free
+      # subdomain on one of our zones instead of bringing their own.
+      managed_dns: {
+        zones: Email::DnsAutoConfigurator.available_zones,
+        suggested_subdomain: Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug),
+      },
     }
   end
 
