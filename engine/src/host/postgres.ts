@@ -7,7 +7,33 @@
 // If we ever fork the schema, that's a new Host implementation, not a change here.
 
 import pg from "pg";
+import { CronExpressionParser } from "cron-parser";
 import { config } from "../config.js";
+
+// Compute the next fire time for a scheduled_work row. Used both on insert
+// and on each fire to keep next_run_at in sync — Rails' WakeSweepJob reads
+// this column to decide when to wake stopped agent machines.
+//   cron     → first match of cron_expression in `timezone` after now
+//   once     → fire_at itself (or null if past — Rails will skip it)
+//   interval → now + interval_seconds
+function computeNextRunAt(mode: string, cronExpr: string | null, tz: string | null, fireAt: Date | string | null, intervalSeconds: number | null): Date | null {
+  try {
+    if (mode === "cron" && cronExpr) {
+      const interval = CronExpressionParser.parse(cronExpr, { tz: tz || "UTC", currentDate: new Date() });
+      return interval.next().toDate();
+    }
+    if (mode === "once" && fireAt) {
+      return new Date(fireAt);
+    }
+    if (mode === "interval" && intervalSeconds) {
+      return new Date(Date.now() + intervalSeconds * 1000);
+    }
+  } catch (_err) {
+    // Bad cron expression — fall through to null. The row will still be
+    // visible in the DB; the engine just won't pre-wake it.
+  }
+  return null;
+}
 import type {
   Agent,
   Conversation,
@@ -604,10 +630,14 @@ export class PostgresHost implements Host {
   }
 
   async createScheduledWork(orgId: number, agentId: number, item: Omit<ScheduledWorkItem, "id" | "last_run_at" | "next_run_at">): Promise<number> {
+    // Compute next_run_at up front so Rails' WakeSweepJob (which looks at this
+    // column to decide when to wake stopped machines) doesn't have to parse
+    // cron expressions itself. Engine owns scheduling, Rails owns waking.
+    const nextRunAt = computeNextRunAt(item.mode, item.cron_expression, item.timezone, item.fire_at, item.interval_seconds);
     const { rows } = await this.pool.query(
-      `INSERT INTO scheduled_work (organization_id, agent_id, mode, name, instruction, cron_expression, timezone, fire_at, interval_seconds, active, payload_extra, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) RETURNING id`,
-      [orgId, agentId, item.mode, item.name, item.instruction, item.cron_expression, item.timezone, item.fire_at, item.interval_seconds, item.active, JSON.stringify(item.payload_extra || {})],
+      `INSERT INTO scheduled_work (organization_id, agent_id, mode, name, instruction, cron_expression, timezone, fire_at, interval_seconds, active, payload_extra, next_run_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) RETURNING id`,
+      [orgId, agentId, item.mode, item.name, item.instruction, item.cron_expression, item.timezone, item.fire_at, item.interval_seconds, item.active, JSON.stringify(item.payload_extra || {}), nextRunAt],
     );
     return rows[0].id;
   }
@@ -621,6 +651,20 @@ export class PostgresHost implements Host {
         sets.push(`${key} = $${params.length}`);
       }
     }
+    // Recompute next_run_at when any timing-related field changes. Cheap
+    // — we already have the row's mode + new fields; cron-parser handles it.
+    if (updates.cron_expression !== undefined || updates.timezone !== undefined ||
+        updates.fire_at !== undefined || updates.interval_seconds !== undefined) {
+      const { rows } = await this.pool.query(`SELECT mode, cron_expression, timezone, fire_at, interval_seconds FROM scheduled_work WHERE id = $1`, [id]);
+      if (rows[0]) {
+        const merged = { ...rows[0], ...updates };
+        const nextRunAt = computeNextRunAt(merged.mode, merged.cron_expression, merged.timezone, merged.fire_at, merged.interval_seconds);
+        if (nextRunAt) {
+          params.push(nextRunAt);
+          sets.push(`next_run_at = $${params.length}`);
+        }
+      }
+    }
     params.push(id);
     await this.pool.query(`UPDATE scheduled_work SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
   }
@@ -629,8 +673,43 @@ export class PostgresHost implements Host {
     await this.pool.query(`DELETE FROM scheduled_work WHERE id = $1`, [id]);
   }
 
+  // One-shot on boot: fill in next_run_at for any active row that has NULL
+  // (rows created before the engine started tracking this column, or
+  // imported via Rails console). Rails WakeSweepJob keys off this column.
+  async backfillScheduledWorkNextRunAt(agentId: number): Promise<void> {
+    const { rows } = await this.pool.query(
+      `SELECT id, mode, cron_expression, timezone, fire_at, interval_seconds
+       FROM scheduled_work
+       WHERE agent_id = $1 AND active = true AND next_run_at IS NULL`,
+      [agentId],
+    );
+    if (rows.length === 0) return;
+    let updated = 0;
+    for (const r of rows) {
+      const next = computeNextRunAt(r.mode, r.cron_expression, r.timezone, r.fire_at, r.interval_seconds);
+      if (next) {
+        await this.pool.query(
+          `UPDATE scheduled_work SET next_run_at = $2, updated_at = NOW() WHERE id = $1`,
+          [r.id, next],
+        );
+        updated++;
+      }
+    }
+    if (updated > 0) {
+      console.log(`[postgres] backfilled next_run_at for ${updated} scheduled_work row(s)`);
+    }
+  }
+
   async updateScheduledWorkLastRun(id: number): Promise<void> {
-    await this.pool.query(`UPDATE scheduled_work SET last_run_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
+    // Advance next_run_at when last_run_at lands so the next sweep cycle
+    // knows when to wake the machine again.
+    const { rows } = await this.pool.query(`SELECT mode, cron_expression, timezone, fire_at, interval_seconds FROM scheduled_work WHERE id = $1`, [id]);
+    if (!rows[0]) return;
+    const nextRunAt = computeNextRunAt(rows[0].mode, rows[0].cron_expression, rows[0].timezone, rows[0].fire_at, rows[0].interval_seconds);
+    await this.pool.query(
+      `UPDATE scheduled_work SET last_run_at = NOW(), next_run_at = $2, updated_at = NOW() WHERE id = $1`,
+      [id, nextRunAt],
+    );
   }
 
   // ── Tasks ──

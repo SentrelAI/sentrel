@@ -242,6 +242,9 @@ export interface Host {
   updateScheduledWork(id: number, updates: Partial<Pick<ScheduledWorkItem, "name" | "instruction" | "cron_expression" | "timezone" | "fire_at" | "interval_seconds" | "active">>): Promise<void>;
   deleteScheduledWork(id: number): Promise<void>;
   updateScheduledWorkLastRun(id: number): Promise<void>;
+  // One-shot on boot: populate next_run_at for active rows that lack it,
+  // so Rails' WakeSweepJob can see them.
+  backfillScheduledWorkNextRunAt(agentId: number): Promise<void>;
 
   // ── Tasks ──
   createTask(orgId: number, agentId: number, title: string, opts?: { description?: string; instruction?: string; priority?: string; due_at?: string; assignedByAgentId?: number; parentTaskId?: number }): Promise<number>;

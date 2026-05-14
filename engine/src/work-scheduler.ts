@@ -45,6 +45,16 @@ export async function startWorkScheduler(): Promise<void> {
     logger.warn("Work scheduler: failed to purge stale jobs", { error: (err as Error).message });
   }
 
+  // Backfill next_run_at for any active row where it's NULL. Older rows
+  // (created before the engine started tracking this column) lack the value
+  // and Rails' WakeSweepJob keys off of it, so without this they're invisible
+  // to the wake sweep and their wake-from-sleep never fires.
+  try {
+    await host.backfillScheduledWorkNextRunAt(parseInt(config.employeeId));
+  } catch (err) {
+    logger.warn("Work scheduler: backfillScheduledWorkNextRunAt failed", { error: (err as Error).message });
+  }
+
   await loadAndRegister();
   setInterval(loadAndRegister, POLL_INTERVAL_MS);
 }
