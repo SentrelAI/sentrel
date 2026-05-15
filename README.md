@@ -386,7 +386,10 @@ What's next:
 ## FAQ
 
 **How is this different from Lindy / Relevance / OpenAI's "Assistants"?**
-Lindy and Relevance are workflow builders — drag boxes, connect outputs to inputs. Great for one-shot automations. Alchemy gives you persistent **employees** who own a role and react to events 24/7 inside your existing channels. The mental model is "a teammate logs into Slack" not "a workflow runs when triggered." Different surface area.
+Lindy and Relevance are **workflow builders** — drag boxes, connect outputs to inputs. Great for one-shot automations. OpenAI's Assistants API is a **stateful chat endpoint** — you wire it into your own UI and host the integration layer yourself. Alchemy gives you persistent **employees** who own a role and react to events 24/7 inside your existing channels. The mental model is "a teammate logs into Slack" not "a workflow runs when triggered" and not "build your own product on top of an API."
+
+**How is this different from agent frameworks like OpenClaw / LangGraph / AutoGen / crewAI?**
+Those are **libraries** — you write Python or TypeScript that calls them, then you figure out everything else: hosting, observability, multi-tenant isolation, OAuth flows, retry logic, channel ingress, approval UI, audit trail, billing. Alchemy is a **platform** — your "agent code" is a row in a templates table and a markdown skill bundle; everything around it is solved. You can still drop into our engine's TypeScript when you want to write a custom MCP tool, but the 80% case never needs that. Frameworks give you a runtime; we give you a workspace.
 
 **Why per-agent VMs instead of one shared engine?**
 Three reasons. (1) **Isolation**: when an agent's prompt grows or its node modules corrupt, it doesn't take down the rest of the fleet. (2) **State**: each agent has its own `/data` volume — memory, RAG indices, OAuth token caches all survive restarts without a shared database becoming a bottleneck. (3) **Cost transparency**: machine-level cost = agent-level cost. You see exactly what each agent costs.
