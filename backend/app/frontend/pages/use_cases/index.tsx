@@ -71,7 +71,7 @@ export default function UseCasesIndex({ categories }: Props) {
         />
         <div className="relative mx-auto w-full max-w-6xl px-6 py-20 md:py-28">
           <Overline accent dot>
-            {totalRoles} roles · 11 teams
+            {totalRoles} roles · {categories.length} teams
           </Overline>
           <h1 className="mt-4 font-display text-4xl font-semibold tracking-[-0.025em] text-foreground md:text-6xl">
             Pick your{" "}

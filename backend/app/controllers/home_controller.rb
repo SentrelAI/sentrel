@@ -76,12 +76,56 @@ class HomeController < ApplicationController
       blurb: "Engineering velocity, not engineering replacement. Triage + chores + signal-boosting.",
       tone: "cyan",
       roles: [
-        { name: "Vex",  role: "PR triage",        outcome: "First-pass review on every PR — formatting, missing tests, obvious bugs. Tags reviewers.", skills: %w[code-review-checklist test-coverage-check reviewer-routing], integrations: %w[github linear slack] },
-        { name: "Nox",  role: "Incident manager", outcome: "Coordinates Sev-1 response — opens channel, pages oncall, drafts status updates, runs RCA.", skills: %w[incident-coordination status-comms rca-draft], integrations: %w[pagerduty slack statuspage] },
-        { name: "Plex", role: "Release notes",    outcome: "Every Friday: 1 paragraph of human-readable changelog from this week's merged PRs.", skills: %w[changelog-write release-summarize translation], integrations: %w[github linear notion] },
-        { name: "Sky",  role: "Bug triage",       outcome: "Reads new bugs, dedupes against existing, assigns severity + likely owner.", skills: %w[bug-dedup severity-scoring owner-routing], integrations: %w[linear github sentry] },
-        { name: "Tao",  role: "Docs maintainer",  outcome: "Watches for code changes that break docs; opens PR to update with new screenshots.", skills: %w[docs-drift-detection screenshot-update changelog-link], integrations: %w[github notion mintlify] },
-        { name: "Hex",  role: "Standup coordinator", outcome: "Async standup in Slack — collects updates, summarizes blockers, surfaces who needs help.", skills: %w[standup-collection blocker-extraction summary], integrations: %w[slack linear notion] }
+        { name: "Vex",   role: "PR triage",          outcome: "First-pass review on every PR — formatting, missing tests, obvious bugs. Tags reviewers.", skills: %w[code-review-checklist test-coverage-check reviewer-routing], integrations: %w[github linear slack] },
+        { name: "Nox",   role: "Incident manager",   outcome: "Coordinates Sev-1 response — opens channel, pages oncall, drafts status updates, runs RCA.", skills: %w[incident-coordination status-comms rca-draft], integrations: %w[pagerduty slack statuspage] },
+        { name: "Plex",  role: "Release notes",      outcome: "Every Friday: 1 paragraph of human-readable changelog from this week's merged PRs.", skills: %w[changelog-write release-summarize translation], integrations: %w[github linear notion] },
+        { name: "Sky",   role: "Bug triage",         outcome: "Reads new bugs, dedupes against existing, assigns severity + likely owner.", skills: %w[bug-dedup severity-scoring owner-routing], integrations: %w[linear github sentry] },
+        { name: "Tao",   role: "Docs maintainer",    outcome: "Watches for code changes that break docs; opens PR to update with new screenshots.", skills: %w[docs-drift-detection screenshot-update changelog-link], integrations: %w[github notion mintlify] },
+        { name: "Hex",   role: "Standup coordinator", outcome: "Async standup in Slack — collects updates, summarizes blockers, surfaces who needs help.", skills: %w[standup-collection blocker-extraction summary], integrations: %w[slack linear notion] },
+        { name: "Bolt",  role: "Dependency upgrader", outcome: "Opens Dependabot/Renovate PRs, reads the changelog, writes a one-paragraph 'safe to merge?' note.", skills: %w[dep-changelog-read breaking-change-flag merge-note], integrations: %w[github dependabot slack] },
+        { name: "Iggy",  role: "Flaky-test detective", outcome: "Spots tests that fail intermittently in CI, opens an issue with the failure rate + likely cause.", skills: %w[ci-log-parse flake-detection issue-write], integrations: %w[github buildkite linear] },
+        { name: "Pyro",  role: "Security scanner",   outcome: "Reads Brakeman / Snyk / dependabot alerts, dedupes, drafts upgrade PRs with risk notes.", skills: %w[cve-triage upgrade-pr risk-assess], integrations: %w[github snyk slack] },
+        { name: "Echo.e", role: "Performance watcher", outcome: "Watches p95 latency + error rate; pages when something regresses, writes the first paragraph of the postmortem.", skills: %w[metric-watch regression-detect postmortem-draft], integrations: %w[datadog sentry slack] },
+        { name: "Sage.e", role: "API docs writer",   outcome: "When you add a new endpoint or change a request shape, opens a docs PR with examples + curl.", skills: %w[openapi-gen example-write changelog-link], integrations: %w[github mintlify notion] },
+        { name: "Cron",  role: "Deploy coordinator", outcome: "Owns the deploy queue — sequences merges, runs migrations, posts go/no-go before each release.", skills: %w[deploy-sequence migration-runner go-no-go], integrations: %w[github kamal slack] },
+        { name: "Kit.e", role: "Onboarding eng",     outcome: "When a new engineer joins, posts the day-1 checklist, sets up local env, pairs them with a buddy.", skills: %w[setup-checklist env-validate buddy-pair], integrations: %w[github notion slack] },
+        { name: "Rune",  role: "Schema diff alerter", outcome: "Watches db/schema.rb changes; flags risky migrations + suggests staged rollout.", skills: %w[schema-diff risk-flag rollout-plan], integrations: %w[github linear slack] }
+      ]
+    },
+
+    {
+      name: "Creative & Video",
+      blurb: "Cut long-form into short. Write the hook. Ship the thumbnail. Repeat 100x.",
+      tone: "indigo",
+      roles: [
+        { name: "Reel",   role: "Clip cutter",         outcome: "Watches the long video, picks the top 5 'hook' moments, exports vertical clips with captions.", skills: %w[transcript-scan hook-detection vertical-export], integrations: %w[descript opus-clip youtube] },
+        { name: "Pixel",  role: "Thumbnail designer",  outcome: "Generates 3 thumbnail variants per video, A/B tests on YouTube, picks the winner.", skills: %w[thumbnail-design face-crop ab-test], integrations: %w[figma youtube canva] },
+        { name: "Vex.v",  role: "Video script writer", outcome: "Drafts the script for your next long-form from a topic + your channel's voice doc.", skills: %w[hook-write narrative-arc cta-place], integrations: %w[notion google_docs descript] },
+        { name: "Lyra",   role: "Subtitle + caption",  outcome: "Generates SRT + burned-in captions in your brand style. Translates to 5 languages.", skills: %w[transcription burn-in translation], integrations: %w[descript otter youtube] },
+        { name: "Kit",    role: "Podcast producer",    outcome: "Schedules guests, sends prep docs, edits the raw recording, ships the episode + show notes.", skills: %w[guest-coord prep-doc edit-runbook show-notes], integrations: %w[descript gmail riverside] },
+        { name: "Ace",    role: "YouTube SEO",         outcome: "Picks titles + descriptions + tags per video based on what's ranking. Tracks CTR + watch-time.", skills: %w[keyword-research ctr-watch title-test], integrations: %w[youtube vidiq google_search_console] },
+        { name: "Boom",   role: "Sound editor",        outcome: "Cleans up audio (noise, ums, levels), adds music + sfx beds matched to the section's mood.", skills: %w[noise-remove filler-cut music-match], integrations: %w[descript epidemic-sound notion] },
+        { name: "Iris.c", role: "B-roll sourcer",      outcome: "Reads the script + finds relevant b-roll clips + stock footage. Drops them in the timeline.", skills: %w[scene-search rights-check timeline-place], integrations: %w[pexels artgrid descript] },
+        { name: "Stage",  role: "Live stream director", outcome: "Pre-stream rundown, scene order, chat moderator setup, post-stream highlight cut.", skills: %w[rundown-build scene-program mod-setup], integrations: %w[streamlabs obs twitch] }
+      ]
+    },
+
+    {
+      name: "Paid Acquisition & Social",
+      blurb: "TikTok, Instagram, Meta ads, Google ads — daily creative + bidding + reporting.",
+      tone: "indigo",
+      roles: [
+        { name: "Tik",    role: "TikTok content planner", outcome: "30-day calendar of hooks + trends, drafts captions, schedules posts, replies to comments.", skills: %w[trend-watch hook-write comment-reply], integrations: %w[tiktok buffer notion] },
+        { name: "Gram",   role: "Instagram + Reels",    outcome: "Daily feed posts + 3 reels/week from your content stream. DM responder for inbound.", skills: %w[reel-script feed-cadence dm-triage], integrations: %w[instagram buffer canva] },
+        { name: "Meta",   role: "Meta ads manager",     outcome: "Builds + launches FB/IG ad campaigns, watches CPA daily, kills losing creatives, scales winners.", skills: %w[campaign-build cpa-watch creative-rotate], integrations: %w[meta-ads canva mixpanel] },
+        { name: "Goo",    role: "Google ads bidder",    outcome: "Daily bid + budget adjustments based on ROAS. Negative keyword pruning. Weekly report.", skills: %w[bid-adjust negative-prune roas-report], integrations: %w[google_ads google_analytics slack] },
+        { name: "Lin",    role: "LinkedIn ads + content", outcome: "B2B content engine — daily posts from leadership voice, sponsored campaigns to ICP.", skills: %w[icp-target leadership-voice sponsored-cadence], integrations: %w[linkedin-ads buffer hubspot] },
+        { name: "Hype",   role: "UGC + influencer ops", outcome: "Finds creators in your niche, runs outreach + briefs, tracks deliverables + posts.", skills: %w[creator-discover brief-write deliverable-track], integrations: %w[gmail notion shopify] },
+        { name: "Wit",    role: "Ad creative tester",   outcome: "Generates 10 creative variants per campaign, ships them as A/B test, kills the bottom 80%.", skills: %w[creative-variant ab-test winner-scale], integrations: %w[canva meta-ads mixpanel] },
+        { name: "Snap",   role: "Snap + Pinterest",     outcome: "Daily Pin curation + Snap stories tied to your top SEO posts. Tracks click-through.", skills: %w[pin-curation snap-story click-track], integrations: %w[pinterest snapchat google_analytics] },
+        { name: "Trace",  role: "Pixel + analytics watcher", outcome: "Checks pixel firing daily across all properties; alerts when a conversion event drops 20%+.", skills: %w[pixel-validate conversion-watch alert], integrations: %w[google_analytics meta-pixel slack] },
+        { name: "Roi",    role: "Attribution reporter", outcome: "Weekly attribution rollup — which channel brought which signups, dollars, demos. CFO-ready.", skills: %w[multi-touch-attribution channel-mix cfo-summary], integrations: %w[mixpanel hubspot google_sheets] },
+        { name: "Buzz",   role: "Community moderator",  outcome: "Watches your Discord/Slack/Circle communities — flags fires, welcomes newbies, answers FAQs.", skills: %w[mod-flag welcome-flow faq-reply], integrations: %w[discord slack circle] }
       ]
     },
     {
