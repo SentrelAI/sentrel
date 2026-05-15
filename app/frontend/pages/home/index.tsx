@@ -1061,6 +1061,27 @@ function Security() {
    9 — TESTIMONIAL
    ═════════════════════════════════════════════════════════════ */
 function Testimonial() {
+  const quotes = [
+    {
+      initial: "A",
+      tone: "indigo" as const,
+      name: "Abdelmoumin Mokhtari",
+      role: "Founder · ScribeMD",
+      quote:
+        "Casper handles the work I used to context-switch into ten times a day — inbox triage, deal updates, partner outreach. I'm running the company instead of running between tools.",
+      highlight: "running the company instead of running between tools",
+    },
+    {
+      initial: "E",
+      tone: "cyan" as const,
+      name: "Elie Toubiana",
+      role: "Engineer · Early user",
+      quote:
+        "The whole stack feels like what you'd build internally if you had six months. Per-agent isolation, real OAuth, replayable runs, an SDK that doesn't fight you. I open the code more often than the UI.",
+      highlight: "what you'd build internally if you had six months",
+    },
+  ]
+
   return (
     <section className="relative overflow-hidden border-b py-24 md:py-32">
       <div
@@ -1071,24 +1092,57 @@ function Testimonial() {
             "radial-gradient(40% 50% at 20% 50%, var(--cyan-glow) 0%, transparent 60%), radial-gradient(40% 50% at 80% 50%, var(--indigo-glow) 0%, transparent 60%)",
         }}
       />
-      <div className="relative mx-auto w-full max-w-5xl px-6 text-center">
-        <Overline accent dot>Case study</Overline>
-        <blockquote className="mt-8 font-display text-3xl font-medium leading-[1.1] tracking-[-0.025em] text-foreground md:text-[3.25rem]">
-          "We hired Alex on Thursday.
-          <br />
-          By Monday it had touched <span className="cyan-mark">400 leads</span>,
-          logged every conversation, and flagged three enterprise deals."
-        </blockquote>
-        <div className="mt-10 flex items-center justify-center gap-4">
-          <div className="size-11 rounded-full border bg-[var(--indigo-surface)]" />
-          <div className="text-left">
-            <div className="font-display text-sm font-semibold text-foreground">
-              Priya Shah
-            </div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-              Head of Growth · Acme
-            </div>
-          </div>
+      <div className="relative mx-auto w-full max-w-6xl px-6">
+        <div className="mb-12 text-center">
+          <Overline accent dot>From the early team</Overline>
+          <h2 className="text-section mt-3 text-foreground">
+            People who run the product{" "}
+            <span className="serif-italic text-[var(--color-indigo)]">every day</span>.
+          </h2>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {quotes.map((q) => (
+            <figure
+              key={q.name}
+              className="flex flex-col rounded-2xl border bg-card p-7 md:p-8"
+            >
+              <blockquote className="flex-1 font-display text-lg leading-relaxed text-foreground md:text-[1.35rem] md:leading-[1.5]">
+                <span className="text-muted-foreground/60">"</span>
+                {q.quote.split(q.highlight).map((seg, i, arr) => (
+                  <span key={i}>
+                    {seg}
+                    {i < arr.length - 1 && (
+                      <span className="cyan-mark">{q.highlight}</span>
+                    )}
+                  </span>
+                ))}
+                <span className="text-muted-foreground/60">"</span>
+              </blockquote>
+              <figcaption className="mt-6 flex items-center gap-3 border-t pt-5">
+                <span
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full border font-display text-sm font-semibold"
+                  style={{
+                    borderColor:
+                      q.tone === "cyan" ? "var(--cyan-border)" : "var(--indigo-border)",
+                    background:
+                      q.tone === "cyan" ? "var(--cyan-surface)" : "var(--indigo-surface)",
+                    color: q.tone === "cyan" ? "var(--cyan)" : "var(--color-indigo)",
+                  }}
+                >
+                  {q.initial}
+                </span>
+                <div>
+                  <div className="font-display text-sm font-semibold text-foreground">
+                    {q.name}
+                  </div>
+                  <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    {q.role}
+                  </div>
+                </div>
+              </figcaption>
+            </figure>
+          ))}
         </div>
       </div>
     </section>
