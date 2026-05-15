@@ -1,6 +1,10 @@
 # Monorepo merge: bringing `alchemy_engine` into `alchemy`
 
-This is the procedure to fold the TypeScript engine sidecar (`../alchemy_engine`) into the Rails app (`./`) as a subdirectory while preserving full git history. After the merge, the engine lives at `engine/` and CI / kamal / Dockerfile / bin/setup all drive both halves from one repo.
+**Status: DONE.** Merge executed on 2026-05-15 at commit `71576f6` (and the cleanup commits that followed). The engine now lives at `engine/` with full per-file git history preserved (154 commits + per-file blame intact). This doc stays as the audit trail for how it was done.
+
+## Original procedure (kept for posterity / re-runs)
+
+This was the procedure to fold the TypeScript engine sidecar (`../alchemy_engine`) into the Rails app (`./`) as a subdirectory while preserving full git history. After the merge, the engine lives at `engine/` and CI / kamal / Dockerfile / bin/setup all drive both halves from one repo.
 
 ## Why monorepo
 
@@ -35,9 +39,11 @@ git remote remove engine
 
 After step 4, `git log -- engine/` shows the full engine history under the new path.
 
-## Post-merge follow-ups (separate PRs)
+## Post-merge follow-ups
 
-### A. Unified `bin/setup`
+These all landed in the same merge commit + the cleanup commits that followed:
+
+### A. Unified `bin/setup` ✓ done
 
 `bin/setup` is currently Rails-only. Append after `npm install` (line 17):
 

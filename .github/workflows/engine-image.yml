@@ -1,13 +1,16 @@
 name: Build engine image
 
+# Build + push the per-agent engine image to GHCR whenever the engine/
+# subtree changes. Each agent's Fly Machine pulls :latest on its next
+# cold-boot, picking up the new code.
 on:
   push:
     branches: [main]
     paths:
-      - "src/**"
-      - "Dockerfile"
-      - "package.json"
-      - "bun.lock"
+      - "engine/src/**"
+      - "engine/Dockerfile"
+      - "engine/package.json"
+      - "engine/bun.lock"
       - ".github/workflows/engine-image.yml"
   workflow_dispatch: {}
 
@@ -42,12 +45,12 @@ jobs:
       # Bake the commit SHA into the image so /ops/runs can show which
       # engine version produced a given audit log row.
       - name: Stamp .git-sha
-        run: echo "${{ github.sha }}" > .git-sha
+        run: echo "${{ github.sha }}" > engine/.git-sha
 
       - name: Build + push (multi-arch)
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./engine
           platforms: linux/amd64,linux/arm64
           push: true
           cache-from: type=gha

@@ -12,9 +12,18 @@ FileUtils.chdir APP_ROOT do
   # This script is idempotent, so that you can run it at any time and get an expectable outcome.
   # Add necessary setup steps to this file.
 
-  puts "== Installing dependencies =="
+  puts "== Installing Rails dependencies =="
   system("bundle check") || system!("bundle install")
   system! "npm install"
+
+  puts "\n== Installing engine dependencies =="
+  # Engine lives at engine/ post-monorepo-merge. Bun handles its own install
+  # (separate from npm because the engine uses Bun's native runtime, not Node).
+  if File.directory?("engine") && system("command -v bun > /dev/null 2>&1")
+    Dir.chdir("engine") { system!("bun install --frozen-lockfile") }
+  elsif File.directory?("engine")
+    puts "  ⚠  Skipping engine deps — bun not installed. Get it from https://bun.sh"
+  end
 
   # puts "\n== Copying sample files =="
   # unless File.exist?("config/database.yml")

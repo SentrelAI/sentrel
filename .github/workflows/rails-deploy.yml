@@ -1,0 +1,169 @@
+name: Deploy Rails (kamal)
+
+# Builds the Rails container image and runs `kamal deploy` to the EC2 host
+# defined in config/deploy.yml. Triggered manually OR on push to main when
+# Rails-side files change (so engine-only PRs don't redeploy Rails).
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   SSH_DEPLOY_KEY                                — private key matching the
+#                                                   public key on the EC2 host's
+#                                                   ~/.ssh/authorized_keys
+#   KAMAL_REGISTRY_PASSWORD                       — GHCR push token (read+write)
+#   RAILS_MASTER_KEY                              — contents of config/master.key
+#   ENGINE_API_SECRET, PREFIXED_IDS_SALT          — app-level secrets
+#   DATABASE_URL, REDIS_URL                        — RDS + Elasticache URLs
+#   ENGINE_DATABASE_URL, ENGINE_REDIS_URL          — IPv6 over Fly LAN
+#   COMPOSIO_API_KEY                              — integration catalog
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SERVICE_SID
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID
+#   FLY_API_TOKEN, FLY_ORG_SLUG, FLY_REGION
+#   ENGINE_IMAGE                                  — ghcr.io/parsedev/alchemy-engine:latest
+#   SENTRY_DSN
+#   ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
+#   ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
+#   ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
+#   SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET
+
+on:
+  push:
+    branches: [main]
+    # Skip when only the engine subtree changed — engine-image.yml handles that.
+    paths-ignore:
+      - "engine/**"
+      - "docs/**"
+      - "*.md"
+      - ".github/workflows/engine-image.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+
+      # kamal SSH's into the host to run docker; uses an agent-loaded key.
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/deploy.pem
+          chmod 600 ~/.ssh/deploy.pem
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/deploy.pem
+          ssh-keyscan -H 52.2.137.107 >> ~/.ssh/known_hosts
+
+      # Write .kamal/secrets from repo secrets. The committed .kamal/secrets
+      # is git-ignored; CI rebuilds it from GitHub Secrets each run.
+      - name: Materialize .kamal/secrets
+        env:
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          ENGINE_DATABASE_URL: ${{ secrets.ENGINE_DATABASE_URL }}
+          ENGINE_REDIS_URL: ${{ secrets.ENGINE_REDIS_URL }}
+          ENGINE_API_SECRET: ${{ secrets.ENGINE_API_SECRET }}
+          PREFIXED_IDS_SALT: ${{ secrets.PREFIXED_IDS_SALT }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_SERVICE_SID: ${{ secrets.TWILIO_SERVICE_SID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_ORG_SLUG: ${{ secrets.FLY_ORG_SLUG }}
+          FLY_REGION: ${{ secrets.FLY_REGION }}
+          ENGINE_IMAGE: ${{ secrets.ENGINE_IMAGE }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SLACK_CLIENT_ID: ${{ secrets.SLACK_CLIENT_ID }}
+          SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY: ${{ secrets.ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY }}
+          ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY: ${{ secrets.ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY }}
+          ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${{ secrets.ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT }}
+        run: |
+          mkdir -p .kamal
+          # config/master.key needs to be a file for the existing
+          # secrets pattern `RAILS_MASTER_KEY=$(cat config/master.key)`
+          mkdir -p config && echo -n "$RAILS_MASTER_KEY" > config/master.key
+          cat > .kamal/secrets <<EOF
+          KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
+          RAILS_MASTER_KEY=$RAILS_MASTER_KEY
+          DATABASE_URL=$DATABASE_URL
+          REDIS_URL=$REDIS_URL
+          ENGINE_DATABASE_URL=$ENGINE_DATABASE_URL
+          ENGINE_REDIS_URL=$ENGINE_REDIS_URL
+          ENGINE_API_SECRET=$ENGINE_API_SECRET
+          PREFIXED_IDS_SALT=$PREFIXED_IDS_SALT
+          COMPOSIO_API_KEY=$COMPOSIO_API_KEY
+          ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+          OPENAI_API_KEY=$OPENAI_API_KEY
+          OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+          TWILIO_ACCOUNT_SID=$TWILIO_ACCOUNT_SID
+          TWILIO_AUTH_TOKEN=$TWILIO_AUTH_TOKEN
+          TWILIO_SERVICE_SID=$TWILIO_SERVICE_SID
+          AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+          AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+          AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID
+          AWS_REGION=us-east-1
+          DEPLOY_ENV=prod
+          WEBHOOK_BASE_URL=https://alchemy.scribemd.ai
+          RAILS_INTERNAL_URL=https://alchemy.scribemd.ai
+          FLY_API_TOKEN=$FLY_API_TOKEN
+          FLY_ORG_SLUG=$FLY_ORG_SLUG
+          FLY_REGION=$FLY_REGION
+          ENGINE_IMAGE=$ENGINE_IMAGE
+          SENTRY_DSN=$SENTRY_DSN
+          SLACK_CLIENT_ID=$SLACK_CLIENT_ID
+          SLACK_CLIENT_SECRET=$SLACK_CLIENT_SECRET
+          SLACK_SIGNING_SECRET=$SLACK_SIGNING_SECRET
+          ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
+          ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
+          ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT
+          EOF
+
+      - name: kamal deploy
+        env:
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+          SSH_AUTH_SOCK: /tmp/ssh-auth.sock
+        run: |
+          eval "$(ssh-agent -a $SSH_AUTH_SOCK)" > /dev/null
+          ssh-add ~/.ssh/deploy.pem
+          bundle exec kamal deploy
+
+      - name: Run pending migrations
+        env:
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+          SSH_AUTH_SOCK: /tmp/ssh-auth.sock
+        run: |
+          eval "$(ssh-agent -a $SSH_AUTH_SOCK)" > /dev/null
+          ssh-add ~/.ssh/deploy.pem
+          bundle exec kamal app exec 'bin/rails db:migrate'
+
+      - name: Summary
+        run: |
+          echo "### Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: ghcr.io/parsedev/alchemy:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Host: alchemy.scribemd.ai" >> $GITHUB_STEP_SUMMARY
