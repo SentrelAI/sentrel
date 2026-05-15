@@ -28,12 +28,11 @@ name: app-deploy
 on:
   push:
     branches: [main]
-    # Skip when only the engine subtree changed — engine-image.yml handles that.
-    paths-ignore:
-      - "engine/**"
-      - "docs/**"
-      - "*.md"
-      - ".github/workflows/engine-image.yml"
+    # Only fire on Rails-side changes. Engine has its own workflow; docs +
+    # workflows themselves shouldn't trigger a kamal deploy.
+    paths:
+      - "backend/**"
+      - ".github/workflows/app-deploy.yml"
   workflow_dispatch: {}
 
 jobs:
@@ -42,13 +41,24 @@ jobs:
     permissions:
       packages: write
       contents: read
+    # Rails lives at backend/ post-monorepo move. Run every step from there so
+    # Gemfile lookup, kamal config, and Dockerfile resolution all just work.
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
+          # backend/.ruby-version pins ruby-3.4.9. setup-ruby's
+          # working-directory input doesn't always resolve .ruby-version
+          # correctly when bundler-cache is set — explicit ruby-version-file
+          # is the reliable path.
+          ruby-version-file: backend/.ruby-version
           bundler-cache: true
+          working-directory: backend
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -61,7 +71,10 @@ jobs:
           password: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
 
       # kamal SSH's into the host to run docker; uses an agent-loaded key.
+      # ~/.ssh paths are HOME-relative so the working-directory: backend
+      # default doesn't apply here — the keys live at the runner's $HOME.
       - name: Configure SSH
+        working-directory: .
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_DEPLOY_KEY }}" > ~/.ssh/deploy.pem
@@ -105,8 +118,10 @@ jobs:
           ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT: ${{ secrets.ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT }}
         run: |
           mkdir -p .kamal
-          # config/master.key needs to be a file for the existing
-          # secrets pattern `RAILS_MASTER_KEY=$(cat config/master.key)`
+          # backend/config/master.key needs to be a file for the secrets-file
+          # pattern `RAILS_MASTER_KEY=$(cat config/master.key)`. We're already
+          # in backend/ via working-directory default, so 'config/' resolves
+          # to backend/config/.
           mkdir -p config && echo -n "$RAILS_MASTER_KEY" > config/master.key
           cat > .kamal/secrets <<EOF
           KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
