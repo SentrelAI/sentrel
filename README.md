@@ -80,6 +80,53 @@ This isolation matters: when Casper hits an OAuth token revocation, Sarah keeps 
 
 ---
 
+## What we built on top
+
+Alchemy uses the [Claude Agent SDK](https://docs.anthropic.com/en/api/agent-sdk) as the inner loop — model invocation, tool dispatch, skill primitives — but the SDK is one component among many. The agent loop alone doesn't make a hire-able teammate. The rest of the system is original:
+
+**Runtime & infrastructure**
+- Per-agent Fly Machine orchestration — provisioning, auto-start on inbound, `/data` volume lifecycle, fleet rolls
+- Hetzner / DigitalOcean / local Docker provisioner backends as siblings to Fly
+- WakeSweepJob — Rails-side cron that pre-wakes stopped machines before scheduled work fires
+- Cron backfill on engine boot — never silently drops a missed schedule
+- Anthropic billing proxy + OpenAI translator proxy — route the SDK through subscription auth (Claude Pro/Max, ChatGPT Plus) instead of metered API
+- EngineSync — Redis pub/sub fan-out so config changes propagate without a deploy
+
+**Channels (full implementations, not just API wrappers)**
+- Email: SES inbound (SNS topics + receipt rules + auto-DNS) + outbound with RFC 822 threading + reply-as-agent flow
+- Slack: OAuth install, signed webhook with replay protection + event dedup, multi-agent via channel-per-agent (`chat:write.customize` identity overrides), full Marketplace-ready manifest
+- Telegram: per-agent bot tokens, polling, inline-keyboard approval prompts
+- WhatsApp / SMS: Twilio integration with media fetch
+- Web chat: ActionCable streams of live tool calls + approval prompts
+
+**Policy + governance**
+- Per-action policy engine — auto / draft / never modes, scopable to team / agent / tool
+- PendingApproval flow with inline previews, Block Kit modals (planned), one-click approve from email
+- ApprovalRule auto-matching — "auto-approve LinkedIn posts under 3/day" without human review
+- AuditLog on every tool call, secret fetch, decision, with `acting_user_id` for human-of-record
+- Per-agent encrypted credentials + `AgentCredentialGrant` ACL with `secrets.get` MCP tool
+
+**Agent surface**
+- Skills marketplace — fork, publish, install across orgs, multi-file CodeMirror editor
+- Skill self-authoring — agents can compose new `SKILL.md` bundles and install them on themselves or teammates via MCP tools
+- Knowledge base — per-agent + org-shared SQLite vector stores with `@huggingface/transformers` embeddings, URL ingest, PDF extraction fallback chain
+- Memory consolidation — Haiku-summarized `MEMORY.md` that survives restarts
+- Task system — `create_task`, `assign_to_role`, multi-agent delegation, report-back routing
+- Scheduling — `scheduled_work` table + BullMQ + work-scheduler with `next_run_at` precomputed for Rails wake-sweep
+- Integration search — RAG over the Composio catalog so the agent finds the right tool without us pre-loading 250+ servers
+- `propose_connection` — agents can ask the user to connect a service mid-conversation with an inline Connect card
+
+**Control plane (Rails)**
+- Multi-tenant on `acts_as_tenant` with PrefixedIds (`agt_…`, `tsk_…`, `sch_…`) — public IDs that don't leak DB row counts
+- Agent edit UI — identity, personality, instructions, signature; TipTap WYSIWYG with template-variable highlights
+- Run tracer — span tree across agents (delegation), token + cost breakdown, replayable transcripts
+- BYO domain auto-config — Route 53 / Cloudflare zone integration, apex-domain warning, SES region probe
+- Domain migration on switch — rename addresses to new domain + EngineSync each affected agent
+
+That's ~30k LoC of original code on top of the SDK. We use the SDK the way you'd use Redis: a great piece, but you still have to build everything around it.
+
+---
+
 ## Repo layout
 
 ```
@@ -148,7 +195,7 @@ Manual triggers: both workflows have `workflow_dispatch` in the Actions tab.
 | Web framework | Rails 8 + Inertia.js + React 19 | Server-driven router; no API duplication; speed of Rails generators with React DX |
 | ORM | Active Record + Postgres 16 | acts_as_tenant + PrefixedIds for multi-org safety |
 | Background jobs | Sidekiq + sidekiq-cron | Wake sweeps, schedule rolls, OAuth refreshes |
-| Agent runtime | Bun + Claude Agent SDK | Fast cold-start, native TypeScript, first-class MCP tool support |
+| Agent inner loop | Claude Agent SDK on Bun | Fast cold-start TypeScript runtime; the SDK handles model invocation + tool dispatch — everything *around* the loop (channels, policy, scheduling, multi-agent, persistence) is ours |
 | Agent hosting | Fly Machines (per-agent VM) | Auto-start on inbound, /data volume for memory, 25+ regions |
 | Queues | BullMQ on Redis | Delayed jobs, cron, retries for agent inbox |
 | Integrations | Composio + custom OAuth | 250+ apps via Composio, native Slack channel app, SES email |
