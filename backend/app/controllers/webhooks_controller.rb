@@ -80,6 +80,15 @@ class WebhooksController < ApplicationController
     # Skip bot echoes (our own outbound) + non-text events.
     return head :ok if event["bot_id"].present?
     return head :ok unless %w[message app_mention].include?(event["type"])
+    # Skip Slack's system subtypes — message_changed (from our own chat.update
+    # on Block Kit cards), message_deleted, channel_join, etc. We only want
+    # genuine new messages from humans. Without this filter, every approval
+    # card edit fires a 'message' event with empty text and the agent
+    # replies 'Didn't catch a message there.'
+    return head :ok if event["subtype"].present? && event["subtype"] != "file_share"
+    # Empty text + no attachments = not a real message (covers edge cases
+    # where Slack sends a stub event with no usable payload).
+    return head :ok if event["text"].to_s.strip.empty? && event["files"].blank?
 
     team_id     = parsed["team_id"]
     channel_id  = event["channel"]
