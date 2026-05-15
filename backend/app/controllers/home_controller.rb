@@ -185,10 +185,15 @@ class HomeController < ApplicationController
       blurb: "Contract gauntlet, GDPR drudgery, security questionnaires. AI shines here.",
       tone: "indigo",
       roles: [
-        { name: "Wes",  role: "Contract reviewer",   outcome: "Reads every incoming contract, flags off-standard terms, suggests redlines.", skills: %w[contract-redline standard-check escalation], integrations: %w[docusign ironclad slack] },
-        { name: "Nix",  role: "DPA responder",       outcome: "Handles data-processing-agreement requests from customers. Pre-fills your template.", skills: %w[dpa-template gap-check redline], integrations: %w[notion docusign gmail] },
-        { name: "Sage", role: "Security questionnaire", outcome: "Fills out customer security questionnaires from your knowledge base in hours, not days.", skills: %w[questionnaire-answer kb-lookup gap-flag], integrations: %w[vanta notion gmail] },
-        { name: "Ant",  role: "GDPR DSAR handler",   outcome: "Processes data-subject-access requests on schedule. Compiles + reviews exports.", skills: %w[dsar-intake export-compile review], integrations: %w[gmail hubspot slack] }
+        { name: "Wes",   role: "Contract reviewer",        outcome: "Reads every incoming contract, flags off-standard terms, suggests redlines.", skills: %w[contract-redline standard-check escalation], integrations: %w[docusign ironclad slack] },
+        { name: "Nix",   role: "DPA responder",            outcome: "Handles data-processing-agreement requests from customers. Pre-fills your template.", skills: %w[dpa-template gap-check redline], integrations: %w[notion docusign gmail] },
+        { name: "Sage",  role: "Security questionnaire",   outcome: "Fills out customer security questionnaires from your knowledge base in hours, not days.", skills: %w[questionnaire-answer kb-lookup gap-flag], integrations: %w[vanta notion gmail] },
+        { name: "Ant",   role: "GDPR DSAR handler",        outcome: "Processes data-subject-access requests on schedule. Compiles + reviews exports.", skills: %w[dsar-intake export-compile review], integrations: %w[gmail hubspot slack] },
+        { name: "Lex",   role: "Trademark watcher",        outcome: "Monitors USPTO + EUIPO for new filings near your marks, drafts the cease-and-desist or watchnote.", skills: %w[mark-monitor opposition-draft watchnote], integrations: %w[uspto gmail notion] },
+        { name: "Veta",  role: "Employment law triage",    outcome: "Triages HR/legal questions, escalates the high-risk ones, drafts standard responses for the rest.", skills: %w[risk-classify response-draft escalation], integrations: %w[gmail notion slack] },
+        { name: "Roma",  role: "NDA processor",            outcome: "Reads inbound NDAs against your standard, suggests minimum changes, sends for signature.", skills: %w[nda-compare minimum-redline signature-send], integrations: %w[docusign gmail notion] },
+        { name: "Cori",  role: "Cookie & consent watcher", outcome: "Audits your site's cookie banner + privacy policy weekly. Flags drift, drafts copy updates.", skills: %w[banner-audit policy-drift copy-update], integrations: %w[onetrust notion github] },
+        { name: "Mott",  role: "Regulator news monitor",   outcome: "Daily scan of FTC/CPRA/EU AI Act updates that affect your industry. Summary if anything moves.", skills: %w[regulator-monitor relevance-filter exec-summary], integrations: %w[notion gmail rss] }
       ]
     },
     {
@@ -196,10 +201,131 @@ class HomeController < ApplicationController
       blurb: "Built by a medical scribing team — agents that know HIPAA-adjacent work.",
       tone: "cyan",
       roles: [
-        { name: "Hal",   role: "Patient intake",     outcome: "Pre-visit triage form follow-up, history collection, scheduling.", skills: %w[history-collect schedule reminder], integrations: %w[athenaone gmail twilio] },
-        { name: "Indi",  role: "Prior auth",         outcome: "Drafts prior authorization requests, follows up with payers, tracks status.", skills: %w[pa-draft payer-followup status-track], integrations: %w[athenaone gmail fax-api] },
-        { name: "Dot",   role: "Billing coder",      outcome: "Suggests ICD-10 codes from visit notes, flags ambiguities, queues for human review.", skills: %w[icd-coding ambiguity-flag review-queue], integrations: %w[athenaone notion slack] },
-        { name: "Rae",   role: "Patient follow-up",  outcome: "Post-visit check-ins, refill reminders, surveys. Escalates issues to nurses.", skills: %w[check-in refill survey escalation], integrations: %w[twilio gmail athenaone] }
+        { name: "Hal",   role: "Patient intake",         outcome: "Pre-visit triage form follow-up, history collection, scheduling.", skills: %w[history-collect schedule reminder], integrations: %w[athenaone gmail twilio] },
+        { name: "Indi",  role: "Prior auth",             outcome: "Drafts prior authorization requests, follows up with payers, tracks status.", skills: %w[pa-draft payer-followup status-track], integrations: %w[athenaone gmail fax-api] },
+        { name: "Dot",   role: "Billing coder",          outcome: "Suggests ICD-10 codes from visit notes, flags ambiguities, queues for human review.", skills: %w[icd-coding ambiguity-flag review-queue], integrations: %w[athenaone notion slack] },
+        { name: "Rae",   role: "Patient follow-up",      outcome: "Post-visit check-ins, refill reminders, surveys. Escalates issues to nurses.", skills: %w[check-in refill survey escalation], integrations: %w[twilio gmail athenaone] },
+        { name: "Bay",   role: "Scheduling coordinator", outcome: "Fills cancellations from the waitlist, sends reminders, tracks no-show rate by provider.", skills: %w[waitlist-fill reminder-send no-show-track], integrations: %w[athenaone twilio gmail] },
+        { name: "Cal",   role: "Telehealth follow-up",   outcome: "After every virtual visit: sends summary, links labs, schedules the recheck.", skills: %w[summary-write lab-link recheck-schedule], integrations: %w[zoom athenaone gmail] },
+        { name: "Nim",   role: "Claims appeals",         outcome: "When a claim denies, pulls the denial reason, drafts the appeal letter with codes + records.", skills: %w[denial-parse appeal-draft record-attach], integrations: %w[athenaone fax-api notion] },
+        { name: "Sol",   role: "Insurance verifier",     outcome: "Pre-visit insurance + benefits verification; flags out-of-network or expired coverage.", skills: %w[eligibility-check benefit-pull alert], integrations: %w[athenaone availity slack] },
+        { name: "Pip.h", role: "Referral coordinator",   outcome: "Owns the referral loop — sends out, tracks status, chases specialists, closes the loop.", skills: %w[referral-send status-chase loop-close], integrations: %w[athenaone fax-api gmail] }
+      ]
+    },
+
+    {
+      name: "Education & Learning",
+      blurb: "Tutoring, course ops, student success. Every learner gets a 1-on-1.",
+      tone: "indigo",
+      roles: [
+        { name: "Mira.t", role: "Math tutor",              outcome: "1-on-1 problem walkthroughs over chat, builds practice sets at the student's level.", skills: %w[step-by-step practice-gen difficulty-adapt], integrations: %w[google_docs khan slack] },
+        { name: "Rico",   role: "Language coach",          outcome: "Daily 5-min conversation practice in target language, corrects mistakes, tracks streak.", skills: %w[conv-prompt correction-style streak-track], integrations: %w[whatsapp duolingo gmail] },
+        { name: "Echo.l", role: "Essay reviewer",          outcome: "First-pass feedback on student essays — thesis, structure, evidence. Final review stays human.", skills: %w[thesis-check structure-feedback evidence-flag], integrations: %w[google_docs notion canvas] },
+        { name: "Hex.l",  role: "Course producer",         outcome: "Designs syllabus from a topic, generates lesson outlines, builds quizzes per chapter.", skills: %w[syllabus-design lesson-outline quiz-gen], integrations: %w[notion teachable canva] },
+        { name: "Aria",   role: "Student success advisor", outcome: "Watches engagement signals, reaches out to at-risk students with a check-in + study plan.", skills: %w[engagement-watch outreach-tone study-plan], integrations: %w[canvas gmail slack] },
+        { name: "Den",    role: "Grader",                  outcome: "Grades multiple-choice + short-answer with rubric. Flags ambiguous answers for human review.", skills: %w[rubric-grade short-answer-eval flag-queue], integrations: %w[canvas google_classroom notion] },
+        { name: "Brio",   role: "Office hours TA",         outcome: "Answers student questions 24/7 from the course materials. Cites the source slide/chapter.", skills: %w[course-rag citation answer-quality], integrations: %w[canvas slack discord] },
+        { name: "Iz",     role: "Bootcamp onboarding",     outcome: "Cohort kickoff — accounts, intros, kickoff call invites, pre-work tracking.", skills: %w[cohort-setup intro-coffee prework-track], integrations: %w[slack notion google_calendar] }
+      ]
+    },
+
+    {
+      name: "E-commerce & Retail",
+      blurb: "Listings, inventory, customer support, returns. The day-to-day grind of selling things.",
+      tone: "indigo",
+      roles: [
+        { name: "Stock",  role: "Inventory watcher",      outcome: "Watches stock levels, predicts reorder dates from velocity, drafts PO when threshold hits.", skills: %w[demand-forecast reorder-trigger po-draft], integrations: %w[shopify quickbooks slack] },
+        { name: "List",   role: "Listing writer",         outcome: "Writes titles + descriptions + bullets for every new SKU. SEO-tuned, brand-voiced.", skills: %w[title-tune description-write keyword-research], integrations: %w[shopify amazon-seller-central canva] },
+        { name: "Ret",    role: "Returns processor",      outcome: "Reads return requests, validates against policy, drafts the response + refund or denial.", skills: %w[policy-check refund-draft denial-tone], integrations: %w[shopify gorgias stripe] },
+        { name: "Ord",    role: "Order rescuer",          outcome: "Detects stuck or failed orders (payment, address, fraud flag), drafts the fix-it email.", skills: %w[order-anomaly fix-draft fraud-flag], integrations: %w[shopify stripe gmail] },
+        { name: "Pric",   role: "Price optimizer",        outcome: "Watches competitor prices weekly, suggests adjustments by product, ships them on approval.", skills: %w[competitor-scrape elasticity-est price-adjust], integrations: %w[shopify prisync slack] },
+        { name: "Pho",    role: "Product photo editor",   outcome: "Background-removes + standardizes every uploaded product photo to brand template.", skills: %w[bg-remove crop-standardize template-apply], integrations: %w[shopify photoroom canva] },
+        { name: "Ship",   role: "Shipping triage",        outcome: "Tracks every shipment, predicts late ones, proactively notifies the customer + offers options.", skills: %w[delivery-predict proactive-notify option-offer], integrations: %w[shipstation gorgias gmail] },
+        { name: "Win.r",  role: "Wholesale outreach",     outcome: "Researches retailers in your category, drafts the outreach, books wholesale meetings.", skills: %w[retailer-research outreach-tone meeting-book], integrations: %w[linkedin gmail hubspot] },
+        { name: "Pin",    role: "Marketplace ops",        outcome: "Cross-lists across Amazon/eBay/Etsy, keeps inventory + prices in sync, watches review velocity.", skills: %w[cross-list sync-watch review-watch], integrations: %w[shopify amazon-seller-central etsy] },
+        { name: "Box",    role: "Subscription manager",   outcome: "Owns the subscription lifecycle — failed payments, skip requests, churn saves, win-backs.", skills: %w[dunning skip-flow churn-save winback], integrations: %w[recharge stripe gorgias] }
+      ]
+    },
+
+    {
+      name: "Real Estate",
+      blurb: "Lead capture, listings, tour scheduling, transaction coordination.",
+      tone: "cyan",
+      roles: [
+        { name: "Casa",  role: "Listing writer",            outcome: "Writes the MLS description + social caption + email blast from photos + property facts.", skills: %w[mls-tone social-caption email-blast], integrations: %w[mls instagram mailchimp] },
+        { name: "Vue",   role: "Tour scheduler",            outcome: "Books showings around your calendar, sends prep + reminder, follows up after.", skills: %w[availability-match prep-send post-tour-followup], integrations: %w[google_calendar twilio showingtime] },
+        { name: "Coa",   role: "Lead nurturer",             outcome: "Drips email + SMS to inbound leads over 30/60/90 days. Hands warm ones to you.", skills: %w[drip-design intent-score handoff], integrations: %w[follow-up-boss twilio gmail] },
+        { name: "Trans", role: "Transaction coordinator",   outcome: "Owns the deal from contract to close — chases docs, books inspections, tracks contingencies.", skills: %w[doc-chase inspection-book contingency-watch], integrations: %w[dotloop docusign gmail] },
+        { name: "Comp",  role: "CMA builder",               outcome: "Pulls comparable sales for a target address, drafts a CMA report with photos + commentary.", skills: %w[comp-pull report-format pricing-recommendation], integrations: %w[mls google_sheets canva] },
+        { name: "Ten",   role: "Tenant screener",           outcome: "Runs background + credit + employment checks, writes the recommendation memo.", skills: %w[background-check credit-pull recommendation-memo], integrations: %w[transunion gmail docusign] }
+      ]
+    },
+
+    {
+      name: "Research & Data",
+      blurb: "Pulling threads, gathering evidence, turning numbers into stories.",
+      tone: "cyan",
+      roles: [
+        { name: "Owl",   role: "Market research analyst",     outcome: "Tells you the TAM, top 5 players, recent funding, and what's changing — in one report.", skills: %w[market-size player-map funding-watch], integrations: %w[crunchbase notion google_search] },
+        { name: "Lab",   role: "Lit review",                  outcome: "Searches academic + industry papers on a topic, summarizes findings, builds the bibliography.", skills: %w[lit-search summary biblio-build], integrations: %w[pubmed google_scholar zotero] },
+        { name: "Stat",  role: "Data analyst",                outcome: "Runs SQL against your warehouse on a question, returns the chart + the one-paragraph answer.", skills: %w[sql-query chart-pick narrative-write], integrations: %w[snowflake metabase slack] },
+        { name: "Bea.d", role: "BI dashboarder",              outcome: "Designs + builds dashboards from a metric spec. Updates them when the spec changes.", skills: %w[dashboard-design metric-spec auto-update], integrations: %w[metabase looker notion] },
+        { name: "Curi",  role: "Survey analyst",              outcome: "Cleans, codes, themes open-text survey responses. Produces a quote-rich exec summary.", skills: %w[response-clean theme-code quote-pull], integrations: %w[typeform google_sheets notion] },
+        { name: "Wiki",  role: "Internal knowledge curator",  outcome: "Watches Slack + Notion + Linear, builds a daily 'what the team learned' digest with links.", skills: %w[multi-source-monitor learning-extract digest-write], integrations: %w[slack notion linear] },
+        { name: "Vert",  role: "Vertical specialist",         outcome: "Stays current on one industry vertical — newsletters, podcasts, conferences. Posts a weekly TL;DR.", skills: %w[source-curate change-detect tldr-write], integrations: %w[rss spotify notion] },
+        { name: "Beam",  role: "Patent / IP scout",           outcome: "Watches USPTO + Google Patents for new filings in your area; flags ones to dig into.", skills: %w[patent-monitor relevance-filter dig-recommend], integrations: %w[uspto google-patents notion] }
+      ]
+    },
+
+    {
+      name: "Finance — extended",
+      blurb: "Beyond AP/AR — fund admin, tax, investing, FP&A.",
+      tone: "cyan",
+      roles: [
+        { name: "Aud",  role: "Audit prep",          outcome: "Builds the year-end audit package — schedules, reconciliations, supporting docs.", skills: %w[schedule-build reconcile doc-pull], integrations: %w[quickbooks google_drive notion] },
+        { name: "Fnd",  role: "Fund admin",          outcome: "LP capital calls, distributions, quarterly NAV statements. Coordinates with the auditor.", skills: %w[capital-call nav-stmt auditor-coord], integrations: %w[carta docusign gmail] },
+        { name: "Mark", role: "M&A scout",           outcome: "Builds + maintains a list of acquisition targets matching your thesis. Weekly diff.", skills: %w[target-research thesis-match diff-report], integrations: %w[crunchbase pitchbook notion] },
+        { name: "Hed",  role: "FP&A budget watcher", outcome: "Watches actuals vs budget by department, flags variances >10%, drafts the explainer.", skills: %w[variance-detect attribution explainer-draft], integrations: %w[quickbooks google_sheets slack] },
+        { name: "Bull", role: "Investing research",  outcome: "Reads 10-Ks + transcripts of your watchlist, surfaces the changes that matter.", skills: %w[10k-read transcript-parse change-detect], integrations: %w[sec-edgar seekingalpha notion] }
+      ]
+    },
+
+    {
+      name: "Marketing — lifecycle",
+      blurb: "Email marketing, segmentation, lifecycle moments. The stuff that drives LTV.",
+      tone: "indigo",
+      roles: [
+        { name: "Pulse", role: "Lifecycle email",       outcome: "Owns the trigger emails — welcome, activation, churn-risk, win-back. Writes them in your voice.", skills: %w[trigger-design copy-voice ab-test], integrations: %w[customer_io mixpanel sendgrid] },
+        { name: "Cell",  role: "Segmentation analyst",  outcome: "Builds + maintains audience segments. Suggests new ones based on behavior clusters you didn't see.", skills: %w[behavior-cluster segment-build refresh], integrations: %w[mixpanel hubspot customer_io] },
+        { name: "Nudge", role: "Onboarding email",      outcome: "Watches user signups, sends activation nudges based on what they have and haven't done.", skills: %w[event-watch nudge-pick timing], integrations: %w[customer_io mixpanel slack] },
+        { name: "Abm",   role: "ABM coordinator",       outcome: "Picks 50 target accounts each quarter. Custom landing pages, ads, outreach per account.", skills: %w[account-pick landing-page-personalize multi-touch], integrations: %w[hubspot mutiny linkedin-ads] },
+        { name: "Anv",   role: "Anniversary + birthday", outcome: "Customer birthdays, signup anniversaries, milestone touches. Small, regular, automated.", skills: %w[date-track copy-personal send-schedule], integrations: %w[customer_io hubspot gmail] }
+      ]
+    },
+
+    {
+      name: "Founder — extended",
+      blurb: "Fundraising, board prep, M&A — the things the CEO does but doesn't want to.",
+      tone: "indigo",
+      roles: [
+        { name: "Pitch",  role: "Investor outreach",   outcome: "Researches investors who match your thesis, drafts the cold intro, tracks responses.", skills: %w[investor-research intro-personalize response-track], integrations: %w[crunchbase gmail notion] },
+        { name: "Deck",   role: "Pitch deck updater",  outcome: "Keeps your investor deck current — pulls latest metrics, updates traction slides, version-controls.", skills: %w[metric-pull slide-update version-track], integrations: %w[google_slides notion docsend] },
+        { name: "Board",  role: "Board prep",          outcome: "Builds the board deck a week before the meeting, gathers prior-meeting action item status.", skills: %w[deck-template action-followup metric-rollup], integrations: %w[google_slides notion gmail] },
+        { name: "Hire.f", role: "Exec recruiter",      outcome: "Sources VP candidates from LinkedIn for your open exec searches. Drafts the personal outreach.", skills: %w[exec-sourcing personalization track], integrations: %w[linkedin gmail notion] },
+        { name: "Lp",     role: "LP relations",        outcome: "Quarterly LP update, response to LP questions, calendar of touch points by tier.", skills: %w[lp-tier update-draft touch-cadence], integrations: %w[gmail docsend notion] }
+      ]
+    },
+
+    {
+      name: "Hospitality & Restaurants",
+      blurb: "Reservations, reviews, staff scheduling, supplier relationships.",
+      tone: "cyan",
+      roles: [
+        { name: "Res",   role: "Reservation manager",  outcome: "Handles inbound reservation requests, optimizes seating, sends pre-visit + post-visit messages.", skills: %w[seating-optimize pre-visit post-visit], integrations: %w[opentable twilio gmail] },
+        { name: "Rev",   role: "Review response",      outcome: "Replies to every Google + Yelp review in your voice. Escalates negatives to the manager first.", skills: %w[review-tone escalation response-draft], integrations: %w[google-my-business yelp slack] },
+        { name: "Shi",   role: "Shift scheduler",      outcome: "Builds weekly shift schedules respecting time-off, certifications, and overtime caps.", skills: %w[shift-optimize cert-check overtime-cap], integrations: %w[7shifts gmail slack] },
+        { name: "Inv.r", role: "Inventory + supplier", outcome: "Tracks par levels, flags reorders, manages supplier relationships, watches invoice prices.", skills: %w[par-watch reorder supplier-coord price-flag], integrations: %w[restaurant365 gmail notion] },
+        { name: "Menu",  role: "Menu engineer",        outcome: "Analyzes item profitability + popularity weekly. Recommends what to feature, retire, or reprice.", skills: %w[item-margin popularity-rank reprice-suggest], integrations: %w[toast google_sheets notion] }
       ]
     }
   ].freeze
