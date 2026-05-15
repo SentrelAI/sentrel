@@ -110,7 +110,15 @@ module AgentProvisioner
             auto_start_machines: true
           } ],
           mounts: [ { volume: volume_id, path: "/data" } ],
-          guest: { cpus: 1, memory_mb: 2048, cpu_kind: "shared" }
+          # 4GB on a shared-cpu-2x. Bun engine alone uses ~500MB; the
+          # @huggingface/transformers tool-embedding model adds ~300MB; +
+          # whatever the agent runs (Node + npm + Puppeteer + Chrome
+          # download for video-render workflows is the big one, ~1.5GB
+          # spike). 2GB was OOM'ing on heavy Bash work — kernel killed
+          # Node at runtime. 4GB gives ~1.5GB headroom for the agent's
+          # own tool calls. 2 CPUs because we now have Bun engine + Node
+          # subprocess + Chrome all competing.
+          guest: { cpus: 2, memory_mb: 4096, cpu_kind: "shared" }
         }
       }
       res = fly_api(:post, "/apps/#{app_name}/machines", body)

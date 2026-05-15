@@ -68,6 +68,9 @@ module AgentMachineOps
 
   # Update the Machine's image reference to the latest tag AND refresh
   # env vars from the current Rails process env. Fly rolls the Machine.
+  # Also pushes the current default guest sizing — so an agent created
+  # before we bumped memory_mb / cpus picks up the new shape on the
+  # next redeploy without a destroy + recreate cycle.
   def redeploy(agent, image: nil)
     app = app_name(agent)
     mid = machine_id(agent) or return operation_failure(agent, :redeploy, "Agent has no machine_id recorded")
@@ -77,10 +80,13 @@ module AgentMachineOps
     cfg = current["config"] || {}
     cfg["image"] = target
     cfg["env"] = AgentProvisioner::FlyBackend.env_for(agent)
+    # Apply current default sizing — keeps existing agents in sync with
+    # whatever agent_provisioner.rb currently provisions for new ones.
+    cfg["guest"] = { "cpus" => 2, "memory_mb" => 4096, "cpu_kind" => "shared" }
 
     fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
     clear_operation_failure(agent)
-    { ok: true, message: "Redeployed #{target}" }
+    { ok: true, message: "Redeployed #{target} (2 CPU · 4 GB)" }
   rescue ApiNotFound
     recover_missing_machine(agent, operation: "redeploy", stale_machine_id: mid)
   rescue => e
