@@ -17,14 +17,7 @@
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
-
-function railsUrl(): string {
-  return (
-    process.env.RAILS_INTERNAL_URL ||
-    process.env.RAILS_API_URL ||
-    "http://localhost:3200"
-  );
-}
+import { railsInternalUrl } from "../host/rails-url.js";
 
 interface SkillsCreatorContext {
   agentId: number;
@@ -71,7 +64,7 @@ export function buildSkillsCreatorMcpServer(ctx: SkillsCreatorContext) {
         };
       }
       try {
-        const res = await fetch(`${railsUrl()}/api/skills`, {
+        const res = await fetch(`${railsInternalUrl()}/api/skills`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Engine-Secret": secret },
           body: JSON.stringify({
@@ -123,7 +116,7 @@ export function buildSkillsCreatorMcpServer(ctx: SkillsCreatorContext) {
         return { content: [{ type: "text", text: "skills.install_on_me: ENGINE_API_SECRET not set" }], isError: true };
       }
       try {
-        const res = await fetch(`${railsUrl()}/api/skills/install_on_agent`, {
+        const res = await fetch(`${railsInternalUrl()}/api/skills/install_on_agent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Engine-Secret": secret },
           body: JSON.stringify({ agent_id: ctx.agentId, slug: args.slug }),

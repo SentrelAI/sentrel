@@ -22,31 +22,7 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
 import { host } from "../host/index.js";
 import { config } from "../config.js";
-
-function publicBaseUrl(): string {
-  // Prefer the public-facing host (set in deploy.yml). Falls back to the
-  // engine→Rails internal URL if WEBHOOK_BASE_URL isn't set. Either gives
-  // an HTTPS URL on prod; both point at the same Rails app.
-  const url =
-    process.env.WEBHOOK_BASE_URL ||
-    process.env.RAILS_PUBLIC_URL ||
-    process.env.RAILS_INTERNAL_URL ||
-    "http://localhost:3200";
-
-  // Defensive: if we're on Fly (prod) and somehow ended up with a localhost
-  // URL — typically because the machine was provisioned before
-  // RAILS_INTERNAL_URL was added to its env — log loudly. The agent will
-  // hand the user a broken link otherwise. Operator fix: hit Reload on
-  // the agent's page to re-push env vars.
-  if (process.env.FLY_APP_NAME && /localhost/.test(url)) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[share-file] WARNING: publicBaseUrl=${url} on Fly machine — env stale. ` +
-      `Run AgentMachineOps.reload(agent) from Rails console to push fresh env.`,
-    );
-  }
-  return url;
-}
+import { railsPublicUrl, isStalePublicUrl } from "../host/rails-url.js";
 
 interface ShareContext {
   agentId: number;
@@ -92,7 +68,14 @@ export function buildShareFileMcpServer(_ctx: ShareContext) {
             const contentType = guessContentType(filename);
 
             const result = await host.uploadBlob(bytes, filename, contentType);
-            const url = `${publicBaseUrl()}/api/blobs/${result.signed_id}`;
+            if (isStalePublicUrl()) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[share-file] WARNING: railsPublicUrl=${railsPublicUrl()} on Fly machine — env stale. ` +
+                `Run AgentMachineOps.reload(agent) from Rails console to push fresh env.`,
+              );
+            }
+            const url = `${railsPublicUrl()}/api/blobs/${result.signed_id}`;
 
             logger.info(`share_file: published ${filename} (${stat.size} bytes) → ${url}`);
 

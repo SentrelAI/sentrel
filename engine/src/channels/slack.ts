@@ -12,14 +12,7 @@
 // to send additional messages or cross-post (e.g. "log this to #ops").
 
 import { logger } from "../logger.js";
-
-function railsUrl(): string {
-  return (
-    process.env.RAILS_INTERNAL_URL ||
-    process.env.RAILS_API_URL ||
-    "http://localhost:3200"
-  );
-}
+import { railsInternalUrl } from "../host/rails-url.js";
 
 interface SlackReplyArgs {
   agentId: number;
@@ -48,7 +41,7 @@ export async function deliverSlackReply(args: SlackReplyArgs): Promise<void> {
   if (args.channel) payload.channel = args.channel;
   if (args.thread_ts) payload.thread_ts = args.thread_ts;
 
-  const res = await fetch(`${railsUrl()}/api/send_slack_message`, {
+  const res = await fetch(`${railsInternalUrl()}/api/send_slack_message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

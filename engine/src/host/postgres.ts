@@ -55,16 +55,7 @@ import type {
   SearchMessagesFilters,
 } from "./host.js";
 
-// Resolve the Rails URL the engine should hit. Prod (Fly machines) sets
-// RAILS_INTERNAL_URL via the provisioner; dev sets RAILS_API_URL. Falls
-// back to localhost so local-runs work out of the box.
-function railsUrl(): string {
-  return (
-    process.env.RAILS_INTERNAL_URL ||
-    process.env.RAILS_API_URL ||
-    "http://localhost:3200"
-  );
-}
+import { railsInternalUrl } from "./rails-url.js";
 
 // First meaningful line of an identity_md — skips blank lines + markdown
 // headings. Trimmed to 180 chars so the team roster injected into the
@@ -964,7 +955,7 @@ export class PostgresHost implements Host {
     filename: string,
     contentType: string,
   ): Promise<BlobUploadResult> {
-    const url = railsUrl();
+    const url = railsInternalUrl();
     const secret = process.env.ENGINE_API_SECRET;
     if (!secret) {
       throw new Error("uploadBlob: ENGINE_API_SECRET not set");
@@ -994,7 +985,7 @@ export class PostgresHost implements Host {
   }
 
   async loadBlob(signedId: string): Promise<{ bytes: Buffer; filename: string; contentType: string }> {
-    const url = railsUrl();
+    const url = railsInternalUrl();
     const secret = process.env.ENGINE_API_SECRET;
     if (!secret) throw new Error("loadBlob: ENGINE_API_SECRET not set");
 
@@ -1019,7 +1010,7 @@ export class PostgresHost implements Host {
   // ── Email sending ──
 
   async sendEmail(payload: Record<string, unknown>): Promise<void> {
-    const url = railsUrl();
+    const url = railsInternalUrl();
     const secret = process.env.ENGINE_API_SECRET;
     if (!secret) throw new Error("sendEmail: ENGINE_API_SECRET not set");
 

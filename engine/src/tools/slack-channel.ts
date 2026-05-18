@@ -10,14 +10,7 @@
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
-
-function railsUrl(): string {
-  return (
-    process.env.RAILS_INTERNAL_URL ||
-    process.env.RAILS_API_URL ||
-    "http://localhost:3200"
-  );
-}
+import { railsInternalUrl } from "../host/rails-url.js";
 
 interface SlackChannelContext {
   agentId: number;
@@ -29,7 +22,7 @@ async function postMessage(args: {
   text: string;
   thread_ts?: string;
 }): Promise<unknown> {
-  const url = `${railsUrl()}/api/send_slack_message`;
+  const url = `${railsInternalUrl()}/api/send_slack_message`;
   const secret = process.env.ENGINE_API_SECRET;
   if (!secret) throw new Error("slack.post: ENGINE_API_SECRET not set");
 

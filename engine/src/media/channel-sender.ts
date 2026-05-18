@@ -1,5 +1,6 @@
 import { host } from "../host/index.js";
 import { logger } from "../logger.js";
+import { railsPublicUrl } from "../host/rails-url.js";
 
 // Sends a media file (audio, image, document) through the appropriate channel API.
 // Called by the send_voice / send_image / send_file MCP tools.
@@ -79,8 +80,7 @@ async function sendViaTelegram(opts: SendMediaOptions): Promise<void> {
 async function sendViaWeb(opts: SendMediaOptions): Promise<void> {
   try {
     const blob = await host.uploadBlob(opts.bytes, opts.filename, opts.contentType);
-    const railsUrl = process.env.RAILS_PUBLIC_URL || process.env.RAILS_API_URL || "http://localhost:3200";
-    const url = `${railsUrl}/api/blobs/${blob.signed_id}`;
+    const url = `${railsPublicUrl()}/api/blobs/${blob.signed_id}`;
 
     // Import gateway to emit inline media to the chat UI
     const { emitMediaAttachment } = await import("../gateway.js");
@@ -116,8 +116,7 @@ async function sendViaWhatsApp(opts: SendMediaOptions): Promise<void> {
   const blob = await host.uploadBlob(opts.bytes, opts.filename, opts.contentType);
 
   // Build a URL Twilio can fetch. In dev with ngrok this works; in prod use S3 URLs.
-  const railsUrl = process.env.RAILS_PUBLIC_URL || process.env.RAILS_API_URL || "http://localhost:3200";
-  const mediaUrl = `${railsUrl}/rails/active_storage/blobs/${blob.signed_id}/${encodeURIComponent(opts.filename)}`;
+  const mediaUrl = `${railsPublicUrl()}/rails/active_storage/blobs/${blob.signed_id}/${encodeURIComponent(opts.filename)}`;
 
   const auth = Buffer.from(`${sid}:${token}`).toString("base64");
   const body = new URLSearchParams({

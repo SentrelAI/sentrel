@@ -29,6 +29,7 @@ import { createActionApproval } from "../security/action-approval.js";
 import { emitActionApproval } from "../gateway.js";
 import { host } from "../host/index.js";
 import type { Origin } from "../channels/origin-delivery.js";
+import { railsInternalUrl } from "../host/rails-url.js";
 
 interface SecretResponse {
   value: string;
@@ -47,14 +48,6 @@ interface SecretResponse {
   base_url?: string | null;
   usage_md?: string | null;
   requires_approval?: boolean;
-}
-
-function railsUrl(): string {
-  return (
-    process.env.RAILS_INTERNAL_URL ||
-    process.env.RAILS_API_URL ||
-    "http://localhost:3200"
-  );
 }
 
 // Per-run in-memory cache so tight loops ("deploy then check status then
@@ -129,7 +122,7 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
 
       let data: SecretResponse;
       try {
-        const res = await fetch(`${railsUrl()}/api/secrets?${params.toString()}`, {
+        const res = await fetch(`${railsInternalUrl()}/api/secrets?${params.toString()}`, {
           headers: { "X-Engine-Secret": secret },
         });
         if (res.status === 403) {
