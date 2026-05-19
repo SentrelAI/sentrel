@@ -248,7 +248,7 @@ const IDENTITY_FILES: IdentityFile[] = [
     icon: FileText,
     field: "identity_md",
     description: "The agent's core identity — who they are, their role, background, and purpose.",
-    placeholder: "I am Alex, an SDR (Sales Development Representative) at ScribeMD. My email is alex@alchemy.scribemd.ai. I help with outreach, lead qualification, and scheduling meetings.",
+    placeholder: "I am Alex, an SDR (Sales Development Representative) at ScribeMD. My email is alex@double.md. I help with outreach, lead qualification, and scheduling meetings.",
   },
   {
     key: "personality",

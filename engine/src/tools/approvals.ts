@@ -94,7 +94,7 @@ function inferRiskTier(
   if (payloadType === "email_draft") {
     // Internal vs external by recipient domain
     const to = String(payload.to ?? "");
-    if (to.includes("@") && !to.endsWith("scribemd.ai") && !to.endsWith("alchemy.ai")) return "medium";
+    if (to.includes("@") && !to.endsWith("double.md") && !to.endsWith("scribemd.ai") && !to.endsWith("alchemy.ai")) return "medium";
     return "low";
   }
   return "medium";

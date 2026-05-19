@@ -16,7 +16,9 @@ servers:
 # SSL via Let's Encrypt. Point DNS A record at the EC2 IP first, then deploy.
 proxy:
   ssl: true
-  host: alchemy.scribemd.ai
+  hosts:
+    - www.double.md
+    - double.md
 
 # GHCR registry.
 registry:
@@ -34,8 +36,8 @@ env:
     AWS_REGION: us-east-1
     DEPLOY_ENV: prod
     AGENT_PROVISIONER: fly
-    WEBHOOK_BASE_URL: https://alchemy.scribemd.ai
-    RAILS_INTERNAL_URL: https://alchemy.scribemd.ai
+    WEBHOOK_BASE_URL: https://www.double.md
+    RAILS_INTERNAL_URL: https://www.double.md
   secret:
     - RAILS_MASTER_KEY
     - DATABASE_URL

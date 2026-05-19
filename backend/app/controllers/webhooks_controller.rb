@@ -298,7 +298,7 @@ class WebhooksController < ApplicationController
       `/alchemy help` — show this
 
       The agent replies in the same channel you typed the command from.
-      To set a default agent, open https://alchemy.scribemd.ai/settings.
+      To set a default agent, open https://www.double.md/settings.
     HELP
   end
 

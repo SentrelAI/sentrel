@@ -4,6 +4,7 @@ class ApplicationController < ActionController::Base
   allow_browser versions: :modern
 
   set_current_tenant_through_filter
+  before_action :redirect_apex_to_www
   before_action :set_tenant
 
   before_action :configure_permitted_parameters, if: :devise_controller?
@@ -25,6 +26,13 @@ class ApplicationController < ActionController::Base
   end
 
   private
+
+  def redirect_apex_to_www
+    return unless Rails.env.production? && request.host == "double.md"
+    redirect_to "https://www.double.md#{request.fullpath}",
+                status: :moved_permanently,
+                allow_other_host: true
+  end
 
   # Lookup a record by either its public prefix_id (agt_..., tsk_..., etc.)
   # or a raw numeric id. Relation-scoped — pass a chain like
