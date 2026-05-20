@@ -13,24 +13,28 @@ class AgentDrafter
 
   Result = Struct.new(:template_slug, :role, :skill_slugs, :capabilities,
                       :provider, :model_id, :name_suggestion, :reasoning,
+                      :identity_md, :personality_md, :instructions_md, :generated,
                       keyword_init: true)
 
   def initialize(description:, tools_preference: "recommend", tools_description: nil,
-                 templates: AgentTemplate.all.to_a, skills: SkillDefinition.all.to_a)
+                 templates: AgentTemplate.all.to_a, skills: SkillDefinition.all.to_a,
+                 generate_fallback: true)
     @description = description.to_s.strip
     @tools_preference = tools_preference.to_s.presence || "recommend"
     @tools_description = tools_description.to_s.strip
     @templates = templates
     @skills = skills
+    @generate_fallback = generate_fallback
   end
 
   def draft
     raw = call_anthropic
     parsed = parse_json(raw)
-    build_result(parsed)
+    result = build_result(parsed)
+    maybe_generate_identity(result)
   rescue => e
     Rails.logger.warn "[AgentDrafter] LLM call failed: #{e.message} — falling back to heuristic"
-    build_result(heuristic_match)
+    maybe_generate_identity(build_result(heuristic_match))
   end
 
   def to_h
@@ -43,7 +47,11 @@ class AgentDrafter
       provider: r.provider,
       model_id: r.model_id,
       name_suggestion: r.name_suggestion,
-      reasoning: r.reasoning
+      reasoning: r.reasoning,
+      identity_md: r.identity_md,
+      personality_md: r.personality_md,
+      instructions_md: r.instructions_md,
+      generated: r.generated,
     }
   end
 
@@ -163,7 +171,43 @@ class AgentDrafter
       model_id: parsed["model_id"].presence || template&.suggested_model || "claude-sonnet-4-6",
       name_suggestion: parsed["name_suggestion"].presence,
       reasoning: parsed["reasoning"].presence,
+      generated: false,
     )
+  end
+
+  # When no existing template fits and `generate_fallback` is on, call the
+  # Forge::TemplateGenerator inline to draft a fresh identity_md /
+  # personality_md / instructions_md from the user's free-text description.
+  # The generated copy is returned in the result; the controller decides
+  # whether to use it (typically: yes, since no template was picked).
+  def maybe_generate_identity(result)
+    return result if result.template_slug.present?
+    return result unless @generate_fallback
+
+    brief = {
+      slug: nil,
+      name: result.name_suggestion.presence || "Custom Agent",
+      role: result.role.presence || "Custom",
+      category: "starter",
+      description: @description,
+      notes: @tools_description.presence,
+    }
+    gen = Forge::TemplateGenerator.new(brief: brief, dry_run: true, available_skills: @skills.map(&:slug)).call
+    return result unless gen.ok?
+
+    t = gen.template
+    result.identity_md     = t.identity_md
+    result.personality_md  = t.personality_md
+    result.instructions_md = t.instructions_md
+    result.role            = (result.role.presence || t.role)
+    result.skill_slugs     = (result.skill_slugs.presence || Array(t.suggested_skill_slugs))
+    result.provider        = (result.provider.presence || t.suggested_provider)
+    result.model_id        = (result.model_id.presence || t.suggested_model)
+    result.generated       = true
+    result
+  rescue => e
+    Rails.logger.warn "[AgentDrafter] identity generation failed: #{e.message}"
+    result
   end
 
   # Tiny keyword-match fallback when the LLM is unreachable. Picks the
