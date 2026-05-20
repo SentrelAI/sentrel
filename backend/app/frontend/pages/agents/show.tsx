@@ -534,7 +534,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
       <Head title={agent.name} />
 
       {missing_integrations.length > 0 && (
-        <MissingIntegrationsCallout integrations={missing_integrations} />
+        <MissingIntegrationsCallout agentId={agent.id} integrations={missing_integrations} />
       )}
 
       {/* ═══ Tabs ═══ */}
@@ -2377,10 +2377,27 @@ function RunDetail({ run }: { run: ScheduledTaskRun }) {
 // straight to /integrations with the toolkit pre-selected via the hash
 // fragment so the user lands directly on the right OAuth button.
 function MissingIntegrationsCallout({
+  agentId,
   integrations,
 }: {
+  agentId: number
   integrations: Array<{ slug: string; label: string; category: string; logo: string | null; description: string | null }>
 }) {
+  const storageKey = `agent:${agentId}:missing-integrations-dismissed`
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return window.localStorage.getItem(storageKey) === "1"
+  })
+
+  if (dismissed) return null
+
+  function dismiss() {
+    setDismissed(true)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, "1")
+    }
+  }
+
   return (
     <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -2393,12 +2410,23 @@ function MissingIntegrationsCallout({
             This agent's skills need these connected before it can use them. The agent will still run without them — it just won't be able to call those tools.
           </p>
         </div>
-        <a
-          href="/integrations"
-          className="rounded-md bg-amber-700 dark:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 dark:hover:bg-amber-500"
-        >
-          Connect now →
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="/integrations"
+            className="rounded-md bg-amber-700 dark:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 dark:hover:bg-amber-500"
+          >
+            Connect now →
+          </a>
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Dismiss"
+            title="Dismiss"
+            className="rounded-md p-1 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+          >
+            <XIcon className="size-4" />
+          </button>
+        </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {integrations.map((i) => (
