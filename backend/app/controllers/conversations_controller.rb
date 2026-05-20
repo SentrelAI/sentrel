@@ -28,7 +28,9 @@ class ConversationsController < ApplicationController
     respond_to do |format|
       format.json do
         render json: {
-          conversation: conversation.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status ]),
+          conversation: conversation.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status ]).merge(
+            channel: messages.last&.channel,
+          ),
           messages: payload_messages
         }
       end

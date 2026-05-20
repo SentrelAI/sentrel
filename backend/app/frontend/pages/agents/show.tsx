@@ -475,21 +475,49 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     if (typeof window === "undefined") return
     const url = new URL(window.location.href)
     if (next === "chat") url.searchParams.delete("tab"); else url.searchParams.set("tab", next)
+    // Leaving inbox → drop the inbox-only deep-link param so the URL
+    // doesn't carry context that no longer matches the visible tab.
+    if (next !== "inbox") url.searchParams.delete("conv")
     window.history.replaceState({}, "", url.toString())
   }
 
-  // Browser back/forward should sync the tab too.
+  const initialSelectedConvId: number | null = (() => {
+    if (typeof window === "undefined") return null
+    const c = new URLSearchParams(window.location.search).get("conv")
+    const n = c ? Number(c) : NaN
+    return Number.isFinite(n) ? n : null
+  })()
+  const [selectedConvId, setSelectedConvId] = useState<number | null>(initialSelectedConvId)
+  const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null)
+
+  // Mirror the selected conversation into the URL so a reload (or a shared
+  // link) lands the user back on the same thread. Cleared automatically by
+  // setSection when the user leaves the inbox tab.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (section === "inbox" && selectedConvId != null) {
+      url.searchParams.set("conv", String(selectedConvId))
+    } else {
+      url.searchParams.delete("conv")
+    }
+    window.history.replaceState({}, "", url.toString())
+  }, [section, selectedConvId])
+
+  // Browser back/forward should sync the tab + selected conv from the URL.
   useEffect(() => {
     if (typeof window === "undefined") return
     const onPop = () => {
-      const t = new URLSearchParams(window.location.search).get("tab") as Section | null
+      const params = new URLSearchParams(window.location.search)
+      const t = params.get("tab") as Section | null
       setSectionState(t && VALID_SECTIONS.includes(t) ? t : "chat")
+      const c = params.get("conv")
+      const n = c ? Number(c) : NaN
+      setSelectedConvId(Number.isFinite(n) ? n : null)
     }
     window.addEventListener("popstate", onPop)
     return () => window.removeEventListener("popstate", onPop)
   }, [])
-  const [selectedConvId, setSelectedConvId] = useState<number | null>(null)
-  const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null)
   const [channelFilter, setChannelFilter] = useState<string>("all")
   const [convMessages, setConvMessages] = useState<MessageItem[]>([])
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -518,11 +546,32 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
       const res = await fetch(`/agents/${agent.id}/conversations/${conv.id}.json`)
       const data = await res.json()
       setConvMessages(data.messages || [])
+      // Enrich the fallback with the server's view of the conversation
+      // (channel, subject, contact info). Critical for deep-links where
+      // we only had a numeric id and no cached summary to seed from.
+      if (data.conversation) {
+        setFallbackConv((prev) => ({ ...(prev || {}), ...data.conversation }))
+      }
     } catch {
       setConvMessages([])
     }
     setLoadingMessages(false)
   }
+
+  // Deep-link bootstrap: if the URL carried `?conv=<id>` on first paint,
+  // load that conversation now. Runs once on mount. Uses the cached
+  // top-20 summary when available; otherwise hands a stub to
+  // selectConversation, which will enrich it from the API response.
+  useEffect(() => {
+    if (initialSelectedConvId == null) return
+    const cached = conversations.find((c) => c.id === initialSelectedConvId)
+    if (cached) {
+      selectConversation(cached)
+    } else {
+      selectConversation({ id: initialSelectedConvId })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const channels = [...new Set(conversations.map((c) => c.channel).filter(Boolean))]
 
