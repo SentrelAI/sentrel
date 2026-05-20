@@ -11,16 +11,20 @@ class ApplicationController < ActionController::Base
   before_action :consume_pending_invitation, if: :user_signed_in?
   before_action :redirect_to_onboarding, if: :user_signed_in?
 
-  # Share current user and org with all Inertia pages. `is_admin` lets the
-  # React sidebar render the admin nav link conditionally without a
-  # second round-trip.
+  # Share current user and org with all Inertia pages.
+  #   is_platform_admin → controls the cross-tenant /admin sidebar link
+  #                       (ScribeMD employees only; checked via email allowlist
+  #                       in User#platform_admin?).
+  #   is_org_admin      → controls in-org admin features (invite, billing,
+  #                       org settings). True for org owners + admins.
   inertia_share do
     {
       auth: {
         user: current_user&.as_json(only: [ :id, :name, :email, :role ]),
         organization: current_tenant&.as_json(only: [ :id, :name, :slug, :onboarding_completed_at ])
       },
-      is_admin: current_user&.admin? || false,
+      is_platform_admin: current_user&.platform_admin? || false,
+      is_org_admin: current_user&.admin? || false,
       flash: {
         success: flash[:notice],
         error: flash[:alert]

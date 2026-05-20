@@ -74,10 +74,12 @@ const controlNavItems: NavItem[] = [
 export function AppSidebar() {
   const { theme, setTheme } = useTheme()
   const { toggleSidebar, open } = useSidebar()
-  const { props } = usePage<{ is_admin?: boolean }>()
-  const isAdmin = props.is_admin === true
+  const { props } = usePage<{ is_platform_admin?: boolean }>()
+  const isPlatformAdmin = props.is_platform_admin === true
 
-  const controlItems: NavItem[] = isAdmin
+  // Cross-tenant /admin link only renders for platform admins (ScribeMD
+  // operators), NOT org owners — see User#platform_admin? for the gate.
+  const controlItems: NavItem[] = isPlatformAdmin
     ? [...controlNavItems, { title: "Admin", href: "/admin/dashboard", icon: Shield }]
     : controlNavItems
 
