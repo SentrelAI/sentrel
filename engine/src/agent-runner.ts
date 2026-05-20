@@ -1301,7 +1301,14 @@ function buildToolProfile(
   const confirmationIntent = /\b(approve|approval|confirm|confirmation|permission|ask me first|ask before|before you|ok to|okay to|should i|would you like|reply yes|yes\/no|send it|publish it|post it|delete it|spend)\b/i.test(text);
 
   const profile: ToolProfile = {
-    recall: Boolean(caps.recall.enabled && (isTask || isScheduled || recallIntent)),
+    // Always include recall when capability is enabled. Earlier we gated this
+    // on a narrow regex ("remember", "previous", "last time", ...) which
+    // missed common phrasings like "summarize the emails I CC'd you on" or
+    // "what came in from the vendor". The cost is ~200 tokens of tool
+    // definition per run; the agent simply doesn't invoke it when not
+    // needed. Far better than silently lacking the ability to find
+    // messages the user can see in their inbox.
+    recall: Boolean(caps.recall.enabled),
     sendMedia: Boolean(caps.send_media.enabled && (isTask || isScheduled || mediaIntent)),
     scheduling: Boolean(caps.scheduling.enabled && (isTask || isScheduled || schedulingIntent)),
     tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent)),

@@ -128,8 +128,15 @@ export function buildSystemPrompt(
     if (caps.recall.enabled) {
       memSection +=
         `\n\n# Tool: search_messages\n` +
-        `Use search_messages({ query?, contact?, channel?, days_back? }) when you need to recall older conversation content.\n` +
-        `Don't call it if the answer is already in your current conversation — only for older information.\n\n` +
+        `Use search_messages({ query?, contact?, channel?, days_back? }) to find ANY message across ALL your conversations — including emails the user CC'd you on, threads you're not currently active in, and old chats. The user's inbox is your inbox.\n` +
+        `\n` +
+        `Examples of when to call it:\n` +
+        `- "summarize the emails from Acme this week" → search_messages({ contact: "acme.com", channel: "email", days_back: 7 })\n` +
+        `- "what did Sarah say about pricing?" → search_messages({ query: "pricing", contact: "Sarah" })\n` +
+        `- "catch me up on the legal thread" → search_messages({ query: "legal" })\n` +
+        `- "any updates from the vendor?" → search_messages({ channel: "email", days_back: 14 })\n` +
+        `\n` +
+        `Don't call it if the answer is already in your current conversation — only for OTHER conversations / threads. But DO call it whenever the user references emails / messages / conversations that aren't in your immediate context.\n\n` +
         `# Tool: search_activity\n` +
         `Use search_activity({ query?, type?, contact?, days_back? }) to recall your past actions:\n` +
         `- type: "email" — emails you sent, failed, or were suppressed\n` +
