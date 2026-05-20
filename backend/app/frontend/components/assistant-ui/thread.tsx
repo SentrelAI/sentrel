@@ -1101,15 +1101,16 @@ const ColdStartAwareDot: FC = () => {
   return <ThinkingEyes />;
 };
 
-// "Agent is thinking" indicator — a tiny line-art computer whose eyes dart
-// around (saccades) and blink, hinting that the model is reading / processing.
-// Stroke uses currentColor so it inherits the surrounding text color.
+// "Agent is thinking" indicator — a tiny line-art computer whose eyes look
+// up and around toward the sender header (rendered right above this node),
+// with occasional blinks. Stroke uses currentColor so the tone follows the
+// surrounding muted text.
 const ThinkingEyes: FC = () => (
   <div className="flex items-center py-1" aria-label="Agent is thinking">
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="105 90 190 115"
-      className="h-6 w-auto text-foreground/70"
+      className="h-6 w-auto text-muted-foreground/55"
       aria-hidden="true"
     >
       <style
@@ -1122,21 +1123,23 @@ const ThinkingEyes: FC = () => (
               stroke-linejoin: round;
               fill: none;
             }
-            .aui-thinking-eyes-group { animation: aui-thinking-eyes-saccade 4.5s ease-in-out infinite; }
-            .aui-thinking-eye-left { transform-origin: 165px 137px; animation: aui-thinking-eye-blink 4.5s infinite; }
-            .aui-thinking-eye-right { transform-origin: 190px 137px; animation: aui-thinking-eye-blink 4.5s infinite; }
-            @keyframes aui-thinking-eyes-saccade {
-              0%, 10% { transform: translateX(0); }
-              13%, 25% { transform: translateX(45px); }
-              28%, 40% { transform: translateX(10px); }
-              43%, 55% { transform: translateX(55px); }
-              58%, 70% { transform: translateX(-5px); }
-              73%, 85% { transform: translateX(25px); }
-              88%, 100% { transform: translateX(0); }
+            .aui-thinking-eyes-group { animation: aui-thinking-eyes-gaze 5s ease-in-out infinite; }
+            .aui-thinking-eye-left { transform-origin: 165px 137px; animation: aui-thinking-eye-blink 5s infinite; }
+            .aui-thinking-eye-right { transform-origin: 190px 137px; animation: aui-thinking-eye-blink 5s infinite; }
+            /* Saccades biased upward + left so the gaze visibly tracks the
+               sender header line that sits directly above the indicator.
+               Y values are negative because positive Y is down in SVG. */
+            @keyframes aui-thinking-eyes-gaze {
+              0%, 8%   { transform: translate(0px, 0px); }
+              14%, 26% { transform: translate(-22px, -28px); }
+              32%, 44% { transform: translate(12px, -32px); }
+              50%, 62% { transform: translate(-10px, -24px); }
+              68%, 80% { transform: translate(20px, -18px); }
+              86%, 100% { transform: translate(0px, 0px); }
             }
             @keyframes aui-thinking-eye-blink {
-              0%, 26%, 30%, 34%, 78%, 82%, 100% { transform: scaleY(1); }
-              28%, 32%, 80% { transform: scaleY(0.1); }
+              0%, 28%, 32%, 36%, 78%, 82%, 100% { transform: scaleY(1); }
+              30%, 34%, 80% { transform: scaleY(0.1); }
             }
           `,
         }}

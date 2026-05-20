@@ -992,15 +992,44 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                         const senderName = (msg as { sender_name?: string | null }).sender_name
                         const senderEmail = (msg as { sender_email?: string | null }).sender_email
                         const displayName = senderName || (isOut ? agent.name : (conv.contact_name || conv.contact_email || "Contact"))
+                        // "Thought" rows = anything in the thread that isn't an
+                        // actual sent/received email (agent internal notes, tool
+                        // narration, system messages). Render as a subtle inline
+                        // note so the eye scans straight down the actual email
+                        // exchange instead of mixing them in as peer cards.
+                        const isThought = isEmailThread && msg.channel !== "email"
+                        if (isThought) {
+                          return (
+                            <div
+                              key={msg.id}
+                              className="ml-3 border-l-2 border-border/60 pl-3 py-1 text-[11px] italic text-muted-foreground/80 whitespace-pre-wrap leading-snug"
+                            >
+                              <span className="not-italic font-medium text-muted-foreground/70 mr-1.5">
+                                {displayName} ·
+                              </span>
+                              {msg.content}
+                            </div>
+                          )
+                        }
                         return (
-                          <div key={msg.id} className={`rounded-lg border border-border p-3 ${isOut ? "bg-card" : "bg-muted/30"}`}>
-                            <div className="flex items-center justify-between mb-1">
+                          <div
+                            key={msg.id}
+                            className={`rounded-lg border p-3 shadow-sm ${
+                              isOut
+                                ? "border-blue-500/20 bg-blue-500/[0.04]"
+                                : "border-border bg-card"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
                               <div className="flex items-center gap-1.5">
                                 {isOut ? <ArrowUpRight className="size-3 text-blue-500" /> : <ArrowDownLeft className="size-3 text-emerald-500" />}
                                 <span className="font-medium text-xs">{displayName}</span>
                                 {senderEmail && senderEmail !== displayName && (
                                   <span className="text-[10px] text-muted-foreground truncate max-w-[16rem]">{senderEmail}</span>
                                 )}
+                                <span className="rounded-sm border border-border/60 bg-background px-1 py-px text-[9px] uppercase tracking-wide text-muted-foreground/70">
+                                  {isOut ? "Sent" : "Received"}
+                                </span>
                               </div>
                               <span className="text-[10px] text-muted-foreground">{new Date(msg.created_at).toLocaleString()}</span>
                             </div>
