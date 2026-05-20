@@ -38,19 +38,25 @@ module Admin
     end
 
     # AI Template Creator: step 1 — render the describe-your-template form.
-    # No preview yet. The user fills the form, POSTs to #draft, and gets
-    # the same page rendered with the preview payload populated.
+    # If preview_token is present, also include the current job status
+    # (so the React side can poll this same URL via Inertia partial reload).
     def new
+      preview_state = nil
+      if params[:preview_token].present?
+        preview_state = TemplatePreviewJob.fetch(params[:preview_token])
+      end
+
       render inertia: "admin/templates/new", props: {
         categories: AgentTemplate::CATEGORIES,
-        preview: nil,
-        form: { description: "", name: "", role: "", category: "" },
+        form: extract_form_params,
+        preview_token: params[:preview_token],
+        preview_state: preview_state, # nil | { status:, preview?:, error? }
       }
     end
 
-    # AI Template Creator: step 2 — run TemplatePreview and re-render
-    # the same page with the proposed template + skill resolution table
-    # + quality score. No DB writes.
+    # AI Template Creator: step 2 — kick the preview job and redirect
+    # back to #new with the token in the URL. The React side polls
+    # via Inertia partial reload until preview_state.status == "done".
     def draft
       form = params.permit(:description, :name, :role, :category).to_h
       brief = {
@@ -61,13 +67,16 @@ module Admin
         description: form["description"].to_s,
       }.compact
 
-      preview = Forge::TemplatePreview.new(brief: brief).call
+      token = SecureRandom.hex(16)
+      Rails.cache.write(TemplatePreviewJob.cache_key(token),
+                        { "status" => "queued", "queued_at" => Time.current.iso8601 },
+                        expires_in: 1.hour)
+      TemplatePreviewJob.perform_later(token: token, brief: brief)
 
-      render inertia: "admin/templates/new", props: {
-        categories: AgentTemplate::CATEGORIES,
-        form: form,
-        preview: serialize_preview(preview),
-      }
+      # Stash the form values in the URL so the page renders with the
+      # same brief filled in while the job runs.
+      query = form.merge(preview_token: token).reject { |_, v| v.to_s.empty? }
+      redirect_to new_admin_template_path(query)
     end
 
     # AI Template Creator: step 3 — commit the (possibly edited) preview
@@ -96,15 +105,12 @@ module Admin
 
     private
 
-    def serialize_preview(preview)
-      return { error: preview.error } unless preview.ok?
+    def extract_form_params
       {
-        template_attrs: preview.template_attrs,
-        requirements: preview.requirements,
-        resolved_skills: preview.resolved_skills,
-        unresolved_capabilities: preview.unresolved_capabilities,
-        lint: preview.lint,
-        duplicates: preview.duplicates,
+        description: params[:description].to_s,
+        name:        params[:name].to_s,
+        role:        params[:role].to_s,
+        category:    params[:category].to_s,
       }
     end
 

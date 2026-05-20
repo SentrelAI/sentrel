@@ -31,8 +31,8 @@ interface ResolvedSkill {
   composio_toolkit: string | null
 }
 
-interface Preview {
-  template_attrs?: {
+interface PreviewPayload {
+  template_attrs: {
     slug: string
     name: string
     role: string
@@ -48,27 +48,36 @@ interface Preview {
     suggested_model: string
     suggested_provider: string
   }
-  requirements?: Array<{ capability: string; query: string; priority: string; composio_toolkit: string | null }>
-  resolved_skills?: ResolvedSkill[]
-  unresolved_capabilities?: string[]
-  lint?: { pass: boolean; score: number; warnings: Array<{ rule: string; message: string }> }
-  duplicates?: Array<{ slug: string; name: string; score: number }>
+  requirements: Array<{ capability: string; query: string; priority: string; composio_toolkit: string | null }>
+  resolved_skills: ResolvedSkill[]
+  unresolved_capabilities: string[]
+  lint: { pass: boolean; score: number; warnings: Array<{ rule: string; message: string }> }
+  duplicates: Array<{ slug: string; name: string; score: number }>
+}
+
+interface PreviewState {
+  status: "queued" | "running" | "done" | "errored"
+  preview?: PreviewPayload
   error?: string
 }
 
 interface Props {
   categories: string[]
   form: { description: string; name: string; role: string; category: string }
-  preview: Preview | null
+  preview_token: string | null
+  preview_state: PreviewState | null
 }
 
 // ── Page ───────────────────────────────────────────────────────────
 
-export default function AdminTemplatesNew({ categories, form: initialForm, preview }: Props) {
+export default function AdminTemplatesNew({ categories, form: initialForm, preview_token, preview_state }: Props) {
   const { props } = usePage()
   const flash = (props as { flash?: { error?: string } }).flash || {}
 
-  const [drafting, setDrafting] = useState(false)
+  const preview = preview_state?.preview
+  const isJobRunning = preview_token != null && preview_state != null &&
+    (preview_state.status === "queued" || preview_state.status === "running")
+
   const [draftStage, setDraftStage] = useState<0 | 1 | 2 | 3>(0)
 
   // Form for step 1 (the brief).
@@ -78,6 +87,22 @@ export default function AdminTemplatesNew({ categories, form: initialForm, previ
     role: initialForm.role,
     category: initialForm.category,
   })
+
+  // Poll while the background job is in flight. Inertia reload with
+  // only:["preview_state"] keeps the form state intact.
+  useEffect(() => {
+    if (!isJobRunning) {
+      setDraftStage(0)
+      return
+    }
+    setDraftStage(1)
+    const t1 = setTimeout(() => setDraftStage(2), 1500)
+    const t2 = setTimeout(() => setDraftStage(3), 4500)
+    const interval = setInterval(() => {
+      router.reload({ only: ["preview_state"], preserveScroll: true })
+    }, 2000)
+    return () => { clearInterval(interval); clearTimeout(t1); clearTimeout(t2) }
+  }, [isJobRunning])
 
   // Local copy of the preview's editable fields. Updated by the user
   // clicking Edit on a markdown card. Synced when a fresh preview comes
@@ -101,16 +126,8 @@ export default function AdminTemplatesNew({ categories, form: initialForm, previ
 
   function submitDraft(e?: React.FormEvent) {
     if (e) e.preventDefault()
-    setDrafting(true)
-    setDraftStage(1)
-    const t1 = setTimeout(() => setDraftStage(2), 1500)
-    const t2 = setTimeout(() => setDraftStage(3), 4500)
     draftForm.post("/admin/templates/draft", {
       preserveScroll: true,
-      onFinish: () => {
-        clearTimeout(t1); clearTimeout(t2)
-        setDrafting(false); setDraftStage(0)
-      },
     })
   }
 
@@ -208,17 +225,30 @@ export default function AdminTemplatesNew({ categories, form: initialForm, previ
               <ArrowLeft className="size-3.5 mr-1.5" />
               Back to templates
             </Button>
-            <Button type="submit" disabled={drafting || !draftForm.data.description.trim()}>
+            <Button type="submit" disabled={isJobRunning || !draftForm.data.description.trim()}>
               <Sparkles className="size-3.5 mr-1.5" />
-              {drafting ? draftStageLabel(draftStage) : preview ? "Regenerate" : "Draft this template"}
+              {isJobRunning ? draftStageLabel(draftStage) : preview ? "Regenerate" : "Draft this template"}
             </Button>
           </div>
         </form>
 
-        {/* STEP 2: preview (only when present) */}
-        {preview?.error && (
+        {/* In-flight progress card */}
+        {isJobRunning && (
+          <div className="rounded-md border border-purple-300 bg-purple-50 dark:bg-purple-950/30 p-4 text-sm">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="size-4 animate-spin text-purple-600" />
+              <span className="font-semibold">{draftStageLabel(draftStage)}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground ml-6">
+              Running in the background. This takes 30-60s — page polls every 2s.
+              You can leave the tab open or come back later (the URL has the job token).
+            </p>
+          </div>
+        )}
+
+        {preview_state?.status === "errored" && (
           <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-300">
-            <strong>Preview failed:</strong> {preview.error}
+            <strong>Preview failed:</strong> {preview_state.error || "Unknown error"}
           </div>
         )}
 
@@ -262,8 +292,8 @@ export default function AdminTemplatesNew({ categories, form: initialForm, previ
                 <Button variant="ghost" onClick={backToEditPrompt}>
                   <Edit2 className="size-3.5 mr-1.5" /> Edit prompt
                 </Button>
-                <Button variant="ghost" onClick={submitDraft} disabled={drafting}>
-                  <RefreshCw className={`size-3.5 mr-1.5 ${drafting ? "animate-spin" : ""}`} /> Regenerate
+                <Button variant="ghost" onClick={submitDraft} disabled={isJobRunning}>
+                  <RefreshCw className={`size-3.5 mr-1.5 ${isJobRunning ? "animate-spin" : ""}`} /> Regenerate
                 </Button>
                 <Button onClick={commit}>
                   <Save className="size-3.5 mr-1.5" /> Create template
