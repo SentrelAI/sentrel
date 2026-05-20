@@ -29,7 +29,7 @@ module Admin
       [
         env_row("ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "Required — Forge generation"),
         env_row("SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "skills.sh marketplace (8420 skills)"),
-        env_row("GITHUB_TOKEN",      ENV["GITHUB_TOKEN"],      false, "GitHub Search source for SKILL.md scraping"),
+        env_row("GH_TOKEN",      ENV["GH_TOKEN"],      false, "GitHub Search source for SKILL.md scraping"),
         env_row("COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "Live Composio toolkit catalog refresh"),
       ]
     end

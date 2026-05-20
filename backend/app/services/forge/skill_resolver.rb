@@ -7,7 +7,7 @@ module Forge
   #   2. skills.sh — paid marketplace, 8420 skills with multi-file packages.
   #      Skipped if SKILLS_SH_API_KEY is unset.
   #   3. GitHub Search — `q=<query> filename:SKILL.md`. Self-service auth via
-  #      GITHUB_TOKEN (PAT, 30s to create). 60/hr unauth, 5000/hr with PAT.
+  #      GH_TOKEN (PAT, 30s to create). 60/hr unauth, 5000/hr with PAT.
   #   4. SkillGenerator — Claude writes one fresh from the requirement.
   #
   # Process-wide cache so 30 templates that all need "send Gmail" only

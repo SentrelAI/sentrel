@@ -1,7 +1,7 @@
 module Forge
   # No-API-key skill discovery via the public GitHub API.
   #
-  # GitHub doesn't need anyone to issue you a key — set GITHUB_TOKEN to a
+  # GitHub doesn't need anyone to issue you a key — set GH_TOKEN to a
   # personal access token (github.com/settings/tokens → "Generate new
   # token (classic)" → only the `public_repo` scope) to raise the rate
   # limit from 60/hr to 5000/hr. Without a token, unauthenticated reads
@@ -28,15 +28,15 @@ module Forge
       @token_check_mutex.synchronize do
         return @token_present if @token_check_done
         @token_check_done = true
-        @token_present = ENV["GITHUB_TOKEN"].present?
+        @token_present = ENV["GH_TOKEN"].present?
         unless @token_present
           Rails.logger.warn "[Forge] " + ("─" * 76)
-          Rails.logger.warn "[Forge] GITHUB_TOKEN not set — GitHub Search source DISABLED."
+          Rails.logger.warn "[Forge] GH_TOKEN not set — GitHub Search source DISABLED."
           Rails.logger.warn "[Forge] GitHub's /search/code endpoint requires auth (returns 422 without it)."
           Rails.logger.warn "[Forge] Skills will fall through from GitHub → SkillGenerator (slower + costs"
           Rails.logger.warn "[Forge]   more in Claude tokens). Fix: create a PAT at"
           Rails.logger.warn "[Forge]   github.com/settings/tokens (Classic, public_repo scope), set as"
-          Rails.logger.warn "[Forge]   GITHUB_TOKEN in your env. Then re-run."
+          Rails.logger.warn "[Forge]   GH_TOKEN in your env. Then re-run."
           Rails.logger.warn "[Forge] " + ("─" * 76)
         end
         @token_present
@@ -119,7 +119,7 @@ module Forge
       req["Accept"] = "application/vnd.github+json"
       req["X-GitHub-Api-Version"] = "2022-11-28"
       req["User-Agent"] = "alchemy-forge"
-      if (token = ENV["GITHUB_TOKEN"]).present?
+      if (token = ENV["GH_TOKEN"]).present?
         req["Authorization"] = "Bearer #{token}"
       end
       res = http.request(req)
