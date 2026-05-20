@@ -68,10 +68,19 @@ module Forge
         - No marketing. No "powerful", "robust", "seamless". Operator manual.
         - 80–250 lines. Long enough to be useful, short enough to fit context.
 
+        Many skills benefit from supporting files — a small script, a JSON
+        schema, a worked example. Include them in `additional_files` (up to
+        3, optional, paths relative to the skill bundle root). For example
+        a Salesforce skill might ship a `schemas/lead-create.json` showing
+        the expected payload shape. A PDF generation skill might ship a
+        `scripts/render.py` reference implementation. Most skills don't
+        need any — only include them when they genuinely help the agent.
+
         Output: a SINGLE JSON object with these keys:
           slug, name, description, category (one of: common, communication, content, engineering, finance, productivity, sales),
           icon (lowercase lucide-react name), requires_connections (array of Composio service slugs the agent must connect first, may be []),
-          required_capabilities (array of capability keys this skill needs enabled), skill_md (the full markdown body, NOT including frontmatter).
+          required_capabilities (array of capability keys this skill needs enabled), skill_md (the full markdown body, NOT including frontmatter),
+          additional_files (optional array of {path, content} — may be []).
 
         Return ONLY the JSON, no fences, no prose.
       SYS
@@ -97,8 +106,14 @@ module Forge
           "icon": "lowercase-lucide-name",
           "requires_connections": ["composio-service-slug"],
           "required_capabilities": [],
-          "skill_md": "# Skill Name\\n\\nSummary...\\n\\n## When to Use\\n..."
+          "skill_md": "# Skill Name\\n\\nSummary...\\n\\n## When to Use\\n...",
+          "additional_files": [
+            { "path": "scripts/parse.py", "content": "..." },
+            { "path": "schemas/request.json", "content": "..." }
+          ]
         }
+
+        `additional_files` is OPTIONAL — most skills should leave it as []. Include only when a supporting file genuinely helps the agent (a real code template, a schema the agent will fill in, a worked example payload).
 
         Return JSON only.
       PROMPT
@@ -113,6 +128,18 @@ module Forge
       parsed["icon"] = (parsed["icon"].presence || "tool").to_s.downcase
       parsed["requires_connections"] = Array(parsed["requires_connections"]).map(&:to_s)
       parsed["required_capabilities"] = Array(parsed["required_capabilities"]).map(&:to_s)
+      # Optional supporting files. Cap at 3 to keep skills lean. Sanitize
+      # paths so we never write outside the skill bundle.
+      raw_files = Array(parsed["additional_files"]).first(3)
+      parsed["additional_files"] = raw_files.map do |f|
+        path = f.is_a?(Hash) ? f["path"].to_s : ""
+        content = f.is_a?(Hash) ? f["content"].to_s : ""
+        next nil if path.empty? || content.empty?
+        next nil if path.include?("..") # no traversal
+        path = path.gsub(/\A\/+/, "")    # strip leading slashes
+        next nil if path.casecmp?("SKILL.md") # SKILL.md handled separately
+        { "path" => path, "content" => content }
+      end.compact
       parsed
     end
 
@@ -151,6 +178,21 @@ module Forge
       primary = record.skill_files.find_or_initialize_by(path: "SKILL.md")
       primary.assign_attributes(content: parsed["skill_md"], file_type: "md", position: 0)
       primary.save!
+
+      # Persist any supporting files. Position starts at 1 since SKILL.md
+      # occupies 0. Existing files with the same path are updated in place;
+      # files no longer listed are dropped so re-generating cleans up
+      # stale supporting files.
+      kept_paths = ["SKILL.md"]
+      Array(parsed["additional_files"]).each_with_index do |f, idx|
+        kept_paths << f["path"]
+        sf = record.skill_files.find_or_initialize_by(path: f["path"])
+        ext = File.extname(f["path"]).delete(".").presence || "txt"
+        sf.assign_attributes(content: f["content"], file_type: ext, position: idx + 1)
+        sf.save!
+      end
+      record.skill_files.where.not(path: kept_paths).destroy_all
+
       record
     end
   end
