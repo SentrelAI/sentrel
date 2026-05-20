@@ -20,7 +20,12 @@ module Forge
 
     DEFAULT_MODEL = "claude-sonnet-4-6"
     DEFAULT_MAX_TOKENS = 4096
-    ANTHROPIC_VERSION = "2024-09-15".freeze
+    # Anthropic's stable /v1/messages version. They DO publish dated versions
+    # but `2023-06-01` remains the canonical one — any other value the model
+    # router doesn't know returns 400. Earlier this constant said
+    # "2024-09-15" which silently broke every Forge Claude call until the
+    # analyzer's rescue swallowed it.
+    ANTHROPIC_VERSION = "2023-06-01".freeze
 
     MAX_ATTEMPTS = 3
     MAX_RETRY_AFTER = 30 # seconds — cap whatever the server asks

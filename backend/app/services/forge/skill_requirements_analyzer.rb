@@ -42,8 +42,12 @@ module Forge
       parsed = AnthropicClient.parse_json(raw)
       Array(parsed["requirements"]).first(@max_count).map { |r| build_requirement(r) }.compact
     rescue => e
-      Rails.logger.warn "[SkillRequirementsAnalyzer] #{@brief[:slug] || @brief[:name]} failed: #{e.message}"
-      []
+      # Log loudly + RAISE so TemplatePack surfaces a meaningful error in
+      # the Bootstrap summary instead of "requirements analyzer returned
+      # nothing" which buries the actual cause (auth failure, 400 from
+      # API, version mismatch, etc.).
+      Rails.logger.error "[SkillRequirementsAnalyzer] #{@brief[:slug] || @brief[:name]} failed: #{e.class}: #{e.message}"
+      raise
     end
 
     private
