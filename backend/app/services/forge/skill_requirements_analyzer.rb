@@ -11,7 +11,12 @@ module Forge
   # constrained to a known set of real slugs before TemplateGenerator
   # writes its suggested_skill_slugs.
   class SkillRequirementsAnalyzer
-    Requirement = Struct.new(:capability, :query, :priority, :rationale, keyword_init: true)
+    Requirement = Struct.new(:capability, :query, :priority, :rationale, :composio_toolkit, keyword_init: true)
+
+    # Well-known Composio toolkit slugs the analyzer can map capabilities to.
+    # Pulled from ComposioSupported::CATEGORY_MAP (the curated list) so we
+    # stay in sync with what the /integrations page surfaces.
+    COMMON_TOOLKITS = ComposioSupported::CATEGORY_MAP.keys.freeze
 
     def initialize(brief:, model: AnthropicClient::DEFAULT_MODEL, max_count: 10)
       @brief = brief.is_a?(Hash) ? brief : { description: brief.to_s }
@@ -33,11 +38,14 @@ module Forge
     def build_requirement(r)
       capability = r["capability"].to_s.strip
       return nil if capability.empty?
+      toolkit = r["composio_toolkit"].to_s.downcase.presence
+      toolkit = nil unless toolkit.nil? || COMMON_TOOLKITS.include?(toolkit)
       Requirement.new(
         capability: capability,
         query: (r["query"].presence || capability.downcase.tr("^a-z0-9 ", " ").squeeze(" ")).strip,
         priority: %w[required nice_to_have].include?(r["priority"].to_s) ? r["priority"] : "required",
         rationale: r["rationale"].to_s,
+        composio_toolkit: toolkit,
       )
     end
 
@@ -52,6 +60,9 @@ module Forge
         - DO NOT name skill slugs. Just describe the capability.
         - For each, provide a short search query (3-6 words) the resolver will use to find an existing SKILL.md.
         - Mark priority: "required" or "nice_to_have".
+        - Map each capability to a Composio toolkit slug when it talks to an external SaaS (Gmail, Slack, Salesforce, etc.). Use null when the capability is local/internal (e.g. "summarize a transcript", "render PDF") OR uses a non-Composio service.
+        - Composio toolkit slugs to choose from (exact spelling required, or null):
+          #{COMMON_TOOLKITS.each_slice(8).map { |s| s.join(", ") }.join("\n          ")}
         - Return ONLY a JSON object, no fences.
       SYS
     end
@@ -73,7 +84,15 @@ module Forge
               "capability": "send and reply to email via Gmail",
               "query": "send gmail email",
               "priority": "required",
+              "composio_toolkit": "gmail",
               "rationale": "Most of this role's day-to-day output ships via email."
+            },
+            {
+              "capability": "summarize a meeting transcript into action items",
+              "query": "meeting summary action items",
+              "priority": "required",
+              "composio_toolkit": null,
+              "rationale": "Local processing — no external SaaS involved."
             },
             ...up to #{@max_count} entries
           ]

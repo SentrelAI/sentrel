@@ -77,7 +77,23 @@ module Forge
       # 4. Pin the template's slugs to the resolver output. Even if the
       # model dropped one in its response, we want the final row to
       # reflect what the agent actually has access to.
-      tres.template.update!(suggested_skill_slugs: resolved_slugs)
+      #
+      # Also auto-aggregate suggested_integrations from the union of
+      # resolved skills' requires_connections — that way the template's
+      # integration list is exactly what the skills actually need, with
+      # no drift between "skills want Gmail" and "template forgot to
+      # suggest Gmail". AgentTemplate#missing_integrations_for(org) will
+      # surface the unconnected ones at install time.
+      aggregated_integrations = resolved
+        .flat_map { |r| Array(r[:skill].requires_connections) }
+        .map(&:to_s)
+        .uniq
+        .reject(&:blank?)
+
+      tres.template.update!(
+        suggested_skill_slugs: resolved_slugs,
+        suggested_integrations: aggregated_integrations,
+      )
 
       Result.new(template: tres.template, brief: @brief,
                  requirements: requirements, resolved_skills: resolved,

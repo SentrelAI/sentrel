@@ -48,29 +48,35 @@ module Forge
     private
 
     def resolve_uncached
+      skill, via = nil, nil
+
       if (hit = try_local)
-        return Result.new(skill: hit, requirement: @requirement, via: "local")
+        skill, via = hit, "local"
+      elsif ENV["SKILLS_SH_API_KEY"].present? && (hit = try_skills_sh)
+        skill, via = hit, "skills.sh"
+      elsif (hit = try_github)
+        skill, via = hit, "github"
+      elsif @allow_generate && (hit = try_generate)
+        skill, via = hit, "generated"
       end
 
-      if ENV["SKILLS_SH_API_KEY"].present?
-        if (hit = try_skills_sh)
-          return Result.new(skill: hit, requirement: @requirement, via: "skills.sh")
-        end
-      end
+      return Result.new(requirement: @requirement, error: "no source produced a matching skill") unless skill
 
-      if (hit = try_github)
-        return Result.new(skill: hit, requirement: @requirement, via: "github")
-      end
+      # Composio toolkit linkage: if the analyzer mapped this requirement to a
+      # specific toolkit and the resolved skill doesn't already list it,
+      # backfill so /integrations + AgentTemplate#missing_integrations_for
+      # surface the right "Connect X" hint to the user.
+      ensure_composio_link!(skill, @requirement.composio_toolkit) if @requirement.composio_toolkit.present?
 
-      if @allow_generate
-        if (hit = try_generate)
-          return Result.new(skill: hit, requirement: @requirement, via: "generated")
-        end
-      end
-
-      Result.new(requirement: @requirement, error: "no source produced a matching skill")
+      Result.new(skill: skill, requirement: @requirement, via: via)
     rescue => e
       Result.new(requirement: @requirement, error: e.message)
+    end
+
+    def ensure_composio_link!(skill, toolkit)
+      current = Array(skill.requires_connections).map(&:to_s)
+      return if current.include?(toolkit)
+      skill.update!(requires_connections: current + [toolkit])
     end
 
     # ── 1. Local match ──────────────────────────────────────────────────
