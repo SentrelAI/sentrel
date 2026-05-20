@@ -49,7 +49,12 @@ module AgentProvisioner
   def terminate_for(agent)
     return if backend == NullBackend
     instance = agent.instance
-    return unless instance && instance.machine_id.present?
+    return unless instance
+    # Don't early-return on missing machine_id. A half-provisioned agent
+    # (Fly app created, machine creation failed) leaves an orphan app
+    # that consumes a slot in the org's quota. We need to tear down the
+    # app even when no machine ever attached. backend.destroy handles
+    # both the (optional) machine destroy and the app destroy.
     backend.destroy(instance)
     instance.update!(status: "terminated", stopped_at: Time.current)
   rescue => e
@@ -134,7 +139,25 @@ module AgentProvisioner
 
     def destroy(instance)
       app_name = fly_app_name(instance.agent)
-      fly_api(:delete, "/apps/#{app_name}/machines/#{instance.machine_id}?force=true")
+
+      # Best-effort machine destroy first — if there IS a machine_id,
+      # tear it down. Then tear down the app itself. Apps that linger
+      # after the agent is deleted consume an app-slot in the org's
+      # quota even if they have no machines.
+      if instance.machine_id.present?
+        begin
+          fly_api(:delete, "/apps/#{app_name}/machines/#{instance.machine_id}?force=true")
+        rescue ApiNotFound
+          # Machine already gone — fine, proceed to app cleanup.
+        end
+      end
+
+      # Destroy the app. 404 means it was already gone — also fine.
+      begin
+        fly_api(:delete, "/apps/#{app_name}")
+      rescue ApiNotFound
+        # Nothing to clean up.
+      end
     end
 
     def fly_app_name(agent)
