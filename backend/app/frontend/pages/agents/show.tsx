@@ -31,6 +31,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
+// Email recipient fields land here as either a single string ("a@x") or a
+// JSON array (["a@x", "b@y"]) depending on the source — inbound stores a
+// single To string, outbound stores an array. Normalize to a comma-joined
+// string for display + composer seeding. Optionally drops blacklisted
+// addresses (e.g. the agent's own address) to keep them out of reply-all.
+function formatAddrs(v: unknown, exclude: string[] = []): string {
+  const denylist = new Set(exclude.filter(Boolean).map((s) => s.toLowerCase()))
+  const list = Array.isArray(v) ? v : v == null ? [] : [v]
+  return list
+    .map((s) => String(s).trim())
+    .filter(Boolean)
+    .filter((s) => !denylist.has(s.toLowerCase()))
+    .join(", ")
+}
+
 import { StatusDot } from "@/components/brand"
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
@@ -108,7 +123,8 @@ interface EmailItem {
   channel: string
   created_at: string
   subject: string | null
-  to: string | null
+  to: string | string[] | null
+  cc?: string | string[] | null
   from: string | null
   sender?: EmailSender | null
   sender_name?: string | null
@@ -772,13 +788,23 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                             <span className="font-medium w-10 text-muted-foreground">To</span>
                             <span>
                               {(() => {
-                                if (isOutbound) return email.to || email.contact || "—"
+                                if (isOutbound) return formatAddrs(email.to) || email.contact || "—"
                                 // For inbound mail, "to" is the agent's address. Show agent name + addr.
-                                const addr = email.to || agentPrimaryEmail
+                                const addr = (typeof email.to === "string" ? email.to : null) || agentPrimaryEmail
                                 return addr ? `${agent.name} <${addr}>` : agent.name
                               })()}
                             </span>
                           </div>
+                          {(() => {
+                            const ccStr = formatAddrs(email.cc)
+                            if (!ccStr) return null
+                            return (
+                              <div className="flex gap-2">
+                                <span className="font-medium w-10 text-muted-foreground">Cc</span>
+                                <span>{ccStr}</span>
+                              </div>
+                            )
+                          })()}
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant={isOutbound ? "default" : "secondary"} className="text-[10px]">
@@ -791,14 +817,17 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                               variant="outline"
                               className="h-7 gap-1.5"
                               onClick={() => {
-                                // Inbound → reply to the sender. Outbound → follow
-                                // up with the original recipient on the same thread.
-                                const targetAddr = isOutbound
-                                  ? (email.to || email.contact || "")
-                                  : (email.sender?.email || email.sender_email || email.from || "")
-                                const targetName = isOutbound
-                                  ? ""
-                                  : (email.sender?.name || email.sender_name || "")
+                                // Inbound → reply-all: To = original sender,
+                                // Cc = everyone else on the thread (the inbound
+                                // processor already strips the agent's own
+                                // address from metadata.cc). Outbound → follow
+                                // up the same recipients on the existing thread.
+                                const senderAddr = email.sender?.email || email.sender_email || email.from || ""
+                                const senderName = email.sender?.name || email.sender_name || ""
+                                const targetTo = isOutbound
+                                  ? formatAddrs(email.to) || email.contact || ""
+                                  : senderAddr
+                                const targetCc = formatAddrs(email.cc, [agentPrimaryEmail || "", senderAddr])
                                 const cleanSubject = (email.subject || "").trim()
                                 const subject = cleanSubject
                                   ? cleanSubject.toLowerCase().startsWith("re:")
@@ -807,12 +836,13 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                   : ""
                                 setComposerSeed({
                                   mode: isOutbound ? "followup" : "reply",
-                                  to: targetAddr,
+                                  to: targetTo,
+                                  cc: targetCc,
                                   subject,
                                   body: "",
-                                  replyingTo: targetAddr
+                                  replyingTo: targetTo
                                     ? {
-                                        from: targetName ? `${targetName} <${targetAddr}>` : targetAddr,
+                                        from: !isOutbound && senderName ? `${senderName} <${senderAddr}>` : targetTo,
                                         subject: cleanSubject,
                                       }
                                     : null,
@@ -871,9 +901,23 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                 const subject = subj
                                   ? subj.toLowerCase().startsWith("re:") ? subj : `Re: ${subj}`
                                   : ""
+                                // Pull Cc from the latest inbound message's
+                                // metadata so reply-all keeps everyone the
+                                // sender originally addressed. Falls back to
+                                // the most recent outbound's Cc when the user
+                                // is following up an agent-initiated thread.
+                                const latestInbound = [...convMessages]
+                                  .reverse()
+                                  .find((m) => m.direction === "inbound")
+                                const latestOutbound = [...convMessages]
+                                  .reverse()
+                                  .find((m) => m.direction === "outbound")
+                                const ccSource = latestInbound?.metadata?.cc ?? latestOutbound?.metadata?.cc
+                                const targetCc = formatAddrs(ccSource, [agentPrimaryEmail || "", counterpartyAddr])
                                 setComposerSeed({
                                   mode: "reply",
                                   to: counterpartyAddr,
+                                  cc: targetCc,
                                   subject,
                                   body: "",
                                   replyingTo: {

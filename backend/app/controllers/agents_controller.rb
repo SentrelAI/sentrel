@@ -164,6 +164,7 @@ class AgentsController < ApplicationController
           m.as_json(only: [ :id, :role, :content, :direction, :channel, :created_at, :sender_name, :sender_email, :sender_user_id ]).merge(
             subject: m.metadata&.dig("subject"),
             to: m.metadata&.dig("to"),
+            cc: m.metadata&.dig("cc"),
             from: m.direction == "inbound" ? m.conversation.contact_email : @agent.channel_configs.find_by(channel_type: "email")&.config&.dig("address"),
             sender: m.display_sender,
             conversation_id: m.conversation_id,
