@@ -1,6 +1,5 @@
 import { router } from "@inertiajs/react"
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 
 interface User {
   id: number
@@ -24,8 +23,7 @@ export default function AdminUsersIndex({ users, roles }: Props) {
     router.put(`/admin/users/${u.id}`, { platform_admin: !u.platform_admin }, { preserveScroll: true })
   }
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Users" }]}>
-      <AdminNav />
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Users" }]}>
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <h1 className="text-2xl font-semibold">Users ({users.length})</h1>
         <p className="text-xs text-muted-foreground">
@@ -80,6 +78,6 @@ export default function AdminUsersIndex({ users, roles }: Props) {
           </table>
         </div>
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }

@@ -1,5 +1,4 @@
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 import { Link } from "@inertiajs/react"
 
 interface Counts {
@@ -62,9 +61,8 @@ export default function AdminDashboard({ counts, env_sources, recent_templates, 
   ]
 
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Dashboard" }]}>
-      <AdminNav />
-      <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Dashboard" }]}>
+      <div className="mx-auto max-w-7xl space-y-6">
         <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
@@ -112,7 +110,7 @@ export default function AdminDashboard({ counts, env_sources, recent_templates, 
           <RecentList title="Recent skills" rows={recent_skills} hrefBase="/admin/skills" />
         </div>
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }
 

@@ -1,7 +1,6 @@
 import { router } from "@inertiajs/react"
 import { useState } from "react"
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 
 interface Agent {
   id: number
@@ -37,8 +36,7 @@ export default function AdminAgentsIndex({ agents }: Props) {
   }
 
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Agents" }]}>
-      <AdminNav />
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Agents" }]}>
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Agents ({agents.length})</h1>
@@ -89,7 +87,7 @@ export default function AdminAgentsIndex({ agents }: Props) {
           </table>
         </div>
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }
 

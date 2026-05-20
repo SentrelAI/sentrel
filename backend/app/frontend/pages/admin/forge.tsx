@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { router } from "@inertiajs/react"
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 
 interface EnvSource {
   name: string
@@ -95,8 +94,7 @@ export default function AdminForge({ env_sources, state, last_run: initialLastRu
   const completedCount = state.completed_briefs?.length || 0
 
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Forge" }]}>
-      <AdminNav />
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Forge" }]}>
       <div className="mx-auto max-w-7xl space-y-6 p-6">
         <h1 className="text-2xl font-semibold">Forge Runner</h1>
 
@@ -235,7 +233,7 @@ export default function AdminForge({ env_sources, state, last_run: initialLastRu
           </section>
         )}
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }
 

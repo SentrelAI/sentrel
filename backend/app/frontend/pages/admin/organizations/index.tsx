@@ -1,6 +1,5 @@
 import { router } from "@inertiajs/react"
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 
 interface Org {
   id: number
@@ -21,8 +20,7 @@ export default function AdminOrganizationsIndex({ organizations }: Props) {
     router.delete(`/admin/organizations/${o.id}`, { preserveScroll: true })
   }
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Organizations" }]}>
-      <AdminNav />
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Organizations" }]}>
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <h1 className="text-2xl font-semibold">Organizations ({organizations.length})</h1>
         <div className="overflow-hidden rounded-lg border">
@@ -59,6 +57,6 @@ export default function AdminOrganizationsIndex({ organizations }: Props) {
           </table>
         </div>
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }

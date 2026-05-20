@@ -1,7 +1,6 @@
 import { router } from "@inertiajs/react"
 import { useState } from "react"
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 
 interface Skill {
   id: number
@@ -52,8 +51,7 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
   }
 
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Skills" }]}>
-      <AdminNav />
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Skills" }]}>
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Skills ({skills.length})</h1>
@@ -143,6 +141,6 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
           </table>
         </div>
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }

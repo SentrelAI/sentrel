@@ -1,7 +1,6 @@
 import { router } from "@inertiajs/react"
 import { useState } from "react"
-import AppLayout from "@/layouts/app-layout"
-import AdminNav from "@/components/admin/admin-nav"
+import AdminLayout from "@/layouts/admin-layout"
 
 interface Template {
   id: number
@@ -56,8 +55,7 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
   }
 
   return (
-    <AppLayout crumbs={[{ label: "Admin" }, { label: "Templates" }]}>
-      <AdminNav />
+    <AdminLayout crumbs={[{ label: "Admin" }, { label: "Templates" }]}>
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Templates ({templates.length})</h1>
@@ -157,7 +155,7 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
           </table>
         </div>
       </div>
-    </AppLayout>
+    </AdminLayout>
   )
 }
 
