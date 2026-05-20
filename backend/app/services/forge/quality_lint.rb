@@ -148,8 +148,10 @@ module Forge
       end
     end
 
-    # 100 → start. Each warning subtracts. Missing fields hurt more than
-    # buzzwords. Score < 70 → fail (pending review).
+    # 100 → start. Each warning subtracts. Buzzwords are a stated
+    # NON-NEGOTIABLE rule in the generator system prompt, so a single
+    # buzzword hit drops below the 70-pass threshold by itself. Missing
+    # fields hurt the most.
     def self.compute_score(warnings)
       penalty = warnings.sum do |w|
         case w[:rule]
@@ -158,7 +160,7 @@ module Forge
         when :too_few_sections, :missing_sections   then 15
         when :missing_signature, :signature_no_token then 10
         when :not_first_person, :third_person_drift then 15
-        when :buzzwords                             then 10
+        when :buzzwords                             then 35
         else 5
         end
       end
