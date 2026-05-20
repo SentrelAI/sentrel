@@ -34,7 +34,76 @@ module Admin
       end
     end
 
+    # AI Template Creator: step 1 — render the describe-your-template form.
+    # No preview yet. The user fills the form, POSTs to #draft, and gets
+    # the same page rendered with the preview payload populated.
+    def new
+      render inertia: "admin/templates/new", props: {
+        categories: AgentTemplate::CATEGORIES,
+        preview: nil,
+        form: { description: "", name: "", role: "", category: "" },
+      }
+    end
+
+    # AI Template Creator: step 2 — run TemplatePreview and re-render
+    # the same page with the proposed template + skill resolution table
+    # + quality score. No DB writes.
+    def draft
+      form = params.permit(:description, :name, :role, :category).to_h
+      brief = {
+        slug: form["name"].to_s.parameterize.presence,
+        name: form["name"].presence,
+        role: form["role"].presence,
+        category: form["category"].presence,
+        description: form["description"].to_s,
+      }.compact
+
+      preview = Forge::TemplatePreview.new(brief: brief).call
+
+      render inertia: "admin/templates/new", props: {
+        categories: AgentTemplate::CATEGORIES,
+        form: form,
+        preview: serialize_preview(preview),
+      }
+    end
+
+    # AI Template Creator: step 3 — commit the (possibly edited) preview
+    # to the DB. We run a full TemplatePack which re-resolves skills
+    # (actually generating ones that were "would_create" in the preview)
+    # and writes the row. The edited markdown fields from the preview
+    # are layered on top so the user's local edits aren't lost.
+    def commit
+      brief = params.require(:brief).permit(:slug, :name, :role, :category, :description, :notes).to_h.symbolize_keys
+      edits = params.permit(:identity_md, :personality_md, :instructions_md, :email_signature_md).to_h
+
+      result = ActsAsTenant.without_tenant do
+        Forge::TemplatePack.new(brief: brief).call
+      end
+
+      if result.ok?
+        # Apply any user edits made in the preview pane (they may have
+        # tweaked identity_md etc. before clicking Create).
+        edits = edits.reject { |_, v| v.to_s.strip.empty? }
+        result.template.update!(edits) if edits.any?
+        redirect_to admin_templates_path, notice: "Created template #{result.template.slug}"
+      else
+        redirect_to new_admin_template_path, alert: "Template generation failed: #{result.error}"
+      end
+    end
+
     private
+
+    def serialize_preview(preview)
+      return { error: preview.error } unless preview.ok?
+      {
+        template_attrs: preview.template_attrs,
+        requirements: preview.requirements,
+        resolved_skills: preview.resolved_skills,
+        unresolved_capabilities: preview.unresolved_capabilities,
+        lint: preview.lint,
+        duplicates: preview.duplicates,
+      }
+    end
 
     def serialize(t)
       lint = Forge::QualityLint.template(t)

@@ -77,7 +77,12 @@ Rails.application.routes.draw do
     root to: "dashboard#index", as: :root
     get "dashboard", to: "dashboard#index"
 
-    resources :templates, only: [:index, :update, :destroy]
+    resources :templates, only: [:index, :new, :update, :destroy] do
+      collection do
+        post :draft          # AI Template Creator: run preview (no DB write)
+        post :commit         # AI Template Creator: commit the preview
+      end
+    end
     resources :skills, only: [:index, :update, :destroy] do
       member { post :resync }
     end

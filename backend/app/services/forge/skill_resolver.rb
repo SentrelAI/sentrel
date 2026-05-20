@@ -13,8 +13,8 @@ module Forge
   # Process-wide cache so 30 templates that all need "send Gmail" only
   # resolve it once per bootstrap run. Thread-safe via Concurrent::Map.
   class SkillResolver
-    Result = Struct.new(:skill, :requirement, :via, :error, keyword_init: true) do
-      def ok? = error.nil? && skill.present?
+    Result = Struct.new(:skill, :requirement, :via, :error, :would_generate, keyword_init: true) do
+      def ok? = error.nil? && (skill.present? || would_generate)
     end
 
     CACHE = Concurrent::Map.new
@@ -24,12 +24,21 @@ module Forge
       CACHE.clear
     end
 
-    def initialize(requirement:, allow_generate: true)
+    def initialize(requirement:, allow_generate: true, dry_run: false)
       @requirement = requirement
       @allow_generate = allow_generate
+      # dry_run = preview mode for the AI Template Creator. We still
+      # consult the local DB + remote sources (read-only), but we skip:
+      #   - SkillGenerator's Claude call (just report "would generate")
+      #   - ensure_composio_link! mutation
+      # Cache is bypassed in dry_run so an earlier real-commit doesn't
+      # mask what would happen on a fresh run.
+      @dry_run = dry_run
     end
 
     def call
+      return resolve_uncached if @dry_run # preview mode bypasses the cache
+
       cache_key = @requirement.query.downcase
       cached = CACHE[cache_key]
       return cached if cached&.ok?
@@ -52,25 +61,43 @@ module Forge
 
       if (hit = try_local)
         skill, via = hit, "local"
-      elsif ENV["SKILLS_SH_API_KEY"].present? && (hit = try_skills_sh)
+      elsif ENV["SKILLS_SH_API_KEY"].present? && (hit = try_skills_sh_for_dry_run_or_real)
         skill, via = hit, "skills.sh"
-      elsif (hit = try_github)
+      elsif (hit = try_github_for_dry_run_or_real)
         skill, via = hit, "github"
-      elsif @allow_generate && (hit = try_generate)
-        skill, via = hit, "generated"
+      elsif @allow_generate
+        if @dry_run
+          # Don't fire Claude for a preview — just report what WOULD happen.
+          return Result.new(requirement: @requirement, via: "would_generate", would_generate: true)
+        end
+        if (hit = try_generate)
+          skill, via = hit, "generated"
+        end
       end
 
       return Result.new(requirement: @requirement, error: "no source produced a matching skill") unless skill
 
-      # Composio toolkit linkage: if the analyzer mapped this requirement to a
-      # specific toolkit and the resolved skill doesn't already list it,
-      # backfill so /integrations + AgentTemplate#missing_integrations_for
-      # surface the right "Connect X" hint to the user.
-      ensure_composio_link!(skill, @requirement.composio_toolkit) if @requirement.composio_toolkit.present?
+      # Composio toolkit linkage: backfill the toolkit slug onto the resolved
+      # skill so /integrations + AgentTemplate#missing_integrations_for see
+      # the right "Connect X" hint. SKIPPED in dry_run to avoid mutating
+      # real skill rows during a preview.
+      ensure_composio_link!(skill, @requirement.composio_toolkit) if @requirement.composio_toolkit.present? && !@dry_run
 
       Result.new(skill: skill, requirement: @requirement, via: via)
     rescue => e
       Result.new(requirement: @requirement, error: e.message)
+    end
+
+    # Wrappers around the original try_* methods. For dry_run we want
+    # to consult sources but SkillIngestor mutates the DB when it
+    # imports a manifest. So in dry_run, we only check local DB and
+    # treat any miss as "would generate" rather than ingesting.
+    def try_skills_sh_for_dry_run_or_real
+      @dry_run ? nil : try_skills_sh
+    end
+
+    def try_github_for_dry_run_or_real
+      @dry_run ? nil : try_github
     end
 
     def ensure_composio_link!(skill, toolkit)
