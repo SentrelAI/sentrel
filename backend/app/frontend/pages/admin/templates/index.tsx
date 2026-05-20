@@ -1,5 +1,6 @@
-import { router } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 import { useState } from "react"
+import { Sparkles } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 
 interface Template {
@@ -56,9 +57,16 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
 
   return (
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Templates" }]}>
-      <div className="mx-auto max-w-7xl space-y-4 p-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Templates ({templates.length})</h1>
+          <Link
+            href="/admin/templates/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+          >
+            <Sparkles className="size-3.5" />
+            Create with AI
+          </Link>
           <input
             placeholder="Search slug / name / role…"
             value={search}
