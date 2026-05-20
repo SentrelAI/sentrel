@@ -71,12 +71,24 @@ Rails.application.routes.draw do
   end
 
   # Admin panel (owner + admin roles only — gate is in Admin::BaseController).
-  # Routes populated in commit 13 when controllers land. Namespace stub
-  # ensures URL helpers (admin_dashboard_path etc.) exist now so the
-  # sidebar's conditional admin link doesn't 500 if visited early.
+  # Covers: dashboard overview, templates, skills, agents, users,
+  # organizations, and the Forge runner.
   namespace :admin do
     root to: "dashboard#index", as: :root
     get "dashboard", to: "dashboard#index"
+
+    resources :templates, only: [:index, :update, :destroy]
+    resources :skills, only: [:index, :update, :destroy] do
+      member { post :resync }
+    end
+    resources :agents, only: [:index, :update, :destroy]
+    resources :users, only: [:index, :update]
+    resources :organizations, only: [:index, :update, :destroy]
+
+    # Forge runner — kicks the background job, polls for status.
+    get  "forge",       to: "forge#show"
+    post "forge",       to: "forge#create"
+    post "forge/reset", to: "forge#reset_state"
   end
 
   # Authenticated routes

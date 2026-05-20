@@ -1,4 +1,4 @@
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 import {
   LayoutGrid,
   Bot,
@@ -18,6 +18,7 @@ import {
   KeyRound,
   BookMarked,
   Wrench,
+  Shield,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
@@ -73,6 +74,12 @@ const controlNavItems: NavItem[] = [
 export function AppSidebar() {
   const { theme, setTheme } = useTheme()
   const { toggleSidebar, open } = useSidebar()
+  const { props } = usePage<{ is_admin?: boolean }>()
+  const isAdmin = props.is_admin === true
+
+  const controlItems: NavItem[] = isAdmin
+    ? [...controlNavItems, { title: "Admin", href: "/admin/dashboard", icon: Shield }]
+    : controlNavItems
 
   return (
     <Sidebar collapsible="icon" variant="inset">
@@ -112,7 +119,7 @@ export function AppSidebar() {
 
         <SidebarGroup className="mt-auto">
           <SidebarGroupLabel>Control panel</SidebarGroupLabel>
-          <NavSecondary items={controlNavItems} />
+          <NavSecondary items={controlItems} />
         </SidebarGroup>
       </SidebarContent>
 
