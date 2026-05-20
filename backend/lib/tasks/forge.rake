@@ -96,6 +96,25 @@ namespace :forge do
     puts "Forge: bootstrap state cleared."
   end
 
+  desc "Scan all published templates for near-duplicates (Jaccard + Levenshtein heuristic)"
+  task dedup: :environment do
+    groups = Forge::DedupDetector.find_groups(AgentTemplate.where(published: true))
+    if groups.empty?
+      puts "No near-duplicate groups found (threshold #{Forge::DedupDetector::THRESHOLD})."
+    else
+      puts "#{groups.size} near-duplicate group(s) above threshold #{Forge::DedupDetector::THRESHOLD}:"
+      groups.each_with_index do |group, i|
+        puts "\nGroup #{i + 1}:"
+        group.each { |t| puts "  - #{t.slug.ljust(28)} (#{t.name})" }
+        puts "  Pairwise scores:"
+        group.combination(2).each do |a, b|
+          m = Forge::DedupDetector.compare(a, b)
+          puts "    #{a.slug} ↔ #{b.slug}: score=#{m.score} (identity=#{m.identity_sim} name=#{m.name_sim} skills=#{m.skills_sim})"
+        end
+      end
+    end
+  end
+
   desc "Lint every template + skill against QualityLint rules. Pass --unpublish to downgrade failures."
   task :lint, [:unpublish] => :environment do |_, args|
     unpublish = args[:unpublish].to_s == "1"

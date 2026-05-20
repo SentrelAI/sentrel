@@ -106,6 +106,17 @@ module Forge
                           lint.warnings.map { |w| "[#{w[:rule]}] #{w[:message]}" }.join(" | ")
       end
 
+      # Near-duplicate detection — log only; decision to merge is always
+      # human. Skipped when the template is unpublished (no risk of
+      # confusion in the marketplace yet).
+      if tres.template.published?
+        dups = DedupDetector.near_duplicates(tres.template)
+        if dups.any?
+          Rails.logger.warn "[Forge::TemplatePack] #{tres.template.slug} has #{dups.size} near-duplicates: " +
+                            dups.first(3).map { |d| "#{d.other.slug}(#{d.score})" }.join(", ")
+        end
+      end
+
       Result.new(template: tres.template, brief: @brief,
                  requirements: requirements, resolved_skills: resolved,
                  unresolved_capabilities: unresolved)
