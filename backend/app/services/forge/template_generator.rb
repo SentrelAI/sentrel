@@ -63,6 +63,7 @@ module Forge
         - identity_md: 6–14 lines. Who the agent is, who they report to, what they own, what they explicitly don't.
         - personality_md: 5–10 lines. How they communicate. Tone, defaults, what they refuse to do (e.g. "I don't say 'circle back'").
         - instructions_md: 25–60 lines of operating manual. Markdown with `## Headers` for sections like Delegation, Prioritization, Information diet, Escalation, Output format. Concrete tools/skills they should use ({create_task, search_messages, web_search, send_email}).
+        - email_signature_md: 3–5 lines. Closes the role's outbound email in the role's voice. MUST include the literal `{{agent_name}}` token. No "Best regards" / "Sincerely" boilerplate — use language that fits the role (e.g. an SDR's "— Sarah · SDR @ {{company_name}}" or a CFO's "{{agent_name}}, Finance · {{company_name}}"). One blank line between sign-off line and contact line is fine.
       SYS
     end
 
@@ -108,7 +109,8 @@ module Forge
           "variables": ["company_name", "user_name"],
           "identity_md":    "I am {{agent_name}}, the ...\\n\\n...",
           "personality_md": "I am direct and ...\\n\\n...",
-          "instructions_md":"# How I work\\n\\n## Section\\n- ...\\n"
+          "instructions_md":"# How I work\\n\\n## Section\\n- ...\\n",
+          "email_signature_md": "— {{agent_name}}\\nSDR · {{company_name}}"
         }
 
         Substitution tokens to USE in markdown fields (literally, NOT replaced): {{agent_name}}, {{company_name}}, {{user_name}}.
@@ -129,6 +131,10 @@ module Forge
       parsed["suggested_integrations"] = Array(parsed["suggested_integrations"]).map(&:to_s)
       parsed["capabilities"] = (parsed["capabilities"] || {}).slice("knowledge_base", "scheduling", "tasks", "integrations", "recall", "send_media")
       parsed["variables"] = Array(parsed["variables"]).map(&:to_s)
+      # email_signature_md is optional but if present should be a non-empty
+      # string ≤500 chars — long signatures bloat every outbound email.
+      sig = parsed["email_signature_md"].to_s.strip
+      parsed["email_signature_md"] = sig.empty? ? nil : sig[0, 500]
       parsed
     end
 
@@ -153,6 +159,7 @@ module Forge
         identity_md: parsed["identity_md"],
         personality_md: parsed["personality_md"],
         instructions_md: parsed["instructions_md"],
+        email_signature_md: parsed["email_signature_md"],
       )
       record.save!
       record
