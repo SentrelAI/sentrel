@@ -3,11 +3,10 @@ module Admin
   # so the team can spot regressions without opening rails console.
   class DashboardController < BaseController
     def index
-      recent_templates = AgentTemplate.where(system_template: true).order(updated_at: :desc).limit(8).map { |t| template_row(t) }
-      recent_skills    = SkillDefinition.order(updated_at: :desc).limit(8).map { |s| skill_row(s) }
-
-      render inertia: "admin/dashboard", props: {
-        counts: {
+      # AgentTemplate + Agent use acts_as_tenant — admin needs to break out
+      # of that to see cross-org rows (system templates have org_id: nil).
+      counts, recent_templates, recent_skills = ActsAsTenant.without_tenant do
+        c = {
           templates: AgentTemplate.count,
           templates_published: AgentTemplate.where(published: true).count,
           skills: SkillDefinition.count,
@@ -15,7 +14,14 @@ module Admin
           agents: Agent.count,
           users: User.count,
           organizations: Organization.count,
-        },
+        }
+        rt = AgentTemplate.order(updated_at: :desc).limit(8).map { |t| template_row(t) }
+        rs = SkillDefinition.order(updated_at: :desc).limit(8).map { |s| skill_row(s) }
+        [c, rt, rs]
+      end
+
+      render inertia: "admin/dashboard", props: {
+        counts: counts,
         env_sources: env_sources,
         recent_templates: recent_templates,
         recent_skills: recent_skills,
