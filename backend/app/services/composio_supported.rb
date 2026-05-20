@@ -141,6 +141,30 @@ class ComposioSupported
     end
   end
 
+  # Global slug catalog — every Composio toolkit available on the platform,
+  # regardless of which orgs have wired up auth. Used by Forge so the
+  # SkillRequirementsAnalyzer prompt knows the FULL universe of toolkit
+  # slugs (not just the curated CATEGORY_MAP UI subset).
+  #
+  # Resolution order:
+  #   1. ComposioToolkitCache (persisted, populated by RefreshComposioCacheJob)
+  #   2. fetch_toolkits — synchronous Composio API call, cached 1h
+  #   3. CATEGORY_MAP keys + fallback_toolkits — final safety net for
+  #      fresh deploys without a Composio API key.
+  def self.all_toolkit_slugs
+    Rails.cache.fetch("composio:all_toolkit_slugs", expires_in: 1.hour) do
+      cached = ComposioToolkitCache.distinct.pluck(:slug)
+      return cached.compact.uniq if cached.any?
+
+      live = fetch_toolkits
+      slugs = live.map { |t| t[:slug] }.compact.uniq
+      slugs.any? ? slugs : (CATEGORY_MAP.keys + fallback_toolkits.map { |t| t[:slug] }).uniq
+    end
+  rescue => e
+    Rails.logger.warn "ComposioSupported.all_toolkit_slugs failed: #{e.message} — using curated fallback"
+    (CATEGORY_MAP.keys + fallback_toolkits.map { |t| t[:slug] }).uniq
+  end
+
   # ── Composio fetchers ─────────────────────────────────────────────────────
 
   def self.fetch_toolkits

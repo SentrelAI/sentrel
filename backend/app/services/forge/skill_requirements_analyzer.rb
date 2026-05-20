@@ -13,15 +13,28 @@ module Forge
   class SkillRequirementsAnalyzer
     Requirement = Struct.new(:capability, :query, :priority, :rationale, :composio_toolkit, keyword_init: true)
 
-    # Well-known Composio toolkit slugs the analyzer can map capabilities to.
-    # Pulled from ComposioSupported::CATEGORY_MAP (the curated list) so we
-    # stay in sync with what the /integrations page surfaces.
-    COMMON_TOOLKITS = ComposioSupported::CATEGORY_MAP.keys.freeze
+    # The 50-or-so curated slugs from ComposioSupported::CATEGORY_MAP, shown
+    # as well-known examples in the prompt to anchor Claude on the common
+    # cases (gmail, slack, salesforce, ...). Tight prompt, big signal.
+    EXAMPLE_TOOLKITS = ComposioSupported::CATEGORY_MAP.keys.freeze
 
     def initialize(brief:, model: AnthropicClient::DEFAULT_MODEL, max_count: 10)
       @brief = brief.is_a?(Hash) ? brief : { description: brief.to_s }
       @model = model
       @max_count = max_count
+    end
+
+    # The FULL Composio catalog (1000+ slugs) as the validation set. If
+    # Claude picks "convertkit" or "intercom" and that slug exists on
+    # Composio, we accept it — we just don't list every long-tail slug in
+    # the prompt. Memoized at the class level so 109 parallel analyzers
+    # share the lookup.
+    def self.valid_toolkit_set
+      @valid_toolkit_set ||= ComposioSupported.all_toolkit_slugs.to_set
+    end
+
+    def self.reset_valid_toolkit_cache!
+      @valid_toolkit_set = nil
     end
 
     def call
@@ -39,7 +52,7 @@ module Forge
       capability = r["capability"].to_s.strip
       return nil if capability.empty?
       toolkit = r["composio_toolkit"].to_s.downcase.presence
-      toolkit = nil unless toolkit.nil? || COMMON_TOOLKITS.include?(toolkit)
+      toolkit = nil unless toolkit.nil? || self.class.valid_toolkit_set.include?(toolkit)
       Requirement.new(
         capability: capability,
         query: (r["query"].presence || capability.downcase.tr("^a-z0-9 ", " ").squeeze(" ")).strip,
@@ -61,8 +74,9 @@ module Forge
         - For each, provide a short search query (3-6 words) the resolver will use to find an existing SKILL.md.
         - Mark priority: "required" or "nice_to_have".
         - Map each capability to a Composio toolkit slug when it talks to an external SaaS (Gmail, Slack, Salesforce, etc.). Use null when the capability is local/internal (e.g. "summarize a transcript", "render PDF") OR uses a non-Composio service.
-        - Composio toolkit slugs to choose from (exact spelling required, or null):
-          #{COMMON_TOOLKITS.each_slice(8).map { |s| s.join(", ") }.join("\n          ")}
+        - Composio publishes 1000+ toolkit slugs. Common examples (exact spelling required):
+          #{EXAMPLE_TOOLKITS.each_slice(8).map { |s| s.join(", ") }.join("\n          ")}
+        - For less common SaaS (convertkit, beehiiv, square, etc.) you may use any Composio toolkit slug you're confident exists — we validate against the live catalog and silently set it to null if the slug doesn't exist.
         - Return ONLY a JSON object, no fences.
       SYS
     end
