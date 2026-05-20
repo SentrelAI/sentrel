@@ -49,7 +49,7 @@ module Forge
 
     def system_prompt
       <<~SYS
-        You author SKILL.md files for Alchemy agents. A SKILL.md is the agent's just-in-time playbook for a specific capability — Anthropic's skill pattern.
+        You author SKILL.md files for Double.md agents. A SKILL.md is the agent's just-in-time playbook for a specific capability — Anthropic's skill pattern.
 
         Each SKILL.md MUST contain these sections, in this order:
           # <Skill Name>
