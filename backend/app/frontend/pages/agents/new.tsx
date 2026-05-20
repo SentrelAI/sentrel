@@ -50,6 +50,12 @@ interface DraftResponse {
   model_id: string
   name_suggestion: string | null
   reasoning: string | null
+  // Set when no existing template was a strong fit and AgentDrafter
+  // generated fresh identity/personality/instructions via Forge.
+  identity_md: string | null
+  personality_md: string | null
+  instructions_md: string | null
+  generated: boolean
 }
 
 interface ChannelChoice {
@@ -135,6 +141,15 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
   const [drafting, setDrafting] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
   const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
+  // True when AgentDrafter generated fresh identity/personality/instructions
+  // because no existing template was a strong fit — drives the "AI-generated
+  // identity" card on the details step.
+  const [isGenerated, setIsGenerated] = useState(false)
+  // 3-stage spinner stage shown during drafting — keeps the user oriented
+  // on what's happening server-side (analyze → resolve skills → draft copy).
+  const [draftStage, setDraftStage] = useState<0 | 1 | 2 | 3>(0)
+  // Show/hide preview-vs-edit toggle per markdown field on the details step.
+  const [editingField, setEditingField] = useState<"identity" | "personality" | "instructions" | null>(null)
 
   // Collapsible side panel on the intro step — lets users browse the
   // template marketplace without leaving the scratch wizard.
@@ -166,6 +181,12 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     capabilities: {} as Record<string, { enabled?: boolean }>,
     channels: { email: true, telegram: false } as Record<string, boolean>,
     permissions: { send_email: "auto" } as Record<string, string>,
+    // AI-generated identity (only filled when AgentDrafter generates fresh
+    // — no template fit). Posted alongside the form so the controller
+    // uses them directly instead of template-rendering blank fields.
+    identity_md: "",
+    personality_md: "",
+    instructions_md: "",
   })
 
   // Inertia ships the form as flat params; reshape `channels` into the
@@ -184,6 +205,9 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       capabilities: d.capabilities,
       permissions: d.permissions,
       channel_configs,
+      identity_md: d.identity_md || undefined,
+      personality_md: d.personality_md || undefined,
+      instructions_md: d.instructions_md || undefined,
     }
   })
 
@@ -219,7 +243,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       : null
     // Prefer the LLM's pick → otherwise the first available template →
     // otherwise a blank custom shell so the user is never blocked.
-    const fallback = tpl || templates[0] || blankTemplate(draft.role)
+    const fallback = tpl || (draft.generated ? blankTemplate(draft.role) : templates[0] || blankTemplate(draft.role))
     setPicked(fallback)
 
     const mgr = fallback.suggested_manager_role
@@ -242,10 +266,59 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         model_id: draft.model_id || fallback.suggested_model || data.ai_config.model_id,
       },
       channels: { email: wantEmail, telegram: wantTelegram },
+      // When AgentDrafter generated fresh copy (no template fit), pipe it
+      // straight into the form so the controller saves it instead of
+      // doing a template render that would leave the fields blank.
+      identity_md: draft.identity_md || "",
+      personality_md: draft.personality_md || "",
+      instructions_md: draft.instructions_md || "",
     })
     setDraftReasoning(draft.reasoning)
+    setIsGenerated(draft.generated === true)
     setStep("details")
     return true
+  }
+
+  // Stage timer for the 3-step spinner shown during drafting. Total ~3s
+  // visual feedback that the backend is doing real work. Each stage maps
+  // to a phase the user can recognize: analyze → resolve skills → draft.
+  async function withStagedSpinner<T>(fn: () => Promise<T>): Promise<T> {
+    setDraftStage(1)
+    const t1 = setTimeout(() => setDraftStage(2), 800)
+    const t2 = setTimeout(() => setDraftStage(3), 1800)
+    try {
+      const result = await fn()
+      return result
+    } finally {
+      clearTimeout(t1); clearTimeout(t2)
+      setDraftStage(0)
+    }
+  }
+
+  async function fetchDraft(opts: { regenerate?: boolean } = {}): Promise<DraftResponse | null> {
+    const csrfToken = document
+      .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+      ?.getAttribute("content")
+    const res = await fetch("/agents/draft", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+      },
+      body: JSON.stringify({
+        description,
+        tools_preference: toolsPreference,
+        tools_description: toolsPreference === "specify" ? toolsDescription : "",
+        regenerate: opts.regenerate || false,
+      }),
+    })
+    const body = (await res.json()) as DraftResponse | { error?: string }
+    if (!res.ok) {
+      setDraftError((body as { error?: string }).error || "Couldn't draft an agent. Try again.")
+      return null
+    }
+    return body as DraftResponse
   }
 
   async function handleIntroSubmit(e: React.FormEvent) {
@@ -258,33 +331,34 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
 
     setDrafting(true)
     try {
-      const csrfToken = document
-        .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-        ?.getAttribute("content")
-
-      const res = await fetch("/agents/draft", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-        },
-        body: JSON.stringify({
-          description,
-          tools_preference: toolsPreference,
-          tools_description: toolsPreference === "specify" ? toolsDescription : "",
-        }),
-      })
-      const body = (await res.json()) as DraftResponse | { error?: string }
-      if (!res.ok) {
-        setDraftError((body as { error?: string }).error || "Couldn't draft an agent. Try again.")
-        return
-      }
-      const draft = body as DraftResponse
+      const draft = await withStagedSpinner(() => fetchDraft())
+      if (!draft) return
       const name = introName.trim() || draft.name_suggestion || randomAgentName()
       applyDraft(name, draft)
     } catch (err) {
       setDraftError("Network error. Try again.")
+    } finally {
+      setDrafting(false)
+    }
+  }
+
+  async function handleRegenerate() {
+    setDraftError(null)
+    setDrafting(true)
+    try {
+      const draft = await withStagedSpinner(() => fetchDraft({ regenerate: true }))
+      if (!draft) return
+      // Keep the existing form name but refresh markdown fields + reasoning.
+      setData({
+        ...data,
+        identity_md: draft.identity_md || "",
+        personality_md: draft.personality_md || "",
+        instructions_md: draft.instructions_md || "",
+      })
+      setDraftReasoning(draft.reasoning)
+      setIsGenerated(draft.generated === true)
+    } catch (err) {
+      setDraftError("Network error during regenerate.")
     } finally {
       setDrafting(false)
     }
@@ -514,7 +588,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
               <span />
             )}
             <Button type="submit" disabled={drafting || !description.trim()}>
-              {drafting ? "Drafting…" : "Draft my agent"}
+              {drafting ? draftStageLabel(draftStage) : "Draft my agent"}
             </Button>
           </div>
         </form>
@@ -605,9 +679,49 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         description={picked.description}
       />
 
-      {draftReasoning && (
+      {draftReasoning && !isGenerated && (
         <div className="max-w-2xl mb-6 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">Why this template:</span> {draftReasoning}
+        </div>
+      )}
+
+      {isGenerated && (
+        <div className="max-w-2xl mb-6 rounded-lg border border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <icons.Sparkles className="size-4 text-purple-600" />
+              <span className="text-sm font-semibold">AI-generated identity</span>
+              <span className="rounded bg-purple-200 dark:bg-purple-800 px-1.5 py-0.5 text-[10px] uppercase">fresh</span>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={handleRegenerate} disabled={drafting}>
+              <icons.RefreshCw className={`size-3.5 ${drafting ? "animate-spin" : ""}`} />
+              <span className="ml-1.5 text-xs">{drafting ? draftStageLabel(draftStage) : "Regenerate"}</span>
+            </Button>
+          </div>
+          {draftReasoning && (
+            <p className="text-xs text-muted-foreground">{draftReasoning}</p>
+          )}
+          <GeneratedField
+            label="Identity"
+            value={data.identity_md}
+            onChange={(v) => setData("identity_md", v)}
+            editing={editingField === "identity"}
+            onToggleEdit={() => setEditingField(editingField === "identity" ? null : "identity")}
+          />
+          <GeneratedField
+            label="Personality"
+            value={data.personality_md}
+            onChange={(v) => setData("personality_md", v)}
+            editing={editingField === "personality"}
+            onToggleEdit={() => setEditingField(editingField === "personality" ? null : "personality")}
+          />
+          <GeneratedField
+            label="Instructions"
+            value={data.instructions_md}
+            onChange={(v) => setData("instructions_md", v)}
+            editing={editingField === "instructions"}
+            onToggleEdit={() => setEditingField(editingField === "instructions" ? null : "instructions")}
+          />
         </div>
       )}
 
@@ -830,5 +944,55 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         </div>
       </form>
     </AppLayout>
+  )
+}
+
+// Maps the 0-3 draft stage value to a user-visible label. 0 means we're
+// not drafting; 1-3 walk through the conceptual server-side phases.
+function draftStageLabel(stage: number): string {
+  switch (stage) {
+    case 1: return "Analyzing capabilities…"
+    case 2: return "Resolving skills…"
+    case 3: return "Drafting identity…"
+    default: return "Drafting…"
+  }
+}
+
+// One field block on the AI-generated identity card. Preview-by-default
+// (truncated to 14 lines), expand to see full, Edit toggles a textarea
+// so the user can tweak before saving the agent. Edits flow straight
+// into the form `data` via the onChange callback.
+function GeneratedField({
+  label, value, onChange, editing, onToggleEdit,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  editing: boolean
+  onToggleEdit: () => void
+}) {
+  return (
+    <div className="rounded border bg-background p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-medium uppercase text-muted-foreground">{label}</span>
+        <button
+          type="button"
+          onClick={onToggleEdit}
+          className="text-[11px] text-purple-700 dark:text-purple-300 hover:underline"
+        >
+          {editing ? "Done" : "Edit"}
+        </button>
+      </div>
+      {editing ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={Math.min(20, Math.max(6, value.split("\n").length + 1))}
+          className="w-full rounded border bg-background px-2 py-1.5 text-xs font-mono"
+        />
+      ) : (
+        <pre className="whitespace-pre-wrap text-xs">{value || <span className="text-muted-foreground italic">(empty)</span>}</pre>
+      )}
+    </div>
   )
 }

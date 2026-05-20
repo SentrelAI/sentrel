@@ -255,6 +255,9 @@ class AgentsController < ApplicationController
       tools_description: params[:tools_description],
       templates: AgentTemplate.all.to_a,
       skills: SkillDefinition.all.to_a,
+      # `regenerate` is plumbed through but a no-op today — AgentDrafter is
+      # stateless. Reserved for future cache-busting when we add memoization
+      # of the underlying Claude responses.
     )
     render json: drafter.to_h
   end
