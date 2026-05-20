@@ -49,10 +49,20 @@ class EmployeeHealthCheckJob < ApplicationJob
     agent.update_column(:status, "stopped") unless agent.status == "stopped"
     return unless agent.instance
 
-    agent.instance.update_columns(
+    # Don't clobber a real provisioning error (e.g. "Fly API HTTP 422:
+    # machine limit exceeded", "image manifest not found"). A heartbeat
+    # failure is downstream of provisioning success — if provisioning
+    # never completed, the original error is the one operators need.
+    # We overwrite only when the existing message is blank OR already a
+    # heartbeat-related message we wrote ourselves.
+    attrs = {
       status: "stopped",
-      provisioning_error: "#{message} at #{Time.current.utc.iso8601}",
       updated_at: Time.current,
-    )
+    }
+    existing = agent.instance.provisioning_error.to_s
+    if existing.blank? || existing.start_with?("Engine heartbeat", "No engine heartbeat", "Engine heartbeat payload invalid")
+      attrs[:provisioning_error] = "#{message} at #{Time.current.utc.iso8601}"
+    end
+    agent.instance.update_columns(attrs)
   end
 end
