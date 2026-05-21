@@ -47,7 +47,8 @@ class AgentsController < ApplicationController
     # we surface their URL + filename + content_type so the frontend can
     # render the same attachment chip we use during composition.
     chat_messages = if chat_conversation
-      chat_conversation.messages.includes(attachments_attachments: :blob).order(id: :asc).map do |m|
+      ordered_msgs = chat_conversation.messages.includes(attachments_attachments: :blob).order(id: :asc).to_a
+      ordered_msgs.each_with_index.map do |m, i|
         base = m.as_json(only: [ :id, :role, :content, :channel, :metadata, :created_at, :sender_name, :sender_email, :sender_user_id ])
         base["sender"] = m.display_sender
         base["attachments"] = m.attachments.map do |att|
@@ -58,6 +59,22 @@ class AgentsController < ApplicationController
             byte_size: blob.byte_size,
             url: Rails.application.routes.url_helpers.rails_blob_path(blob, only_path: true)
           }
+        end
+        # Engine emits metadata.thinking with duration_ms=0 today, so the
+        # "Thought" pill loses its time hint on reload. Fall back to the
+        # turn-elapsed (this assistant's created_at minus the prior message's
+        # created_at) so the pill can render "Thought for Xs" instead of a
+        # bare "Thought". Tool steps inflate this beyond pure thinking time,
+        # but it's the closest signal until the engine reports a real value.
+        thinking = base.dig("metadata", "thinking")
+        if thinking.is_a?(Hash) && thinking["text"].to_s.length > 0 && thinking["duration_ms"].to_i <= 0
+          prior = ordered_msgs[i - 1] if i > 0
+          if prior
+            gap_ms = ((m.created_at - prior.created_at) * 1000).to_i
+            base["metadata"] = base["metadata"].merge(
+              "thinking" => thinking.merge("duration_ms" => [ gap_ms, 0 ].max)
+            )
+          end
         end
         base
       end
@@ -396,9 +413,24 @@ class AgentsController < ApplicationController
 
   def update
     if @agent.update(agent_params)
-      @agent.ai_config&.update(ai_config_params) if params[:ai_config].present?
-      update_credential_grants if params.key?(:granted_credential_ids)
-      EngineSync.trigger(@agent)
+      env_changed = false
+      if params[:ai_config].present? && @agent.ai_config
+        @agent.ai_config.assign_attributes(ai_config_params)
+        env_changed ||= AiConfig::ENV_AFFECTING_FIELDS.any? { |f| @agent.ai_config.changes.key?(f) }
+        @agent.ai_config.save!
+      end
+      if params.key?(:granted_credential_ids)
+        # Credential grants determine which BYO key agent_provisioner.byo_key
+        # resolves for the current provider — swapping grants requires the
+        # machine env to be repushed.
+        env_changed ||= credential_grants_changed?
+        update_credential_grants
+      end
+      if env_changed
+        AgentMachineOps.reload(@agent) rescue nil
+      else
+        EngineSync.trigger(@agent)
+      end
       redirect_to agent_path(@agent), notice: "Agent updated"
     else
       redirect_back fallback_location: edit_agent_path(@agent), alert: @agent.errors.full_messages.join(", ")
@@ -515,6 +547,13 @@ class AgentsController < ApplicationController
         @agent.agent_credential_grants.create!(credential_id: cid)
       end
     end
+  end
+
+  def credential_grants_changed?
+    requested_ids = Array(params[:granted_credential_ids]).map(&:to_i).reject(&:zero?)
+    allowed_ids = current_tenant.credentials.where(id: requested_ids).pluck(:id).sort
+    existing_ids = @agent.agent_credential_grants.pluck(:credential_id).sort
+    allowed_ids != existing_ids
   end
 
   # Stores the channel preferences captured in the new-agent wizard intro.
