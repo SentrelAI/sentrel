@@ -1109,47 +1109,56 @@ const ThinkingEyes: FC = () => (
   <div className="flex items-center py-1" aria-label="Agent is thinking">
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="105 90 190 115"
+      viewBox="0 0 160 120"
       className="h-6 w-auto text-muted-foreground/55"
       aria-hidden="true"
     >
       <style
         dangerouslySetInnerHTML={{
           __html: `
-            .aui-thinking-eyes-stroke {
+            .aui-thinking-bot {
+              fill: none;
               stroke: currentColor;
-              stroke-width: 12;
+              stroke-width: 4;
               stroke-linecap: round;
               stroke-linejoin: round;
-              fill: none;
             }
-            .aui-thinking-eyes-group { animation: aui-thinking-eyes-gaze 5s ease-in-out infinite; }
-            .aui-thinking-eye-left { transform-origin: 165px 137px; animation: aui-thinking-eye-blink 5s infinite; }
-            .aui-thinking-eye-right { transform-origin: 190px 137px; animation: aui-thinking-eye-blink 5s infinite; }
-            /* Saccades biased upward + left so the gaze visibly tracks the
-               sender header line that sits directly above the indicator.
-               Y values are negative because positive Y is down in SVG. */
-            @keyframes aui-thinking-eyes-gaze {
-              0%, 8%   { transform: translate(0px, 0px); }
-              14%, 26% { transform: translate(-22px, -28px); }
-              32%, 44% { transform: translate(12px, -32px); }
-              50%, 62% { transform: translate(-10px, -24px); }
-              68%, 80% { transform: translate(20px, -18px); }
-              86%, 100% { transform: translate(0px, 0px); }
+            .aui-thinking-eye {
+              fill: currentColor;
+              animation: aui-thinking-look 2s infinite ease-in-out;
             }
-            @keyframes aui-thinking-eye-blink {
-              0%, 28%, 32%, 36%, 78%, 82%, 100% { transform: scaleY(1); }
-              30%, 34%, 80% { transform: scaleY(0.1); }
+            .aui-thinking-blink {
+              transform-origin: center;
+              animation: aui-thinking-blink 4s infinite;
+            }
+            .aui-thinking-loading-line {
+              stroke: currentColor;
+              stroke-width: 4;
+              stroke-linecap: round;
+              animation: aui-thinking-pulse 1.2s infinite ease-in-out;
+            }
+            @keyframes aui-thinking-look {
+              0%,100% { transform: translateX(0px); }
+              25% { transform: translateX(-3px); }
+              75% { transform: translateX(3px); }
+            }
+            @keyframes aui-thinking-blink {
+              0%,92%,100% { transform: scaleY(1); }
+              95% { transform: scaleY(0.1); }
+            }
+            @keyframes aui-thinking-pulse {
+              0%,100% { opacity: 0.4; }
+              50% { opacity: 1; }
             }
           `,
         }}
       />
-      <line x1="115" y1="195" x2="285" y2="195" className="aui-thinking-eyes-stroke" />
-      <rect x="140" y="100" width="120" height="75" rx="14" className="aui-thinking-eyes-stroke" />
-      <g className="aui-thinking-eyes-group">
-        <line x1="165" y1="130" x2="165" y2="144" className="aui-thinking-eyes-stroke aui-thinking-eye-left" />
-        <line x1="190" y1="130" x2="190" y2="144" className="aui-thinking-eyes-stroke aui-thinking-eye-right" />
+      <rect className="aui-thinking-bot" x="50" y="25" width="60" height="45" rx="10" />
+      <g className="aui-thinking-blink">
+        <circle className="aui-thinking-eye" cx="72" cy="48" r="3" />
+        <circle className="aui-thinking-eye" cx="88" cy="48" r="3" />
       </g>
+      <line className="aui-thinking-loading-line" x1="45" y1="85" x2="115" y2="85" />
     </svg>
   </div>
 );

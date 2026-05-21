@@ -183,6 +183,7 @@ interface Props {
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
   anthropic_account_connected?: boolean
+  available_llm_providers?: string[]
   missing_integrations?: Array<{
     slug: string
     label: string
@@ -227,7 +228,7 @@ function AgentTopBarMeta({ agent }: { agent: Agent }) {
   )
 }
 
-function AgentTopBarActions({ agent, anthropicAccountConnected }: { agent: Agent; anthropicAccountConnected?: boolean }) {
+function AgentTopBarActions({ agent, anthropicAccountConnected, availableLlmProviders }: { agent: Agent; anthropicAccountConnected?: boolean; availableLlmProviders?: string[] }) {
   return (
     <div className="flex items-center gap-1.5">
       <AgentModelPicker
@@ -235,6 +236,7 @@ function AgentTopBarActions({ agent, anthropicAccountConnected }: { agent: Agent
         currentProvider={agent.ai_config?.provider}
         currentModelId={agent.ai_config?.model_id}
         anthropicAccountConnected={anthropicAccountConnected}
+        availableLlmProviders={availableLlmProviders}
       />
       <AgentOpsMenu agentId={agent.id} />
       <Button variant="ghost" size="sm" className="h-8 gap-1.5" asChild>
@@ -452,7 +454,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, missing_integrations = [] }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], missing_integrations = [] }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -596,7 +598,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         { label: agent.name },
       ]}
       topBarMeta={<AgentTopBarMeta agent={agent} />}
-      topBarActions={<AgentTopBarActions agent={agent} anthropicAccountConnected={anthropic_account_connected} />}
+      topBarActions={<AgentTopBarActions agent={agent} anthropicAccountConnected={anthropic_account_connected} availableLlmProviders={available_llm_providers} />}
     >
       <Head title={agent.name} />
 

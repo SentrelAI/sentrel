@@ -141,9 +141,18 @@ class AgentsController < ApplicationController
       false
     end
 
+    # Which LLM providers the org has BYO keys for. Drives the model picker's
+    # disabled state so users can't pick a model that would 401 the moment it
+    # ran for lack of a stored key.
+    available_llm_providers = current_tenant.credentials
+      .where(kind: "llm_api_key")
+      .distinct
+      .pluck(:provider)
+
     render inertia: "agents/show", props: {
       agent: agent_json(@agent),
       anthropic_account_connected: anthropic_account_connected,
+      available_llm_providers: available_llm_providers,
       spend: AgentSpend.for_agent(@agent),
       conversations: @agent.conversations.where(kind: "external").where.not(status: "archived").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
         last_msg = c.messages.order(created_at: :desc).first

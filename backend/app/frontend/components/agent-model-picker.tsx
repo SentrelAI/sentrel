@@ -12,6 +12,11 @@ import { Brain, Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { router } from "@inertiajs/react"
 
+// Providers whose models are unusable without a BYO key in /settings/credentials.
+// "anthropic" stays out of this gate: the platform ships an org-level fallback
+// ANTHROPIC_API_KEY so Claude-direct models work even without a user key.
+const KEY_REQUIRED_PROVIDERS = new Set(["openrouter"])
+
 // Curated model list — same shape as the picker on /agents/new. Grouped
 // by provider so users see at a glance what each model is. OpenRouter
 // entries include the high-signal "agentic" models (Kimi, MiniMax) up
@@ -67,9 +72,13 @@ interface Props {
   // Set by the agent edit page only when the org has an active anthropic
   // OauthCredential — otherwise the option would 401 the moment it ran.
   anthropicAccountConnected?: boolean
+  // LLM providers (e.g. ["openrouter", "openai"]) the org has BYO keys
+  // stored for. Used to grey out rows whose key is missing — without a key,
+  // the agent would 401 the moment it picked the model up.
+  availableLlmProviders?: string[]
 }
 
-export function AgentModelPicker({ agentId, currentProvider, currentModelId, anthropicAccountConnected }: Props) {
+export function AgentModelPicker({ agentId, currentProvider, currentModelId, anthropicAccountConnected, availableLlmProviders = [] }: Props) {
   const [busy, setBusy] = useState(false)
 
   const subscriptionGroup = anthropicAccountConnected
@@ -141,11 +150,18 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId, ant
             <DropdownMenuLabel>{group.group}</DropdownMenuLabel>
             {group.options.map((m) => {
               const isCurrent = m.provider === currentProvider && m.model_id === currentModelId
+              const keyMissing = KEY_REQUIRED_PROVIDERS.has(m.provider) && !availableLlmProviders.includes(m.provider)
               return (
                 <DropdownMenuItem
                   key={`${m.provider}-${m.model_id}`}
-                  onSelect={() => apply(m.provider, m.model_id)}
-                  className="focus:bg-muted focus:text-foreground flex flex-col items-start gap-0.5 py-2"
+                  onSelect={() => {
+                    if (keyMissing) {
+                      router.visit("/settings/credentials")
+                      return
+                    }
+                    apply(m.provider, m.model_id)
+                  }}
+                  className={`focus:bg-muted focus:text-foreground flex flex-col items-start gap-0.5 py-2 ${keyMissing ? "opacity-50" : ""}`}
                 >
                   <div className="flex w-full items-center gap-2">
                     {isCurrent ? (
@@ -155,9 +171,13 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId, ant
                     )}
                     <span className="font-medium">{m.label}</span>
                   </div>
-                  {m.hint && (
+                  {keyMissing ? (
+                    <span className="pl-5.5 text-xs text-muted-foreground italic">
+                      Go to settings to set up your API key
+                    </span>
+                  ) : m.hint ? (
                     <span className="text-muted-foreground pl-5.5 text-xs">{m.hint}</span>
-                  )}
+                  ) : null}
                 </DropdownMenuItem>
               )
             })}
