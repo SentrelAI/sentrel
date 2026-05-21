@@ -62,9 +62,13 @@ class OnboardingController < ApplicationController
     full_domain = "#{prefix}.#{base}"
 
     # Hard block: any other org already owns this subdomain.
+    # Capture the org id BEFORE entering the without_tenant block —
+    # inside the block, ActsAsTenant clears current_tenant so the
+    # helper returns nil. Calling .id on nil there raises NoMethodError.
+    current_org_id = current_tenant&.id
     conflict = ActsAsTenant.without_tenant do
       Organization.where("LOWER(email_domain) = ?", full_domain.downcase)
-                  .where.not(id: current_tenant.id)
+                  .where.not(id: current_org_id)
                   .exists?
     end
     if conflict
