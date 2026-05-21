@@ -49,10 +49,10 @@ class OnboardingController < ApplicationController
   # POST /onboarding/setup_mailbox — claim a subdomain and provision SES verification.
   # Body: { subdomain_prefix: "agents" }
   #
-  # If the same domain is ALREADY verified on this AWS SES account (e.g. another
-  # org owned by the same admin set it up previously), we short-circuit: mark
-  # the org as verified immediately and tell the frontend to skip the DNS step.
-  # No DNS records to add, no waiting.
+  # Uniqueness: one subdomain per organization globally. If another org has
+  # already claimed this subdomain, we return 422 with a clear error so the
+  # user picks a different name. Re-running for the SAME org (e.g. user
+  # navigating back to step 2 to fix a typo) is allowed.
   def setup_mailbox
     prefix = params[:subdomain_prefix].to_s.strip.downcase
     base = base_domain_from_website
@@ -61,36 +61,32 @@ class OnboardingController < ApplicationController
 
     full_domain = "#{prefix}.#{base}"
 
-    ses = SesClient.for(current_tenant)
+    # Hard block: any other org already owns this subdomain.
+    conflict = ActsAsTenant.without_tenant do
+      Organization.where("LOWER(email_domain) = ?", full_domain.downcase)
+                  .where.not(id: current_tenant.id)
+                  .exists?
+    end
+    if conflict
+      return render json: {
+        error: "#{full_domain} is already claimed by another organization. Pick a different subdomain.",
+      }, status: :unprocessable_entity
+    end
 
-    # Idempotent: returns the existing token for a domain already in our SES
-    # account. We use the response either way.
+    ses = SesClient.for(current_tenant)
     result = ses.verify_domain_identity(domain: full_domain)
     dkim = ses.verify_domain_dkim(domain: full_domain)
 
-    # Check if SES already says this domain is verified — happens when another
-    # org on the same AWS account already completed DNS setup. Also covers
-    # the same admin reusing a subdomain across their orgs.
-    attrs = ses.get_identity_verification_attributes(identities: [ full_domain ])
-                .verification_attributes[full_domain]
-    already_verified = attrs&.verification_status == "Success"
+    current_tenant.update!(email_domain: full_domain, email_domain_verified: false)
 
-    current_tenant.update!(email_domain: full_domain, email_domain_verified: already_verified)
-
-    if already_verified
-      render json: {
-        domain: full_domain,
-        already_verified: true,
-        records: build_dns_records(full_domain, result.verification_token, dkim.dkim_tokens),
-        message: "#{full_domain} is already verified on our SES account (likely from another org you own). No DNS changes needed.",
-      }
-    else
-      render json: {
-        domain: full_domain,
-        already_verified: false,
-        records: build_dns_records(full_domain, result.verification_token, dkim.dkim_tokens),
-      }
-    end
+    render json: {
+      domain: full_domain,
+      records: build_dns_records(full_domain, result.verification_token, dkim.dkim_tokens),
+    }
+  rescue ActiveRecord::RecordInvalid => e
+    # Catches the model-level uniqueness validation (case the conflict
+    # check above missed a race condition).
+    render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
   rescue Aws::SES::Errors::ServiceError => e
     render json: { error: e.message }, status: :unprocessable_entity
   end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_20_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_21_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -459,6 +459,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_20_140000) do
     t.datetime "updated_at", null: false
     t.text "website_analysis_error"
     t.string "website_url"
+    t.index "lower((email_domain)::text)", name: "index_organizations_on_lower_email_domain_unique", unique: true, where: "((email_domain IS NOT NULL) AND ((email_domain)::text <> ''::text))"
     t.index ["default_slack_agent_id"], name: "index_organizations_on_default_slack_agent_id"
     t.index ["slug"], name: "index_organizations_on_slug", unique: true
   end
