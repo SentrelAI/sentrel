@@ -30,7 +30,7 @@ jobs:
       group: engine-image-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # GHCR requires lowercase repository names. github.repository_owner
       # preserves the GitHub-org casing (e.g. "ParseDev"), which breaks the
