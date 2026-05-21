@@ -78,7 +78,7 @@ jobs:
       # means 'add new hosts automatically, only error on mismatch with an
       # existing entry'. Pre-populating gave us mismatches; skipping it lets
       # the first connect just work.
-      - uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
 
