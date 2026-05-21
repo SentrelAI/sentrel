@@ -84,11 +84,20 @@ class OnboardingController < ApplicationController
       records: build_dns_records(full_domain, result.verification_token, dkim.dkim_tokens),
     }
   rescue ActiveRecord::RecordInvalid => e
-    # Catches the model-level uniqueness validation (case the conflict
-    # check above missed a race condition).
+    # Catches the model-level uniqueness validation (e.g. race condition
+    # missed by the conflict check above).
     render json: { error: e.record.errors.full_messages.join(", ") }, status: :unprocessable_entity
+  rescue ActiveRecord::RecordNotUnique => e
+    # DB-level partial index rejection — safety net behind the validation.
+    render json: { error: "This subdomain is already claimed by another organization. Pick a different name." }, status: :unprocessable_entity
   rescue Aws::SES::Errors::ServiceError => e
     render json: { error: e.message }, status: :unprocessable_entity
+  rescue StandardError => e
+    # Last-resort: any other unhandled error → log + return a useful JSON
+    # error so the frontend doesn't show "Internal Server Error".
+    Rails.logger.error "[OnboardingController#setup_mailbox] #{e.class}: #{e.message}\n#{e.backtrace.first(8).join("\n")}"
+    Sentry.capture_exception(e) if defined?(Sentry)
+    render json: { error: "Setup failed: #{e.class}. Check server logs for details." }, status: :internal_server_error
   end
 
   # POST /onboarding/verify_mailbox — poll SES for the latest verification status.
