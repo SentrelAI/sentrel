@@ -84,9 +84,13 @@ Rails.application.routes.draw do
         post :bulk_destroy
       end
     end
-    resources :skills, only: [:index, :update, :destroy] do
+    resources :skills, only: [:index, :new, :update, :destroy] do
       member { post :resync }
-      collection { post :bulk_destroy }
+      collection do
+        post :draft        # AI Skill Creator: run preview (no DB write)
+        post :commit       # AI Skill Creator: commit the preview
+        post :bulk_destroy
+      end
     end
     resources :agents, only: [:index, :update, :destroy] do
       collection { post :bulk_destroy }

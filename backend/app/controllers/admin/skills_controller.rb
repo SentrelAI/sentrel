@@ -39,6 +39,72 @@ module Admin
       redirect_to admin_skills_path, notice: "Deleted #{skill.slug}"
     end
 
+    # AI Skill Creator — step 1: render the brief form. If preview_token
+    # is present, also pass the current job state so the React side can
+    # poll this same URL via Inertia partial reload.
+    def new
+      preview_state = nil
+      if params[:preview_token].present?
+        preview_state = SkillPreviewJob.fetch(params[:preview_token])
+      end
+
+      render inertia: "admin/skills/new", props: {
+        categories: Forge::SkillGenerator::CATEGORIES,
+        form: extract_form_params,
+        preview_token: params[:preview_token],
+        preview_state: preview_state,
+      }
+    end
+
+    # AI Skill Creator — step 2: kick the preview job and redirect back
+    # to #new with the token in the URL. React polls until status == done.
+    def draft
+      form = params.permit(:description, :name, :category, :requires_connections).to_h
+      brief = {
+        slug: form["name"].to_s.parameterize.presence,
+        name: form["name"].presence,
+        category: form["category"].presence,
+        description: form["description"].to_s,
+        requires_connections: form["requires_connections"].to_s.split(",").map(&:strip).reject(&:empty?),
+      }.compact
+
+      token = SecureRandom.hex(16)
+      Rails.cache.write(SkillPreviewJob.cache_key(token),
+                        { "status" => "queued", "queued_at" => Time.current.iso8601 },
+                        expires_in: 1.hour)
+      SkillPreviewJob.perform_later(token: token, brief: brief)
+
+      # Stash form values in URL so the brief stays filled in while the
+      # job runs.
+      query = form.merge(preview_token: token).reject { |_, v| v.to_s.empty? }
+      redirect_to new_admin_skill_path(query)
+    end
+
+    # AI Skill Creator — step 3: commit the (possibly edited) preview to
+    # the DB. We rerun SkillGenerator with write_file: true to create the
+    # canonical seed file + the SkillDefinition row, then layer any
+    # edits the user made to the preview pane (skill_md) on top.
+    def commit
+      brief = params.require(:brief).permit(:slug, :name, :category, :description, :icon).to_h.symbolize_keys
+      edited_skill_md = params[:skill_md].to_s
+
+      result = Forge::SkillGenerator.new(brief: brief, write_file: true).call
+      if result.ok?
+        # Layer the user's edited skill_md on top of the freshly-generated
+        # row, if they touched it. We update both the record and the
+        # SKILL.md skill_file to keep them in sync.
+        if edited_skill_md.present? && edited_skill_md != result.skill.skill_md
+          result.skill.update!(skill_md: edited_skill_md)
+          if (primary = result.skill.skill_files.find_by(path: "SKILL.md"))
+            primary.update!(content: edited_skill_md)
+          end
+        end
+        redirect_to admin_skills_path, notice: "Created skill #{result.skill.slug}"
+      else
+        redirect_to new_admin_skill_path, alert: "Skill generation failed: #{result.error}"
+      end
+    end
+
     # POST /admin/skills/:id/resync — refetches the SKILL.md (and siblings)
     # from the recorded source_url and re-ingests. No-op if source_url
     # blank (e.g. for SkillGenerator-authored rows).
@@ -72,6 +138,15 @@ module Admin
     end
 
     private
+
+    def extract_form_params
+      {
+        description:          params[:description].to_s,
+        name:                 params[:name].to_s,
+        category:             params[:category].to_s,
+        requires_connections: params[:requires_connections].to_s,
+      }
+    end
 
     def serialize(s)
       lint = Forge::QualityLint.skill(s)

@@ -1,5 +1,6 @@
-import { router } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 import { useEffect, useState } from "react"
+import { Sparkles } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
 import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
@@ -69,6 +70,13 @@ export default function AdminSkillsIndex({ skills, categories, pagy, q: initialQ
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Skills ({pagy.count})</h1>
+          <Link
+            href="/admin/skills/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+          >
+            <Sparkles className="size-3.5" />
+            Create with AI
+          </Link>
           <input
             placeholder="Search…"
             value={search}
