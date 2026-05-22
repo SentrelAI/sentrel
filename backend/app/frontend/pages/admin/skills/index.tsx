@@ -143,7 +143,14 @@ export default function AdminSkillsIndex({ skills, categories, pagy, q: initialQ
                       )}
                     </td>
                     <td className="p-2 text-right">
-                      <button onClick={() => togglePublished(s)} className="rounded border px-2 py-1 text-xs hover:bg-muted">
+                      <a
+                        href={`/skills/${s.slug}/edit`}
+                        className="rounded border px-2 py-1 text-xs hover:bg-muted"
+                        title="Open the multi-file editor — SKILL.md + supporting files"
+                      >
+                        Edit files
+                      </a>
+                      <button onClick={() => togglePublished(s)} className="ml-1 rounded border px-2 py-1 text-xs hover:bg-muted">
                         {s.published ? "Unpublish" : "Publish"}
                       </button>
                       {s.source_url && (

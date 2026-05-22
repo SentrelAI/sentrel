@@ -136,7 +136,15 @@ class SkillsController < ApplicationController
   private
 
   def load_skill
-    @skill = SkillDefinition.visible_to(current_tenant).find_by!(slug: params[:id])
+    # Platform admins can load any skill (including unpublished system
+    # seeds) — they manage the catalog cross-tenant from /admin/skills
+    # and follow the "Edit files" link into this same editor.
+    scope = if current_user&.respond_to?(:platform_admin?) && current_user.platform_admin?
+              SkillDefinition.all
+            else
+              SkillDefinition.visible_to(current_tenant)
+            end
+    @skill = scope.find_by!(slug: params[:id])
   end
 
   def forbid_unless_editor!

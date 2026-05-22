@@ -60,6 +60,9 @@ class SkillDefinition < ApplicationRecord
 
   def editable_by?(user)
     return false unless user
+    # Platform admins (ScribeMD operators) can edit any skill — system
+    # seeds + cross-tenant — from /admin/skills via the same editor.
+    return true if user.respond_to?(:platform_admin?) && user.platform_admin?
     return false if system?
     organization_id == user.organization_id
   end
