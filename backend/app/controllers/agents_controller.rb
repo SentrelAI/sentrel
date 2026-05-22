@@ -406,6 +406,25 @@ class AgentsController < ApplicationController
   end
 
   def edit
+    # Approval rules surfaced inline on the Approvals tab: agent-specific
+    # first (rules this agent is the explicit target of), then org-wide
+    # rules that ALSO apply to this agent. Sorted by enabled-then-newest.
+    agent_rules = @agent.approval_rules.includes(:agent)
+    org_wide_rules = current_tenant.approval_rules.where(agent_id: nil).includes(:agent)
+    approval_rules = (agent_rules.to_a + org_wide_rules.to_a)
+      .sort_by { |r| [ r.enabled ? 0 : 1, r.agent_id ? 0 : 1, -r.created_at.to_i ] }
+      .map { |r|
+        {
+          id: r.id,
+          label: r.label,
+          scope: r.agent_id ? "agent" : "org",
+          payload_type: r.payload_type,
+          auto_decision: r.auto_decision,
+          enabled: r.enabled,
+          predicate: r.predicate,
+        }
+      }
+
     render inertia: "agents/edit", props: {
       agent: agent_json(@agent),
       agents: current_tenant.agents.where.not(id: @agent.id).select(:id, :name, :slug, :role).order(:name).map { |a|
@@ -414,7 +433,8 @@ class AgentsController < ApplicationController
       org_credentials: current_tenant.credentials
         .order(kind: :asc, provider: :asc, name: :asc)
         .map { |c| { id: c.id, kind: c.kind, provider: c.provider, name: c.name } },
-      granted_credential_ids: @agent.credentials.pluck(:id)
+      granted_credential_ids: @agent.credentials.pluck(:id),
+      approval_rules: approval_rules,
     }
   end
 

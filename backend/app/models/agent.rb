@@ -14,6 +14,7 @@ class Agent < ApplicationRecord
   has_many :tasks, dependent: :destroy
   has_many :scheduled_work, dependent: :destroy
   has_many :pending_approvals, dependent: :destroy
+  has_many :approval_rules, dependent: :destroy
   has_many :audit_logs, dependent: :destroy
   has_many :agent_skills, dependent: :destroy
   has_many :skill_definitions, through: :agent_skills

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Head, Link, useForm } from "@inertiajs/react"
-import { BookMarked } from "lucide-react"
+import { BookMarked, ShieldCheck, CheckCircle2, XCircle, Building2, Plus } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
@@ -67,14 +67,25 @@ interface OrgCredential {
   name: string
 }
 
+interface AgentApprovalRule {
+  id: number
+  label: string | null
+  scope: "agent" | "org"
+  payload_type: string | null
+  auto_decision: "approve" | "reject"
+  enabled: boolean
+  predicate: Record<string, unknown>
+}
+
 interface Props {
   agent: Agent
   agents: AgentSummary[]
   org_credentials?: OrgCredential[]
   granted_credential_ids?: number[]
+  approval_rules?: AgentApprovalRule[]
 }
 
-export default function AgentEdit({ agent, agents = [], org_credentials = [], granted_credential_ids = [] }: Props) {
+export default function AgentEdit({ agent, agents = [], org_credentials = [], granted_credential_ids = [], approval_rules = [] }: Props) {
   const currentManagerId = (agent as any).manager?.id
     ? (typeof (agent as any).manager.id === "string" ? (agent as any).manager.id : String((agent as any).manager.id))
     : "none"
@@ -147,11 +158,12 @@ export default function AgentEdit({ agent, agents = [], org_credentials = [], gr
   )
 
   function EditTabs({ onSubmit, processing, agentId }: { onSubmit: (e: React.FormEvent) => void; processing: boolean; agentId: number }) {
-    const [tab, setTab] = useState<"identity" | "behavior" | "permissions">("identity")
-    const TABS: Array<{ key: "identity" | "behavior" | "permissions"; label: string }> = [
+    const [tab, setTab] = useState<"identity" | "behavior" | "permissions" | "approvals">("identity")
+    const TABS: Array<{ key: "identity" | "behavior" | "permissions" | "approvals"; label: string }> = [
       { key: "identity",    label: "Identity" },
       { key: "behavior",    label: "Behavior" },
       { key: "permissions", label: "Permissions" },
+      { key: "approvals",   label: "Approvals" },
     ]
     return (
       <form onSubmit={onSubmit} className="max-w-2xl space-y-6">
@@ -430,6 +442,10 @@ export default function AgentEdit({ agent, agents = [], org_credentials = [], gr
         </section>
         </>)}
 
+        {tab === "approvals" && (
+          <ApprovalRulesTab agentId={agentId} rules={approval_rules} />
+        )}
+
         <div className="flex justify-end gap-2 pb-8">
           <Button variant="outline" asChild>
             <Link href={agentPath(agentId)}>Cancel</Link>
@@ -611,5 +627,88 @@ function SaveAsTemplateButton({ agentId, agentName }: { agentId: string | number
         </div>
       )}
     </>
+  )
+}
+
+// Approval rules tab on the agent edit page. Read-only summary — rules
+// are still authored on /approval_rules so we don't duplicate the
+// dialog code here. Lists agent-specific rules first, then org-wide
+// rules that ALSO apply to this agent.
+function ApprovalRulesTab({ rules }: { agentId: number; rules: AgentApprovalRule[] }) {
+  const agentRules = rules.filter((r) => r.scope === "agent")
+  const orgRules = rules.filter((r) => r.scope === "org")
+  return (
+    <section className="space-y-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <Overline className="mb-1">Approval rules</Overline>
+          <p className="text-xs text-muted-foreground">
+            Rules let this agent skip the human-in-the-loop for low-risk requests. Edits go via{" "}
+            <Link href="/approval_rules" className="underline">/approval_rules</Link>.
+          </p>
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/approval_rules"><Plus className="size-3.5 mr-1" /> New rule</Link>
+        </Button>
+      </div>
+
+      {rules.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+          <ShieldCheck className="mx-auto mb-2 size-5 text-muted-foreground" />
+          <p className="text-sm font-medium">No rules apply to this agent</p>
+          <p className="mt-1 text-xs text-muted-foreground">Every approval request will pause for a human. Add a rule on /approval_rules to auto-resolve low-risk patterns.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {agentRules.length > 0 && (
+            <RuleGroup title="Agent-specific" subtitle="Match this agent before any org-wide rule">
+              {agentRules.map((r) => <RuleRow key={r.id} rule={r} />)}
+            </RuleGroup>
+          )}
+          {orgRules.length > 0 && (
+            <RuleGroup title="Org-wide" subtitle="Apply to every agent — including this one">
+              {orgRules.map((r) => <RuleRow key={r.id} rule={r} />)}
+            </RuleGroup>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RuleGroup({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+        <span className="text-[10px] text-muted-foreground/70">— {subtitle}</span>
+      </div>
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  )
+}
+
+function RuleRow({ rule }: { rule: AgentApprovalRule }) {
+  const isApprove = rule.auto_decision === "approve"
+  const Icon = isApprove ? CheckCircle2 : XCircle
+  const decisionColor = isApprove
+    ? "text-green-700 dark:text-green-400"
+    : "text-red-700 dark:text-red-400"
+  return (
+    <div className={`flex items-center gap-2 rounded-md border p-2 text-xs ${rule.enabled ? "" : "opacity-50"}`}>
+      <Icon className={`size-3.5 ${decisionColor}`} />
+      <div className="min-w-0 flex-1 truncate">
+        <span className="font-medium">{rule.label || `${isApprove ? "Approve" : "Reject"} ${rule.payload_type || "any"}`}</span>
+        {rule.scope === "org" && (
+          <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <Building2 className="size-2.5" /> org-wide
+          </span>
+        )}
+      </div>
+      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+        {rule.payload_type || "any"}
+      </span>
+      {!rule.enabled && <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">disabled</span>}
+    </div>
   )
 }
