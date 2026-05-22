@@ -1,14 +1,27 @@
 import { Head, useForm } from "@inertiajs/react"
 import { useEffect, useRef, useState } from "react"
-import { Copy, Check, Loader2, RefreshCw, X } from "lucide-react"
+import {
+  Copy,
+  Check,
+  Loader2,
+  RefreshCw,
+  X,
+  Building2,
+  AtSign,
+  Sparkles,
+  Users,
+  MessageSquare,
+  FileText,
+} from "lucide-react"
 
-import { Overline } from "@/components/brand"
 import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { dashboardPath, settingsPath } from "@/routes"
 import { AnthropicAccountCard, type AiAccount } from "@/components/anthropic-account-card"
 import { cn } from "@/lib/utils"
@@ -64,6 +77,8 @@ export default function SettingsShow({ organization, members, anthropic_account,
     patch(settingsPath())
   }
 
+  const hasSlackAgents = !!(slack_agents && slack_agents.length > 0)
+
   return (
     <AppLayout
       crumbs={[
@@ -76,162 +91,188 @@ export default function SettingsShow({ organization, members, anthropic_account,
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
-        description="Manage your organization, email domain, and team members."
+        description="Manage your organization, email domain, AI account, and team."
       />
 
-      <div className="max-w-2xl space-y-8">
-        {/* AI account (subscription auth) — moved here from /integrations.
-            Pasting a Claude Pro / Max token routes agents through the
-            in-process billing proxy on their Fly Machine instead of metered
-            API. */}
-        <section>
-          <Overline className="mb-3">AI Account</Overline>
-          <p className="text-xs text-muted-foreground mb-3">
-            Run agents on your Claude Pro / Max / Team subscription instead of paying per token. Subject to subscription rate limits — best for hands-on use, not autonomous fleets.
-          </p>
-          <AnthropicAccountCard account={anthropic_account} />
-        </section>
+      <Tabs defaultValue="workspace" className="max-w-4xl">
+        <TabsList variant="line" className="mb-2">
+          <TabsTrigger value="workspace"><Building2 /> Workspace</TabsTrigger>
+          <TabsTrigger value="email"><AtSign /> Email</TabsTrigger>
+          <TabsTrigger value="ai"><Sparkles /> AI account</TabsTrigger>
+          <TabsTrigger value="context"><FileText /> Context</TabsTrigger>
+          {hasSlackAgents && <TabsTrigger value="slack"><MessageSquare /> Slack</TabsTrigger>}
+          <TabsTrigger value="team"><Users /> Team</TabsTrigger>
+        </TabsList>
 
-        {/* Organization */}
-        <section>
-          <Overline className="mb-3">Organization</Overline>
-          <div className="rounded-lg border bg-card p-5">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input id="name" value={data.organization.name} onChange={(e) => setData("organization", { ...data.organization, name: e.target.value })} required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Slug</Label>
-                  <Input value={organization.slug} disabled className="text-muted-foreground" />
-                  <p className="text-[10px] text-muted-foreground">Used in URLs — cannot be changed</p>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" size="sm" disabled={processing}>
-                  {processing ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        {/* Email Domain */}
-        <EmailDomainSection
-          organization={organization}
-          emailDomain={data.organization.email_domain}
-          onDomainChange={(val) => setData("organization", { ...data.organization, email_domain: val })}
-          onSave={handleSubmit}
-          processing={processing}
-          managedDns={managed_dns}
-        />
-
-        {/* Organization Context */}
-        <section>
-          <Overline className="mb-3">Agent Context</Overline>
-          <div className="rounded-lg border border-border p-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="context_md">Shared context for all agents</Label>
-                <textarea
-                  id="context_md"
-                  className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
-                  placeholder={"ScribeMD builds AI-powered medical transcription.\nOur ICP: healthcare companies, 50-500 employees.\nCompetitors: Nuance, DeepScribe."}
-                  value={data.organization.context_md}
-                  onChange={(e) => setData("organization", { ...data.organization, context_md: e.target.value })}
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Appears in every agent's context as "About My Organization"
-                </p>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" size="sm" disabled={processing}>
-                  {processing ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        {/* Slack front-desk agent — only rendered when at least one agent
-            in the org has Slack connected. Routes DMs that aren't bound to
-            a specific agent here. Otherwise users get a Block Kit picker. */}
-        {slack_agents && slack_agents.length > 0 && (
-          <section>
-            <Overline className="mb-3">Slack default agent</Overline>
-            <div className="rounded-lg border border-border p-4">
+        <TabsContent value="workspace" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Organization</CardTitle>
+              <CardDescription>Display name and URL slug for this workspace.</CardDescription>
+            </CardHeader>
+            <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="default_slack_agent_id">Front-desk agent for Slack DMs</Label>
-                  <select
-                    id="default_slack_agent_id"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
-                    value={data.organization.default_slack_agent_id || ""}
-                    onChange={(e) =>
-                      setData("organization", {
-                        ...data.organization,
-                        default_slack_agent_id: e.target.value,
-                      })
-                    }
-                  >
-                    <option value="">— No default (show picker instead) —</option>
-                    {slack_agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}{a.role ? ` · ${a.role}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-muted-foreground">
-                    When someone DMs the bot in Slack and the conversation isn't already bound to an agent, the message goes here. Leave blank to ask the user via a Block Kit picker instead.
-                  </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input id="name" value={data.organization.name} onChange={(e) => setData("organization", { ...data.organization, name: e.target.value })} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Slug</Label>
+                    <Input value={organization.slug} disabled className="text-muted-foreground" />
+                    <p className="text-[10px] text-muted-foreground">Used in URLs — cannot be changed.</p>
+                  </div>
                 </div>
                 <div className="flex justify-end">
                   <Button type="submit" size="sm" disabled={processing}>
-                    {processing ? "Saving..." : "Save"}
+                    {processing ? "Saving…" : "Save"}
                   </Button>
                 </div>
               </form>
-            </div>
-          </section>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="email" className="mt-4">
+          <EmailDomainSection
+            organization={organization}
+            emailDomain={data.organization.email_domain}
+            onDomainChange={(val) => setData("organization", { ...data.organization, email_domain: val })}
+            onSave={handleSubmit}
+            processing={processing}
+            managedDns={managed_dns}
+          />
+        </TabsContent>
+
+        <TabsContent value="ai" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI account</CardTitle>
+              <CardDescription>
+                Route agents through your Claude Pro / Max / Team subscription instead of paying per token. Subject to subscription rate limits — best for hands-on use, not autonomous fleets.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AnthropicAccountCard account={anthropic_account} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="context" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Shared agent context</CardTitle>
+              <CardDescription>
+                Appears in every agent's system prompt as "About My Organization". Use it for the company pitch, ICP, competitors, banned terms — anything every agent should know.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="context_md">Context</Label>
+                  <textarea
+                    id="context_md"
+                    className="flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
+                    placeholder={"ScribeMD builds AI-powered medical transcription.\nOur ICP: healthcare companies, 50-500 employees.\nCompetitors: Nuance, DeepScribe."}
+                    value={data.organization.context_md}
+                    onChange={(e) => setData("organization", { ...data.organization, context_md: e.target.value })}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={processing}>
+                    {processing ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {hasSlackAgents && (
+          <TabsContent value="slack" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Default Slack agent</CardTitle>
+                <CardDescription>
+                  When someone DMs the bot in Slack and the conversation isn't already bound to an agent, the message goes to this front-desk agent. Leave blank to show the user a Block Kit picker instead.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="default_slack_agent_id">Front-desk agent</Label>
+                    <select
+                      id="default_slack_agent_id"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
+                      value={data.organization.default_slack_agent_id || ""}
+                      onChange={(e) =>
+                        setData("organization", {
+                          ...data.organization,
+                          default_slack_agent_id: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">— No default (show picker instead) —</option>
+                      {slack_agents!.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}{a.role ? ` · ${a.role}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm" disabled={processing}>
+                      {processing ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
         )}
 
-        {/* Team Members */}
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <Overline>Team Members</Overline>
-            <Button variant="outline" size="sm" className="h-7 text-xs" disabled>
-              Invite
-            </Button>
-          </div>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Email</th>
-                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Role</th>
-                  <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Joined</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((member) => (
-                  <tr key={member.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5 font-medium">{member.name}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{member.email}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant="secondary" className="text-[10px] capitalize">{member.role}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                      {new Date(member.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+        <TabsContent value="team" className="mt-4">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between">
+              <div>
+                <CardTitle>Team members</CardTitle>
+                <CardDescription>People with access to this workspace.</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <a href="/invitations">Manage invitations</a>
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-hidden border-t">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                      <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Role</th>
+                      <th className="text-left px-4 py-2.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((member) => (
+                      <tr key={member.id} className="border-b last:border-0">
+                        <td className="px-4 py-2.5 font-medium">{member.name}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{member.email}</td>
+                        <td className="px-4 py-2.5">
+                          <Badge variant="secondary" className="text-[10px] capitalize">{member.role}</Badge>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                          {new Date(member.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </AppLayout>
   )
 }
@@ -440,9 +481,14 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
   const hasManagedZones = !!(managedDns?.zones && managedDns.zones.length > 0)
 
   return (
-    <section>
-      <Overline className="mb-3">Email Domain</Overline>
-      <div className="rounded-lg border border-border p-4 space-y-4">
+    <Card>
+      <CardHeader>
+        <CardTitle>Email domain</CardTitle>
+        <CardDescription>
+          Pick a managed subdomain (zero DNS work) or bring your own — agents send and receive at <span className="font-mono">name@your-domain</span>. SES verifies the DKIM + SPF + MX records.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
         {organization.email_domain && (
           <ConnectedDomainCard
             domain={organization.email_domain}
@@ -602,8 +648,8 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
             </div>
           </div>
         )}
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   )
 }
 
