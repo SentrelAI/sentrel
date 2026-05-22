@@ -67,6 +67,58 @@ class ApprovalRulesController < ApplicationController
     redirect_to approval_rules_path, notice: @rule.enabled ? "Rule enabled" : "Rule disabled"
   end
 
+  # POST /approval_rules/test
+  # Body: { predicate: {…}, payload_type?, agent_id?, days? = 30 }
+  # Returns: { window_days, total, matched, sample: [{id, agent_name, payload_type, created_at, tool_input}] }
+  #
+  # Dry-runs a predicate against the last N days of PendingApproval rows
+  # (any status) without writing anything. Used by the rule dialog's
+  # "Test against history" button so authors can sanity-check their
+  # predicate before flipping the rule live.
+  def test
+    days = params[:days].to_i
+    days = 30 if days <= 0
+    days = 365 if days > 365
+
+    predicate = parse_predicate(params[:predicate])
+    payload_type = params[:payload_type].presence
+    agent_id = resolve_agent_id(params[:agent_id])
+
+    scope = current_tenant.pending_approvals
+                          .includes(:agent)
+                          .where("created_at >= ?", days.days.ago)
+    scope = scope.where(agent_id: agent_id) if agent_id
+    scope = scope.where(payload_type: payload_type) if payload_type
+
+    rows = scope.order(created_at: :desc).limit(500).to_a
+    matches = rows.select do |row|
+      payload = row.tool_input.is_a?(Hash) ? row.tool_input : {}
+      ApprovalPredicate.match?(predicate, payload)
+    end
+
+    sample = matches.first(10).map do |row|
+      {
+        id: row.id,
+        agent_name: row.agent&.name,
+        payload_type: row.payload_type,
+        created_at: row.created_at,
+        status: row.status,
+        tool_input: row.tool_input,
+      }
+    end
+
+    render json: {
+      window_days: days,
+      total: rows.size,
+      matched: matches.size,
+      sample: sample,
+      # When we hit the 500-row cap, the count is a floor not a true total.
+      truncated: rows.size >= 500,
+    }
+  rescue JSON::ParserError => e
+    render json: { error: "Predicate JSON invalid: #{e.message}" }, status: :unprocessable_entity
+  end
+
   # DELETE /approval_rules/:id
   def destroy
     record_audit!(@rule, "approval_rule_destroyed")

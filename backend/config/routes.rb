@@ -270,6 +270,7 @@ Rails.application.routes.draw do
     # a human. Audit-logged on every create/update/toggle/destroy.
     resources :approval_rules, only: [ :index, :create, :update, :destroy ] do
       member { post :toggle }
+      collection { post :test } # dry-run a predicate against last N days of approvals
     end
 
     # Observability — run timings, costs, tool call trees, error tracking

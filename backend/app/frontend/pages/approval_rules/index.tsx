@@ -12,6 +12,8 @@ import {
   XCircle,
   ChevronDown,
   ChevronRight,
+  Beaker,
+  Loader2,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -58,6 +60,22 @@ interface Props {
   rules: Rule[]
   agents: Agent[]
   payload_types: string[]
+}
+
+interface TestResult {
+  window_days: number
+  total: number
+  matched: number
+  truncated: boolean
+  sample: Array<{
+    id: number
+    agent_name: string | null
+    payload_type: string | null
+    created_at: string
+    status: string
+    tool_input: Record<string, unknown>
+  }>
+  error?: string
 }
 
 const PREDICATE_EXAMPLES: Array<{ label: string; value: string }> = [
@@ -259,11 +277,14 @@ function RuleDialog({
     editing ? JSON.stringify(editing.predicate, null, 2) : "{}",
   )
   const [submitting, setSubmitting] = useState(false)
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [testing, setTesting] = useState(false)
 
   // Reset whenever the dialog target changes (open with a different editing
   // row, or switch from edit → create).
   useEffect(() => {
     if (!open) return
+    setTestResult(null)
     if (editing) {
       setAgentId(editing.agent?.id || "any")
       setPayloadType(editing.payload_type || "any")
@@ -278,6 +299,43 @@ function RuleDialog({
       setPredicate("{}")
     }
   }, [open, editing])
+
+  async function runTest() {
+    // Validate JSON first so the user sees the parse error inline,
+    // same as on submit.
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(predicate)
+    } catch (err) {
+      toast.error(`Predicate JSON invalid: ${(err as Error).message}`)
+      return
+    }
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      const res = await fetch("/approval_rules/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
+        body: JSON.stringify({
+          predicate: parsed,
+          payload_type: payloadType === "any" ? null : payloadType,
+          agent_id: agentId === "any" ? null : agentId,
+          days: 30,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || `Test failed (${res.status})`)
+      } else {
+        setTestResult(data)
+      }
+    } catch (err) {
+      toast.error((err as Error).message || "Network error")
+    } finally {
+      setTesting(false)
+    }
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -419,8 +477,40 @@ function RuleDialog({
             </div>
           </div>
 
+          {testResult && (
+            <div className="rounded-md border bg-muted/30 p-3 text-xs">
+              <div className="mb-1 flex items-center gap-1.5 font-medium">
+                <Beaker className="size-3.5" />
+                {testResult.matched} / {testResult.total} approvals in the last {testResult.window_days} days would match
+                {testResult.truncated && <span className="font-normal text-muted-foreground"> (capped at 500)</span>}
+              </div>
+              {testResult.matched > 0 ? (
+                <ul className="mt-2 space-y-1 text-[11px]">
+                  {testResult.sample.map((s) => (
+                    <li key={s.id} className="truncate">
+                      <span className="font-mono text-muted-foreground">#{s.id}</span>{" "}
+                      <span className="font-medium">{s.agent_name || "—"}</span>{" "}
+                      <span className="text-muted-foreground">· {s.payload_type || "any"}</span>{" "}
+                      <span className="text-muted-foreground">· {new Date(s.created_at).toLocaleDateString()}</span>{" "}
+                      <span className="text-muted-foreground">· {s.status}</span>
+                    </li>
+                  ))}
+                  {testResult.matched > testResult.sample.length && (
+                    <li className="text-muted-foreground">…and {testResult.matched - testResult.sample.length} more</li>
+                  )}
+                </ul>
+              ) : (
+                <p className="mt-1 text-muted-foreground">No approvals in the window would have matched. Tighten the predicate or widen the scope.</p>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={runTest} disabled={testing}>
+              {testing ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Beaker className="mr-1.5 size-3.5" />}
+              {testing ? "Testing…" : "Test against history"}
+            </Button>
             <Button type="submit" disabled={submitting}>
               {submitting ? "Saving…" : editing ? "Save changes" : "Create rule"}
             </Button>
