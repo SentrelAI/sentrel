@@ -1,8 +1,9 @@
 import { Link, router } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
+import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
 
 interface Template {
   id: number
@@ -30,22 +31,37 @@ interface Template {
 interface Props {
   templates: Template[]
   categories: string[]
+  pagy: PagyMeta
+  q: string
+  category: string
 }
 
-export default function AdminTemplatesIndex({ templates, categories }: Props) {
-  const [filter, setFilter] = useState<string>("all")
-  const [search, setSearch] = useState("")
+export default function AdminTemplatesIndex({ templates, categories, pagy, q: initialQ, category: initialCategory }: Props) {
+  const [filter, setFilter] = useState<string>(initialCategory || "all")
+  const [search, setSearch] = useState(initialQ || "")
   const [showOnly, setShowOnly] = useState<"all" | "pending" | "system" | "community">("all")
   const [expanded, setExpanded] = useState<number | null>(null)
   const [selected, setSelected] = useState<number[]>([])
   const toggleSelect = (id: number) => setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
 
+  // Debounce server-side search/category — push to the URL so pagination
+  // resets to page 1 with the new filter applied across the full dataset.
+  useEffect(() => {
+    if (search === (initialQ || "") && filter === (initialCategory || "all")) return
+    const t = setTimeout(() => {
+      const params: Record<string, string> = {}
+      if (search) params.q = search
+      if (filter && filter !== "all") params.category = filter
+      router.get("/admin/templates", params, { preserveScroll: true, preserveState: true, replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search, filter, initialQ, initialCategory])
+
+  // showOnly stays client-side: it filters within the current page.
   const filtered = templates.filter((t) => {
-    if (filter !== "all" && t.category !== filter) return false
     if (showOnly === "pending" && t.published) return false
     if (showOnly === "system" && !t.system_template) return false
     if (showOnly === "community" && t.system_template) return false
-    if (search && !`${t.name} ${t.slug} ${t.role}`.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
@@ -62,7 +78,7 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Templates" }]}>
       <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Templates ({templates.length})</h1>
+          <h1 className="text-2xl font-semibold">Templates ({pagy.count})</h1>
           <Link
             href="/admin/templates/new"
             className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
@@ -174,6 +190,11 @@ export default function AdminTemplatesIndex({ templates, categories }: Props) {
               ))}
             </tbody>
           </table>
+          <PaginationFooter
+            pagy={pagy}
+            basePath="/admin/templates"
+            query={{ q: search || undefined, category: filter !== "all" ? filter : undefined }}
+          />
         </div>
         <BulkActionBar
           selectedIds={selected}

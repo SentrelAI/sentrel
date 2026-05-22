@@ -5,10 +5,21 @@ module Admin
     bulk_destroyable User, guard: ->(user, current_user) { user != current_user }
 
     def index
-      rows = User.includes(:organization).order(created_at: :desc).map { |u| serialize(u) }
+      q = params[:q].to_s.strip
+
+      scope = User.includes(:organization).order(created_at: :desc)
+      if q.present?
+        like = "%#{q.downcase}%"
+        scope = scope.where("LOWER(users.email) LIKE ? OR LOWER(users.name) LIKE ?", like, like)
+      end
+
+      pagy, rows = pagy(scope, limit: params[:per_page])
+
       render inertia: "admin/users/index", props: {
-        users: rows,
+        users: rows.map { |u| serialize(u) },
         roles: %w[owner admin member viewer],
+        pagy: pagy_props(pagy),
+        q: q,
       }
     end
 

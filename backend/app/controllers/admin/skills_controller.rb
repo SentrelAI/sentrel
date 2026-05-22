@@ -4,10 +4,24 @@ module Admin
     bulk_destroyable SkillDefinition
 
     def index
-      rows = SkillDefinition.order(updated_at: :desc).map { |s| serialize(s) }
+      q = params[:q].to_s.strip
+      category = params[:category].to_s.strip
+
+      scope = SkillDefinition.order(updated_at: :desc)
+      if q.present?
+        like = "%#{q.downcase}%"
+        scope = scope.where("LOWER(name) LIKE ? OR LOWER(slug) LIKE ? OR LOWER(description) LIKE ?", like, like, like)
+      end
+      scope = scope.where(category: category) if category.present? && category != "all"
+
+      pagy, rows = pagy(scope, limit: params[:per_page])
+
       render inertia: "admin/skills/index", props: {
-        skills: rows,
+        skills: rows.map { |s| serialize(s) },
         categories: Forge::SkillGenerator::CATEGORIES,
+        pagy: pagy_props(pagy),
+        q: q,
+        category: category.presence || "all",
       }
     end
 

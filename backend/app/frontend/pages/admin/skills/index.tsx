@@ -1,7 +1,8 @@
 import { router } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
+import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
 
 interface Skill {
   id: number
@@ -23,20 +24,30 @@ interface Skill {
 interface Props {
   skills: Skill[]
   categories: string[]
+  pagy: PagyMeta
+  q: string
+  category: string
 }
 
-export default function AdminSkillsIndex({ skills, categories }: Props) {
-  const [filter, setFilter] = useState("all")
-  const [search, setSearch] = useState("")
+export default function AdminSkillsIndex({ skills, categories, pagy, q: initialQ, category: initialCategory }: Props) {
+  const [filter, setFilter] = useState(initialCategory || "all")
+  const [search, setSearch] = useState(initialQ || "")
   const [expanded, setExpanded] = useState<number | null>(null)
   const [selected, setSelected] = useState<number[]>([])
   const toggleSelect = (id: number) => setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
 
-  const filtered = skills.filter((s) => {
-    if (filter !== "all" && s.category !== filter) return false
-    if (search && !`${s.name} ${s.slug} ${s.description}`.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
+  useEffect(() => {
+    if (search === (initialQ || "") && filter === (initialCategory || "all")) return
+    const t = setTimeout(() => {
+      const params: Record<string, string> = {}
+      if (search) params.q = search
+      if (filter && filter !== "all") params.category = filter
+      router.get("/admin/skills", params, { preserveScroll: true, preserveState: true, replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search, filter, initialQ, initialCategory])
+
+  const filtered = skills
 
   function togglePublished(s: Skill) {
     router.put(`/admin/skills/${s.id}`, { published: !s.published }, { preserveScroll: true })
@@ -57,7 +68,7 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Skills" }]}>
       <div className="mx-auto max-w-7xl space-y-4 p-6">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Skills ({skills.length})</h1>
+          <h1 className="text-2xl font-semibold">Skills ({pagy.count})</h1>
           <input
             placeholder="Search…"
             value={search}
@@ -152,6 +163,11 @@ export default function AdminSkillsIndex({ skills, categories }: Props) {
               ))}
             </tbody>
           </table>
+          <PaginationFooter
+            pagy={pagy}
+            basePath="/admin/skills"
+            query={{ q: search || undefined, category: filter !== "all" ? filter : undefined }}
+          />
         </div>
         <BulkActionBar
           selectedIds={selected}

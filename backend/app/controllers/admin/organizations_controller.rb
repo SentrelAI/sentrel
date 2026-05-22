@@ -4,8 +4,21 @@ module Admin
     bulk_destroyable Organization
 
     def index
-      rows = Organization.order(created_at: :desc).map { |o| serialize(o) }
-      render inertia: "admin/organizations/index", props: { organizations: rows }
+      q = params[:q].to_s.strip
+
+      scope = Organization.order(created_at: :desc)
+      if q.present?
+        like = "%#{q.downcase}%"
+        scope = scope.where("LOWER(name) LIKE ? OR LOWER(slug) LIKE ?", like, like)
+      end
+
+      pagy, rows = pagy(scope, limit: params[:per_page])
+
+      render inertia: "admin/organizations/index", props: {
+        organizations: rows.map { |o| serialize(o) },
+        pagy: pagy_props(pagy),
+        q: q,
+      }
     end
 
     def update

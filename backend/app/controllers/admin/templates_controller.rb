@@ -9,12 +9,25 @@ module Admin
     bulk_destroyable AgentTemplate, tenant_bypass: true
 
     def index
-      rows = ActsAsTenant.without_tenant do
-        AgentTemplate.order(updated_at: :desc).to_a.map { |t| serialize(t) }
+      q = params[:q].to_s.strip
+      category = params[:category].to_s.strip
+
+      pagy, rows = ActsAsTenant.without_tenant do
+        scope = AgentTemplate.order(updated_at: :desc)
+        if q.present?
+          like = "%#{q.downcase}%"
+          scope = scope.where("LOWER(name) LIKE ? OR LOWER(slug) LIKE ? OR LOWER(role) LIKE ?", like, like, like)
+        end
+        scope = scope.where(category: category) if category.present? && category != "all"
+        pagy(scope, limit: params[:per_page])
       end
+
       render inertia: "admin/templates/index", props: {
-        templates: rows,
+        templates: rows.map { |t| serialize(t) },
         categories: AgentTemplate::CATEGORIES,
+        pagy: pagy_props(pagy),
+        q: q,
+        category: category.presence || "all",
       }
     end
 

@@ -1,7 +1,8 @@
 import { router } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
+import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
 
 interface Agent {
   id: number
@@ -17,19 +18,29 @@ interface Agent {
   skills: number
 }
 
-interface Props { agents: Agent[] }
+interface Props { agents: Agent[]; pagy: PagyMeta; q: string }
 
-export default function AdminAgentsIndex({ agents }: Props) {
-  const [search, setSearch] = useState("")
+export default function AdminAgentsIndex({ agents, pagy, q: initialQ }: Props) {
+  const [search, setSearch] = useState(initialQ || "")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selected, setSelected] = useState<number[]>([])
   function toggleSelect(id: number) {
     setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   }
 
+  useEffect(() => {
+    if (search === (initialQ || "")) return
+    const t = setTimeout(() => {
+      const params: Record<string, string> = {}
+      if (search) params.q = search
+      router.get("/admin/agents", params, { preserveScroll: true, preserveState: true, replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search, initialQ])
+
+  // Status filter is client-side: it filters within the current page.
   const filtered = agents.filter((a) => {
     if (statusFilter !== "all" && a.status !== statusFilter) return false
-    if (search && !`${a.name} ${a.slug} ${a.role} ${a.organization?.name || ""}`.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
@@ -44,7 +55,7 @@ export default function AdminAgentsIndex({ agents }: Props) {
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Agents" }]}>
       <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Agents ({agents.length})</h1>
+          <h1 className="text-2xl font-semibold">Agents ({pagy.count})</h1>
           <input
             placeholder="Search…"
             value={search}
@@ -100,6 +111,7 @@ export default function AdminAgentsIndex({ agents }: Props) {
               ))}
             </tbody>
           </table>
+          <PaginationFooter pagy={pagy} basePath="/admin/agents" query={{ q: search || undefined }} />
         </div>
         <BulkActionBar
           selectedIds={selected}

@@ -1,8 +1,9 @@
 import { router } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Trash2 } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
+import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
 
 interface User {
   id: number
@@ -16,10 +17,21 @@ interface User {
   current_sign_in_at: string | null
 }
 
-interface Props { users: User[]; roles: string[] }
+interface Props { users: User[]; roles: string[]; pagy: PagyMeta; q: string }
 
-export default function AdminUsersIndex({ users, roles }: Props) {
+export default function AdminUsersIndex({ users, roles, pagy, q: initialQ }: Props) {
   const [selected, setSelected] = useState<number[]>([])
+  const [search, setSearch] = useState(initialQ || "")
+
+  useEffect(() => {
+    if (search === (initialQ || "")) return
+    const t = setTimeout(() => {
+      const params: Record<string, string> = {}
+      if (search) params.q = search
+      router.get("/admin/users", params, { preserveScroll: true, preserveState: true, replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search, initialQ])
 
   function changeRole(u: User, role: string) {
     router.put(`/admin/users/${u.id}`, { role }, { preserveScroll: true })
@@ -42,7 +54,15 @@ export default function AdminUsersIndex({ users, roles }: Props) {
   return (
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Users" }]}>
       <div className="mx-auto max-w-7xl space-y-4">
-        <h1 className="text-2xl font-semibold">Users ({users.length})</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold">Users ({pagy.count})</h1>
+          <input
+            placeholder="Search email / name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[200px] rounded border bg-background px-3 py-1.5 text-sm"
+          />
+        </div>
         <p className="text-xs text-muted-foreground">
           <b>Role</b> is the user's role within their own organization. <b>Platform admin</b> grants cross-tenant /admin access — ScribeMD operators only.
         </p>
@@ -119,6 +139,7 @@ export default function AdminUsersIndex({ users, roles }: Props) {
               ))}
             </tbody>
           </table>
+          <PaginationFooter pagy={pagy} basePath="/admin/users" query={{ q: search || undefined }} />
         </div>
         <BulkActionBar
           selectedIds={selected}

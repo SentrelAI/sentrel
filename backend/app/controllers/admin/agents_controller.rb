@@ -6,12 +6,22 @@ module Admin
     bulk_destroyable Agent, tenant_bypass: true
 
     def index
-      # acts_as_tenant scopes Agent by default; use unscoped to bypass since
-      # admin is cross-org by design.
-      rows = ActsAsTenant.without_tenant do
-        Agent.includes(:organization, :ai_config).order(updated_at: :desc).limit(500).map { |a| serialize(a) }
+      q = params[:q].to_s.strip
+
+      pagy, rows = ActsAsTenant.without_tenant do
+        scope = Agent.includes(:organization, :ai_config).order(updated_at: :desc)
+        if q.present?
+          like = "%#{q.downcase}%"
+          scope = scope.where("LOWER(agents.name) LIKE ? OR LOWER(agents.slug) LIKE ? OR LOWER(agents.role) LIKE ?", like, like, like)
+        end
+        pagy(scope, limit: params[:per_page])
       end
-      render inertia: "admin/agents/index", props: { agents: rows }
+
+      render inertia: "admin/agents/index", props: {
+        agents: rows.map { |a| serialize(a) },
+        pagy: pagy_props(pagy),
+        q: q,
+      }
     end
 
     def update

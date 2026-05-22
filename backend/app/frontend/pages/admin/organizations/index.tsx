@@ -1,7 +1,8 @@
 import { router } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
+import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
 
 interface Org {
   id: number
@@ -14,10 +15,21 @@ interface Org {
   agents_count: number
 }
 
-interface Props { organizations: Org[] }
+interface Props { organizations: Org[]; pagy: PagyMeta; q: string }
 
-export default function AdminOrganizationsIndex({ organizations }: Props) {
+export default function AdminOrganizationsIndex({ organizations, pagy, q: initialQ }: Props) {
   const [selected, setSelected] = useState<number[]>([])
+  const [search, setSearch] = useState(initialQ || "")
+
+  useEffect(() => {
+    if (search === (initialQ || "")) return
+    const t = setTimeout(() => {
+      const params: Record<string, string> = {}
+      if (search) params.q = search
+      router.get("/admin/organizations", params, { preserveScroll: true, preserveState: true, replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search, initialQ])
 
   function destroy(o: Org) {
     if (!confirm(`Delete org "${o.slug}"? This is destructive (cascades agents, users, etc).`)) return
@@ -33,7 +45,15 @@ export default function AdminOrganizationsIndex({ organizations }: Props) {
   return (
     <AdminLayout crumbs={[{ label: "Admin" }, { label: "Organizations" }]}>
       <div className="mx-auto max-w-7xl space-y-4">
-        <h1 className="text-2xl font-semibold">Organizations ({organizations.length})</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold">Organizations ({pagy.count})</h1>
+          <input
+            placeholder="Search name / slug…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-[200px] rounded border bg-background px-3 py-1.5 text-sm"
+          />
+        </div>
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
             <thead className="bg-muted">
@@ -72,6 +92,7 @@ export default function AdminOrganizationsIndex({ organizations }: Props) {
               ))}
             </tbody>
           </table>
+          <PaginationFooter pagy={pagy} basePath="/admin/organizations" query={{ q: search || undefined }} />
         </div>
         <BulkActionBar
           selectedIds={selected}
