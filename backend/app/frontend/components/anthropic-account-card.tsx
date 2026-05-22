@@ -1,8 +1,22 @@
 import { useState } from "react"
 import { router } from "@inertiajs/react"
-import { Sparkles, Check, Terminal } from "lucide-react"
+import { Sparkles, Check, Terminal, Clock, AlertTriangle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+
+// Returns null if the token doesn't expire (long-lived sk-ant-oat01),
+// or a tier describing how urgent re-auth is. The threshold mirrors
+// OauthCredential#expiring_soon? (1h) and the auto-refresh window.
+function expiryStatus(expiresAt: string | null): { tier: "expired" | "soon" | "ok"; label: string } | null {
+  if (!expiresAt) return null
+  const ms = new Date(expiresAt).getTime() - Date.now()
+  if (ms <= 0) return { tier: "expired", label: "Expired — re-paste to restore access" }
+  const hours = ms / (1000 * 60 * 60)
+  if (hours < 1) return { tier: "soon", label: `Expires in ${Math.max(1, Math.round(hours * 60))} min — refresh runs every 30 min` }
+  if (hours < 24) return { tier: "soon", label: `Expires in ${Math.round(hours)} h` }
+  if (hours > 24 * 30) return { tier: "ok", label: `Valid for ${Math.round(hours / 24)} more days` }
+  return { tier: "ok", label: `Expires ${new Date(expiresAt).toLocaleDateString()}` }
+}
 
 export interface AiAccount {
   provider: "anthropic" | "openai"
@@ -77,6 +91,20 @@ export function AnthropicAccountCard({ account }: Props) {
               {acc.account_email}
             </p>
           )}
+          {acc.connected && (() => {
+            const status = expiryStatus(acc.expires_at)
+            if (!status) return null
+            const styles =
+              status.tier === "expired" ? "text-red-600 dark:text-red-400" :
+              status.tier === "soon" ? "text-amber-600 dark:text-amber-400" :
+              "text-muted-foreground"
+            const Icon = status.tier === "ok" ? Clock : AlertTriangle
+            return (
+              <p className={`text-[10px] mt-1 inline-flex items-center gap-1 ${styles}`}>
+                <Icon className="size-3" /> {status.label}
+              </p>
+            )
+          })()}
         </div>
         {acc.connected ? (
           <div className="flex flex-col gap-1.5 shrink-0">

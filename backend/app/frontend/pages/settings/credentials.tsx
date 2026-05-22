@@ -53,6 +53,8 @@ interface Credential {
   display_suffix: string
   last_used_at: string | null
   agent_grants_count: number
+  dependent_agent_count: number
+  dependent_scope: "granted" | "org_default"
   field_names: string[]
   meta: Record<string, unknown>
   created_at: string
@@ -250,7 +252,14 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
                       cred={c}
                       onEdit={() => setEditing(c)}
                       onDelete={() => {
-                        if (!confirm(`Delete ${providerLabel(c.provider)} credential “${c.name}”?`)) return
+                        // Spell out the blast radius so deletes can't be
+                        // muscle-memoried away — agents WILL restart.
+                        const n = c.dependent_agent_count
+                        const scope = c.dependent_scope === "granted"
+                          ? `${n} agent${n === 1 ? "" : "s"} explicitly granted this key`
+                          : `every agent in this workspace (${n}) — it's the default ${c.provider} key`
+                        const msg = `Delete ${providerLabel(c.provider)} credential “${c.name}”?\n\nThis will restart ${scope} so they re-pull config. In-flight runs are interrupted.`
+                        if (!confirm(msg)) return
                         router.delete(`/settings/credentials/${c.id}`)
                       }}
                     />

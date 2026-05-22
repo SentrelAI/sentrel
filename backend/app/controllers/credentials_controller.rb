@@ -3,9 +3,18 @@ class CredentialsController < ApplicationController
 
   # GET /settings/credentials — full settings page (Inertia).
   def index
+    # Preload grant counts in one query so the index doesn't N+1 across
+    # credentials.
+    grant_counts = AgentCredentialGrant
+                     .where(credential_id: current_tenant.credentials.select(:id))
+                     .group(:credential_id)
+                     .count
+    org_agent_count = current_tenant.agents.count
+
     creds = current_tenant.credentials
       .order(kind: :asc, provider: :asc, name: :asc)
       .map do |c|
+        grants = grant_counts[c.id] || 0
         {
           id: c.id,
           kind: c.kind,
@@ -16,7 +25,12 @@ class CredentialsController < ApplicationController
           created_at: c.created_at,
           display_suffix: c.display_suffix,
           field_names: c.fields.keys,
-          agent_grants_count: AgentCredentialGrant.where(credential_id: c.id).count
+          agent_grants_count: grants,
+          # How many agents will be restarted if this credential is deleted.
+          # If it has no explicit grants, it's the org-wide default for the
+          # (kind, provider) pair and EngineSync hits every agent.
+          dependent_agent_count: grants.positive? ? grants : org_agent_count,
+          dependent_scope: grants.positive? ? "granted" : "org_default",
         }
       end
 
@@ -53,6 +67,7 @@ class CredentialsController < ApplicationController
     cred.meta = sanitize_meta(meta_input)
     cred.fields = fields if fields.any?
     if cred.save
+      record_audit!(cred, "credential_created")
       retrigger_dependent_engine_syncs(cred)
       redirect_to credentials_path, notice: "#{cred.provider} credential “#{cred.name}” added"
     else
@@ -79,6 +94,9 @@ class CredentialsController < ApplicationController
     cred.meta = (cred.meta || {}).merge(sanitize_meta(meta_input)) if meta_input
 
     if cred.save
+      # rotated_fields = which field keys were actually replaced (vs blank).
+      record_audit!(cred, "credential_updated",
+        extra: { rotated_fields: new_fields.keys })
       retrigger_dependent_engine_syncs(cred)
       redirect_to credentials_path, notice: "#{cred.provider} credential “#{cred.name}” updated"
     else
@@ -93,6 +111,8 @@ class CredentialsController < ApplicationController
   def destroy
     cred = current_tenant.credentials.find(params[:id])
     dependents = cred.agents.to_a
+    record_audit!(cred, "credential_destroyed",
+      extra: { dependent_agent_ids: dependents.map(&:id) })
     cred.destroy!
     dependents.each { |a| EngineSync.trigger(a) rescue nil }
     redirect_to credentials_path, notice: "Credential removed"
@@ -144,6 +164,28 @@ class CredentialsController < ApplicationController
     Credential::FIELD_SCHEMAS.each { |k, v| out[k] = v }
     out["__default__"] = Credential::DEFAULT_FIELDS
     out
+  end
+
+  # Audit log helper — matches the shape Admin::BaseController uses for
+  # destroys so /audit_logs surfaces all secret-mutation events with the
+  # same columns (acting_user_id + tool_name + input).
+  def record_audit!(cred, action, extra: {})
+    AuditLog.create!(
+      organization_id: current_tenant.id,
+      acting_user_id: current_user.id,
+      action: action,
+      tool_name: "credential",
+      input: {
+        credential_id: cred.id,
+        kind: cred.kind,
+        provider: cred.provider,
+        name: cred.name,
+        suffix: cred.display_suffix,
+      }.merge(extra).compact,
+      status: "success",
+    )
+  rescue => e
+    Rails.logger.error "[CredentialsController#audit] #{e.class}: #{e.message}"
   end
 
   # Triggers a config sync (env push + agent restart) for every agent that
