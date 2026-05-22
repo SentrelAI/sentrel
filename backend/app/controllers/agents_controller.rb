@@ -287,8 +287,12 @@ class AgentsController < ApplicationController
     # AgentTemplate acts_as_tenant filters out system seeds (org_id: NULL).
     # Wrap so the new-agent picker shows ALL published templates the org
     # is allowed to install (visible_to handles the access check).
+    # Capture tenant outside the block — inside without_tenant the
+    # current_tenant helper returns nil, which would hide org-owned
+    # community templates from their own org.
+    tenant = current_tenant
     templates_for_picker = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(current_tenant).order(:name).to_a
+      AgentTemplate.visible_to(tenant).order(:name).to_a
     end
     render inertia: "agents/new", props: {
       templates: templates_for_picker.map { |t| template_summary(t) },
@@ -312,9 +316,11 @@ class AgentsController < ApplicationController
 
     # AgentDrafter picks from the platform's full template catalog (system
     # seeds + the org's own community templates). Bypass acts_as_tenant
-    # so NULL-org system seeds are in the candidate pool.
+    # so NULL-org system seeds are in the candidate pool. Capture tenant
+    # outside — current_tenant is nil inside without_tenant.
+    tenant = current_tenant
     drafter_templates = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(current_tenant).to_a
+      AgentTemplate.visible_to(tenant).to_a
     end
 
     drafter = AgentDrafter.new(
@@ -335,7 +341,8 @@ class AgentsController < ApplicationController
     # needs to be able to look it up by slug. visible_to is the access
     # check; tenant scoping would 404 NULL-org rows.
     template = if params[:template_slug].present?
-      ActsAsTenant.without_tenant { AgentTemplate.visible_to(current_tenant).find_by(slug: params[:template_slug]) }
+      tenant = current_tenant
+      ActsAsTenant.without_tenant { AgentTemplate.visible_to(tenant).find_by(slug: params[:template_slug]) }
     end
 
     @agent = current_tenant.agents.build(agent_params)

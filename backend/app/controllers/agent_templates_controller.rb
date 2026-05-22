@@ -10,8 +10,12 @@ class AgentTemplatesController < ApplicationController
   # without_tenant so visible_to does the actual access check itself
   # (which already permits "NULL OR current org").
   def index
+    # Capture current_tenant outside the block — inside without_tenant
+    # the helper returns nil, which would hide org-owned templates from
+    # the org's own users.
+    tenant = current_tenant
     scope = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(current_tenant).order(:category, :name).to_a
+      AgentTemplate.visible_to(tenant).order(:category, :name).to_a
     end
 
     respond_to do |format|
@@ -34,8 +38,9 @@ class AgentTemplatesController < ApplicationController
 
   # GET /agent_templates/:id  (slug)
   def show
+    tenant = current_tenant
     template = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(current_tenant).find_by!(slug: params[:id])
+      AgentTemplate.visible_to(tenant).find_by!(slug: params[:id])
     end
     respond_to do |format|
       format.json {
