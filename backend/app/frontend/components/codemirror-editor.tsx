@@ -10,6 +10,9 @@ import { python } from "@codemirror/lang-python"
 import { javascript } from "@codemirror/lang-javascript"
 import { json } from "@codemirror/lang-json"
 import { yaml } from "@codemirror/lang-yaml"
+import { StreamLanguage } from "@codemirror/language"
+import { shell } from "@codemirror/legacy-modes/mode/shell"
+import { ruby } from "@codemirror/legacy-modes/mode/ruby"
 import { oneDark } from "@codemirror/theme-one-dark"
 
 // Lightweight CodeMirror 6 wrapper. Picks the right language pack per
@@ -27,6 +30,11 @@ const LANGUAGE_FOR_TYPE: Record<string, () => any> = {
   ts:   () => javascript({ typescript: true }),
   json: () => json(),
   yaml: () => yaml(),
+  // legacy-modes covers languages CodeMirror 6 doesn't ship as first-party
+  // packs. Skill bundles regularly include POSIX scripts and the occasional
+  // Ruby helper.
+  sh:   () => StreamLanguage.define(shell),
+  rb:   () => StreamLanguage.define(ruby),
 }
 
 interface CodeMirrorEditorProps {
