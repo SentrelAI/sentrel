@@ -96,6 +96,7 @@ Rails.application.routes.draw do
       collection { post :bulk_destroy }
     end
     resources :users, only: [:index, :update, :destroy] do
+      member { post :masquerade }
       collection { post :bulk_destroy }
     end
     resources :organizations, only: [:index, :update, :destroy] do
@@ -113,6 +114,11 @@ Rails.application.routes.draw do
 
   # Authenticated routes
   authenticate :user do
+    # Stop an in-flight admin masquerade. Lives outside /admin because
+    # while impersonating, current_user is the target (not necessarily a
+    # platform admin) and the /admin gate would block the escape hatch.
+    resource :masquerade, only: [:destroy], controller: "masquerades"
+
     get "onboarding", to: "onboarding#show", as: :onboarding
     post "onboarding/analyze", to: "onboarding#analyze", as: :onboarding_analyze
     get "onboarding/status", to: "onboarding#status", as: :onboarding_status

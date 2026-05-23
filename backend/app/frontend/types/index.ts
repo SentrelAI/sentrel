@@ -21,9 +21,21 @@ export interface Flash {
   error?: string
 }
 
+export interface MasqueradeUser {
+  id: number
+  name: string
+  email: string
+}
+
+export interface MasqueradeState {
+  admin: MasqueradeUser | null
+  target: MasqueradeUser | null
+}
+
 export interface SharedProps {
   auth: Auth
   flash: Flash
+  masquerade?: MasqueradeState | null
 }
 
 export interface AiConfig {

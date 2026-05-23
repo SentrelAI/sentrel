@@ -1,6 +1,6 @@
 import { router } from "@inertiajs/react"
 import { useEffect, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { LogIn, Trash2 } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
 import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
@@ -42,6 +42,10 @@ export default function AdminUsersIndex({ users, roles, pagy, q: initialQ }: Pro
   function destroyUser(u: User) {
     if (!confirm(`Delete ${u.email}?`)) return
     router.delete(`/admin/users/${u.id}`, { preserveScroll: true })
+  }
+  function masqueradeAs(u: User) {
+    if (!confirm(`Sign in as ${u.email}? Every page will show a banner until you stop. The action is audit-logged.`)) return
+    router.post(`/admin/users/${u.id}/masquerade`)
   }
   function toggleSelect(id: number) {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -126,14 +130,30 @@ export default function AdminUsersIndex({ users, roles, pagy, q: initialQ }: Pro
                   </td>
                   <td className="p-2 text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="p-2 text-right">
-                    <button
-                      onClick={() => destroyUser(u)}
-                      disabled={u.is_current}
-                      className="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                      title={u.is_current ? "Can't delete yourself" : "Delete user"}
-                    >
-                      <Trash2 className="size-3" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => masqueradeAs(u)}
+                        disabled={u.is_current || u.platform_admin}
+                        className="rounded border border-amber-300 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                          u.is_current
+                            ? "Can't masquerade as yourself"
+                            : u.platform_admin
+                            ? "Can't masquerade as another platform admin"
+                            : "Sign in as this user"
+                        }
+                      >
+                        <LogIn className="size-3" />
+                      </button>
+                      <button
+                        onClick={() => destroyUser(u)}
+                        disabled={u.is_current}
+                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={u.is_current ? "Can't delete yourself" : "Delete user"}
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

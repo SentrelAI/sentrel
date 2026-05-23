@@ -1,5 +1,6 @@
 class ApplicationController < ActionController::Base
   include Pundit::Authorization
+  include Masquerading
 
   allow_browser versions: :modern
 
@@ -25,6 +26,12 @@ class ApplicationController < ActionController::Base
       },
       is_platform_admin: current_user&.platform_admin? || false,
       is_org_admin: current_user&.admin? || false,
+      # Set only while a platform admin has started a masquerade — the
+      # banner reads this to render the warning bar and "Stop" button.
+      masquerade: impersonating? ? {
+        admin: true_user&.as_json(only: [ :id, :name, :email ]),
+        target: current_user&.as_json(only: [ :id, :name, :email ])
+      } : nil,
       flash: {
         success: flash[:notice],
         error: flash[:alert]

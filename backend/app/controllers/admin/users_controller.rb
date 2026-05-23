@@ -33,6 +33,17 @@ module Admin
       redirect_to admin_users_path, notice: "Deleted #{user.email}"
     end
 
+    # Sign the current admin in as another user (single sign-in only — the
+    # target's password is never required). Banner appears on every page
+    # while masquerading; DELETE /masquerade restores the admin's session.
+    def masquerade
+      target = User.find(params[:id])
+      start_masquerade!(admin: current_user, target: target)
+      redirect_to root_path, notice: "Masquerading as #{target.email}"
+    rescue Masquerading::Error => e
+      redirect_to admin_users_path, alert: e.message
+    end
+
     def update
       user = User.find(params[:id])
       attrs = params.permit(:role, :name, :platform_admin)
