@@ -23,6 +23,18 @@ export interface SttCapability extends Capability {
 export interface BrowserCapability extends Capability {
   provider?: "auto" | "camoufox" | "browserbase";
 }
+export interface WebSearchCapability extends Capability {
+  provider?: "auto" | "tavily" | "exa" | "perplexity";
+}
+export interface DocParseCapability extends Capability {
+  provider?: "auto" | "llamaparse" | "reducto" | "mistral_ocr";
+}
+export interface VideoGenerationCapability extends Capability {
+  provider?: "auto" | "luma" | "runway" | "google_ai" | "fal";
+}
+export interface CodeSandboxCapability extends Capability {
+  provider?: "auto" | "e2b" | "modal";
+}
 
 export interface Capabilities {
   knowledge_base?: KnowledgeBaseCapability;
@@ -35,6 +47,10 @@ export interface Capabilities {
   tts?:           TtsCapability;
   stt?:           SttCapability;
   browser_access?: BrowserCapability;
+  web_search?:    WebSearchCapability;
+  doc_parse?:     DocParseCapability;
+  video_generation?: VideoGenerationCapability;
+  code_sandbox?:  CodeSandboxCapability;
 }
 
 export interface Agent {

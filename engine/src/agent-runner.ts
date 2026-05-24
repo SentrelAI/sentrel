@@ -1482,6 +1482,14 @@ async function buildQueryOptions(
     baseMcpServers.image = imageServer;
   }
 
+  // Web search capability — Tavily / EXA / Perplexity.
+  if (caps.web_search.enabled) {
+    const { buildWebSearchMcpServer } = await import("./capabilities/web_search/mcp.js");
+    const searchServer = buildWebSearchMcpServer(agent);
+    mcpServers.search = searchServer;
+    baseMcpServers.search = searchServer;
+  }
+
   // Slack-as-channel outbound. Gated on whether this agent has a connected
   // Slack ChannelConfig — without one, the tool would always 404 so we skip
   // registering it. The bot_token lives only in Rails; engine never sees it.
@@ -1637,6 +1645,9 @@ async function buildQueryOptions(
       ] : []),
       ...(caps.image_generation.enabled ? [
         "mcp__image__generate_image",
+      ] : []),
+      ...(caps.web_search.enabled ? [
+        "mcp__search__web",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
         "mcp__integrations__search_integrations",

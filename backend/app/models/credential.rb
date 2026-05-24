@@ -21,7 +21,7 @@ class Credential < ApplicationRecord
   # unique key, not a check constraint) — extend here as we add more.
   LLM_PROVIDERS    = %w[anthropic openai openrouter google_ai groq mistral together xai].freeze
   CLOUD_PROVIDERS  = %w[aws gcp azure heroku hetzner vercel digitalocean fly cloudflare].freeze
-  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear browserbase replicate fal google_ai elevenlabs deepgram].freeze
+  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear browserbase replicate fal google_ai elevenlabs deepgram tavily exa perplexity llamaparse reducto mistral_ocr luma runway e2b modal].freeze
 
   # Per-provider field schema. The UI uses this to render the right form
   # inputs; secrets.get returns the full fields map; AgentProvisioner reads
@@ -124,6 +124,37 @@ class Credential < ApplicationRecord
     ],
     "generic:deepgram" => [
       { key: "api_key", label: "Deepgram API Key", sensitive: true, primary: true }
+    ],
+    "generic:tavily" => [
+      { key: "api_key", label: "Tavily API Key (tvly-…)", sensitive: true, primary: true }
+    ],
+    "generic:exa" => [
+      { key: "api_key", label: "EXA API Key", sensitive: true, primary: true }
+    ],
+    "generic:perplexity" => [
+      { key: "api_key", label: "Perplexity API Key (pplx-…)", sensitive: true, primary: true }
+    ],
+    "generic:llamaparse" => [
+      { key: "api_key", label: "Llamaparse API Key (llx-…)", sensitive: true, primary: true }
+    ],
+    "generic:reducto" => [
+      { key: "api_key", label: "Reducto API Key", sensitive: true, primary: true }
+    ],
+    "generic:mistral_ocr" => [
+      { key: "api_key", label: "Mistral API Key", sensitive: true, primary: true }
+    ],
+    "generic:luma" => [
+      { key: "api_key", label: "Luma API Key (luma-…)", sensitive: true, primary: true }
+    ],
+    "generic:runway" => [
+      { key: "api_key", label: "Runway API Key", sensitive: true, primary: true }
+    ],
+    "generic:e2b" => [
+      { key: "api_key", label: "E2B API Key", sensitive: true, primary: true }
+    ],
+    "generic:modal" => [
+      { key: "token_id",     label: "Modal Token ID",     sensitive: true, primary: true },
+      { key: "token_secret", label: "Modal Token Secret", sensitive: true }
     ]
   }.freeze
 

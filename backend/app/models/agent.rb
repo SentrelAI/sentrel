@@ -48,7 +48,11 @@ class Agent < ApplicationRecord
     "image_generation" => { "enabled" => true, "provider" => "auto" },
     "tts"              => { "enabled" => true, "provider" => "auto" },
     "stt"              => { "enabled" => true, "provider" => "auto" },
-    "browser_access"   => { "enabled" => true, "provider" => "auto" }
+    "browser_access"   => { "enabled" => true, "provider" => "auto" },
+    "web_search"       => { "enabled" => true, "provider" => "auto" },
+    "doc_parse"        => { "enabled" => true, "provider" => "auto" },
+    "video_generation" => { "enabled" => true, "provider" => "auto" },
+    "code_sandbox"     => { "enabled" => true, "provider" => "auto" }
   }.freeze
 
   def effective_capabilities

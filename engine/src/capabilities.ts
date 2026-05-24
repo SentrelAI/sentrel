@@ -7,6 +7,10 @@ import type {
   TtsCapability,
   SttCapability,
   BrowserCapability,
+  WebSearchCapability,
+  DocParseCapability,
+  VideoGenerationCapability,
+  CodeSandboxCapability,
 } from "./types.js";
 
 type ResolvedCapabilities = {
@@ -20,6 +24,10 @@ type ResolvedCapabilities = {
   tts:          Required<Pick<TtsCapability, "enabled" | "provider">> & TtsCapability;
   stt:          Required<Pick<SttCapability, "enabled" | "provider">> & SttCapability;
   browser_access: Required<Pick<BrowserCapability, "enabled" | "provider">> & BrowserCapability;
+  web_search:   Required<Pick<WebSearchCapability, "enabled" | "provider">> & WebSearchCapability;
+  doc_parse:    Required<Pick<DocParseCapability, "enabled" | "provider">> & DocParseCapability;
+  video_generation: Required<Pick<VideoGenerationCapability, "enabled" | "provider">> & VideoGenerationCapability;
+  code_sandbox: Required<Pick<CodeSandboxCapability, "enabled" | "provider">> & CodeSandboxCapability;
 };
 
 const DEFAULTS: ResolvedCapabilities = {
@@ -41,6 +49,10 @@ const DEFAULTS: ResolvedCapabilities = {
   tts:              { enabled: true, provider: "auto" },
   stt:              { enabled: true, provider: "auto" },
   browser_access:   { enabled: true, provider: "auto" },
+  web_search:       { enabled: true, provider: "auto" },
+  doc_parse:        { enabled: true, provider: "auto" },
+  video_generation: { enabled: true, provider: "auto" },
+  code_sandbox:     { enabled: true, provider: "auto" },
 };
 
 function mergeCap<T extends Capability>(def: T, override: Partial<T> | undefined): T {
@@ -61,6 +73,10 @@ export function resolveCapabilities(agent: Agent): ResolvedCapabilities {
     tts:              mergeCap(DEFAULTS.tts,              caps.tts),
     stt:              mergeCap(DEFAULTS.stt,              caps.stt),
     browser_access:   mergeCap(DEFAULTS.browser_access,   caps.browser_access),
+    web_search:       mergeCap(DEFAULTS.web_search,       caps.web_search),
+    doc_parse:        mergeCap(DEFAULTS.doc_parse,        caps.doc_parse),
+    video_generation: mergeCap(DEFAULTS.video_generation, caps.video_generation),
+    code_sandbox:     mergeCap(DEFAULTS.code_sandbox,     caps.code_sandbox),
   };
 }
 
