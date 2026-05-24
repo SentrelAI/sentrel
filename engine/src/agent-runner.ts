@@ -1498,6 +1498,22 @@ async function buildQueryOptions(
     baseMcpServers.doc = docServer;
   }
 
+  // Video generation — Luma / fal / Runway / Google Veo.
+  if (caps.video_generation.enabled) {
+    const { buildVideoGenMcpServer } = await import("./capabilities/video_gen/mcp.js");
+    const videoServer = buildVideoGenMcpServer(agent);
+    mcpServers.video = videoServer;
+    baseMcpServers.video = videoServer;
+  }
+
+  // Code execution sandbox — E2B / Modal.
+  if (caps.code_sandbox.enabled) {
+    const { buildCodeSandboxMcpServer } = await import("./capabilities/code_sandbox/mcp.js");
+    const codeServer = buildCodeSandboxMcpServer(agent);
+    mcpServers.code = codeServer;
+    baseMcpServers.code = codeServer;
+  }
+
   // Slack-as-channel outbound. Gated on whether this agent has a connected
   // Slack ChannelConfig — without one, the tool would always 404 so we skip
   // registering it. The bot_token lives only in Rails; engine never sees it.
@@ -1659,6 +1675,12 @@ async function buildQueryOptions(
       ] : []),
       ...(caps.doc_parse.enabled ? [
         "mcp__doc__extract",
+      ] : []),
+      ...(caps.video_generation.enabled ? [
+        "mcp__video__generate",
+      ] : []),
+      ...(caps.code_sandbox.enabled ? [
+        "mcp__code__execute",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
         "mcp__integrations__search_integrations",
