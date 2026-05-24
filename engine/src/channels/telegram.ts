@@ -243,7 +243,17 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   let streamedText = "";
   let lastEditAt = 0;
   let pendingEdit: NodeJS.Timeout | null = null;
-  let creatingStatusMsg = false;
+  // Tracks the in-flight lazy-create fetch from the first delta. Serves
+  // two purposes:
+  //   1. Multiple deltas arriving while the first create is in flight
+  //      check this and bail instead of firing a second sendMessage.
+  //   2. The finalization path MUST await this before reading
+  //      statusMsgId — otherwise a fast response (Claude streams the
+  //      full reply before the create fetch resolves) sees statusMsgId
+  //      still null, falls into the "no streaming message → send fresh"
+  //      branch, AND the in-flight create lands a moment later. Net
+  //      result: user gets two messages, first a partial of the second.
+  let lazyCreatePromise: Promise<void> | null = null;
   const EDIT_INTERVAL_MS = 1500;
   const MAX_STREAM_CHARS = 3800; // below Telegram's 4096 hard cap
 
@@ -263,14 +273,11 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
   const textListener = (snapshot: string) => {
     streamedText = snapshot;
     // If we have a status message, edit it. Otherwise create one.
-    if (!statusMsgId) {
-      // Guard against the race where multiple deltas arrive while the first
-      // sendMessage is in flight — without this, every delta would create a
-      // new Telegram message.
-      if (creatingStatusMsg) return;
-      creatingStatusMsg = true;
-      // Lazy-create the message on first delta
-      fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    if (!statusMsgId && !lazyCreatePromise) {
+      // Lazy-create the message on first delta. Hold the Promise so:
+      //   - further deltas during the in-flight create bail (below)
+      //   - the finalization path can await it before reading statusMsgId
+      lazyCreatePromise = fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: chatId, text: streamedText.slice(-MAX_STREAM_CHARS) || "..." }),
@@ -278,17 +285,20 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
         const data = await res.json() as { ok: boolean; result?: { message_id: number } };
         statusMsgId = data.result?.message_id ?? null;
         lastEditAt = Date.now();
-        creatingStatusMsg = false;
-        // Catch up if more content arrived while sendMessage was in flight.
+        // Catch up if more snapshots arrived while sendMessage was in flight.
         if (statusMsgId && !pendingEdit) {
           pendingEdit = setTimeout(() => {
             pendingEdit = null;
             flushStreamEdit();
           }, EDIT_INTERVAL_MS);
         }
-      }).catch(() => { creatingStatusMsg = false; });
+      }).catch(() => {
+        // Swallow — if create failed, statusMsgId stays null and the
+        // finalization branch will send the response as a fresh message.
+      });
       return;
     }
+    if (!statusMsgId) return; // lazy create still in flight; next delta will edit
     // Throttle edits
     const elapsed = Date.now() - lastEditAt;
     if (elapsed >= EDIT_INTERVAL_MS) {
@@ -308,6 +318,13 @@ async function handleUpdate(update: TelegramUpdate, botToken: string, orgId: num
 
     clearInterval(typingInterval);
     if (pendingEdit) { clearTimeout(pendingEdit); pendingEdit = null; }
+
+    // CRITICAL: wait for the lazy-create fetch to finish before reading
+    // statusMsgId below. Without this await, a fast response causes the
+    // duplicate-message bug — see textListener comment.
+    if (lazyCreatePromise) {
+      try { await lazyCreatePromise; } catch {}
+    }
 
     if (!response) {
       // Timeout — finalize the status message with an error note
