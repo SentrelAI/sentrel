@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Head, Link, useForm } from "@inertiajs/react"
+import { Head, Link, router, useForm } from "@inertiajs/react"
 import { BookMarked, ShieldCheck, CheckCircle2, XCircle, Building2, Plus } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -102,6 +102,15 @@ interface CapabilityOverview {
   active_provider: string | null
 }
 
+interface CredentialFieldDef {
+  key: string
+  label: string
+  sensitive?: boolean
+  optional?: boolean
+  multiline?: boolean
+  primary?: boolean
+}
+
 interface Props {
   agent: Agent
   agents: AgentSummary[]
@@ -109,6 +118,7 @@ interface Props {
   granted_credential_ids?: number[]
   approval_rules?: AgentApprovalRule[]
   capabilities_overview?: CapabilityOverview[]
+  credential_field_schemas?: Record<string, CredentialFieldDef[]>
 }
 
 export default function AgentEdit({
@@ -118,6 +128,7 @@ export default function AgentEdit({
   granted_credential_ids = [],
   approval_rules = [],
   capabilities_overview = [],
+  credential_field_schemas = {},
 }: Props) {
   const currentManagerId = (agent as any).manager?.id
     ? (typeof (agent as any).manager.id === "string" ? (agent as any).manager.id : String((agent as any).manager.id))
@@ -191,8 +202,23 @@ export default function AgentEdit({
   )
 
   function EditTabs({ onSubmit, processing, agentId }: { onSubmit: (e: React.FormEvent) => void; processing: boolean; agentId: number }) {
-    const [tab, setTab] = useState<"identity" | "behavior" | "permissions" | "capabilities" | "approvals">("identity")
-    const TABS: Array<{ key: "identity" | "behavior" | "permissions" | "capabilities" | "approvals"; label: string }> = [
+    type TabKey = "identity" | "behavior" | "permissions" | "capabilities" | "approvals"
+    const VALID_TABS: TabKey[] = ["identity", "behavior", "permissions", "capabilities", "approvals"]
+    // Tab state mirrors ?tab=… so refresh / share / deep-link work.
+    const [tab, setTab] = useState<TabKey>(() => {
+      if (typeof window === "undefined") return "identity"
+      const raw = new URL(window.location.href).searchParams.get("tab")
+      return (VALID_TABS as string[]).includes(raw ?? "") ? (raw as TabKey) : "identity"
+    })
+    function selectTab(next: TabKey) {
+      setTab(next)
+      if (typeof window === "undefined") return
+      const url = new URL(window.location.href)
+      if (next === "identity") url.searchParams.delete("tab")
+      else url.searchParams.set("tab", next)
+      window.history.replaceState({}, "", url.toString())
+    }
+    const TABS: Array<{ key: TabKey; label: string }> = [
       { key: "identity",     label: "Identity" },
       { key: "behavior",     label: "Behavior" },
       { key: "permissions",  label: "Permissions" },
@@ -206,7 +232,7 @@ export default function AgentEdit({
             <button
               key={t.key}
               type="button"
-              onClick={() => setTab(t.key)}
+              onClick={() => selectTab(t.key)}
               className={`rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
                 tab === t.key
                   ? "bg-[var(--indigo-surface)] text-[var(--color-indigo)]"
@@ -483,6 +509,7 @@ export default function AgentEdit({
             overview={capabilities_overview}
             current={data.capabilities as Record<string, { enabled?: boolean; provider?: string }>}
             onChange={(key, patch) => setCap(key, patch)}
+            fieldSchemas={credential_field_schemas}
           />
         )}
 
@@ -781,13 +808,29 @@ function CapabilitiesTab({
   overview,
   current,
   onChange,
+  fieldSchemas,
 }: {
   agentId: number
   agentSlug: string
   overview: CapabilityOverview[]
   current: Record<string, { enabled?: boolean; provider?: string }>
   onChange: (key: string, patch: Record<string, unknown>) => void
+  fieldSchemas: Record<string, CredentialFieldDef[]>
 }) {
+  // Track which (capability, provider, scope) row has its inline add-key
+  // form expanded. Only one form open at a time keeps the tab compact.
+  const [openAdder, setOpenAdder] = useState<{ cap: string; provider: string; kind: string; scope: "agent" | "org" } | null>(null)
+  function isOpenFor(capKey: string, provider: string, scope: "agent" | "org") {
+    return openAdder?.cap === capKey && openAdder.provider === provider && openAdder.scope === scope
+  }
+  function toggleAdder(capKey: string, provider: string, kind: string, scope: "agent" | "org") {
+    setOpenAdder((prev) =>
+      prev?.cap === capKey && prev.provider === provider && prev.scope === scope
+        ? null
+        : { cap: capKey, provider, kind, scope },
+    )
+  }
+
   if (overview.length === 0) {
     return (
       <section>
@@ -857,33 +900,67 @@ function CapabilitiesTab({
                   const pill = TIER_PILL[p.resolution.tier]
                   const isActive = enabled && cap.active_provider === p.provider
                   return (
-                    <li key={p.provider} className="flex items-center gap-2 text-[11px]">
-                      <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] ${pill.tone}`}>
-                        {pill.label}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">
-                        <span className={`font-medium ${isActive ? "text-foreground" : "text-foreground/80"}`}>{p.label}</span>
-                        {p.resolution.credential_name && (
-                          <span className="text-muted-foreground"> · {p.resolution.credential_name}</span>
-                        )}
-                      </span>
-                      {p.resolution.tier === "missing" && p.kind && (
-                        <span className="flex shrink-0 gap-1">
-                          <a
-                            href={`/settings/credentials?add_kind=${encodeURIComponent(p.kind)}&add_provider=${encodeURIComponent(p.provider)}&add_agent=${encodeURIComponent(agentSlug)}`}
-                            className="rounded border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted"
-                            title="Create a key visible only to this agent"
-                          >
-                            Add agent-only
-                          </a>
-                          <a
-                            href={`/settings/credentials?add_kind=${encodeURIComponent(p.kind)}&add_provider=${encodeURIComponent(p.provider)}`}
-                            className="rounded border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted"
-                            title="Create a key shared across the whole org"
-                          >
-                            Add org-wide
-                          </a>
+                    <li key={p.provider} className="space-y-1">
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] ${pill.tone}`}>
+                          {pill.label}
                         </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className={`font-medium ${isActive ? "text-foreground" : "text-foreground/80"}`}>{p.label}</span>
+                          {p.resolution.credential_name && (
+                            <span className="text-muted-foreground"> · {p.resolution.credential_name}</span>
+                          )}
+                        </span>
+                        {p.resolution.tier === "missing" && p.kind && (
+                          <span className="flex shrink-0 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleAdder(cap.key, p.provider, p.kind!, "agent")}
+                              className={`rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted ${
+                                isOpenFor(cap.key, p.provider, "agent")
+                                  ? "border-purple-500/40 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                                  : "bg-background"
+                              }`}
+                              title="Create a key visible only to this agent"
+                            >
+                              {isOpenFor(cap.key, p.provider, "agent") ? "Cancel" : "Add agent-only"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleAdder(cap.key, p.provider, p.kind!, "org")}
+                              className={`rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted ${
+                                isOpenFor(cap.key, p.provider, "org")
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                  : "bg-background"
+                              }`}
+                              title="Create a key shared across the whole org"
+                            >
+                              {isOpenFor(cap.key, p.provider, "org") ? "Cancel" : "Add org-wide"}
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                      {p.resolution.tier === "missing" && isOpenFor(cap.key, p.provider, "agent") && (
+                        <InlineKeyForm
+                          providerSlug={p.provider}
+                          providerLabel={p.label}
+                          kind={p.kind!}
+                          scope="agent"
+                          agentSlug={agentSlug}
+                          schema={lookupCredentialSchema(fieldSchemas, p.kind!, p.provider)}
+                          onClose={() => setOpenAdder(null)}
+                        />
+                      )}
+                      {p.resolution.tier === "missing" && isOpenFor(cap.key, p.provider, "org") && (
+                        <InlineKeyForm
+                          providerSlug={p.provider}
+                          providerLabel={p.label}
+                          kind={p.kind!}
+                          scope="org"
+                          agentSlug={agentSlug}
+                          schema={lookupCredentialSchema(fieldSchemas, p.kind!, p.provider)}
+                          onClose={() => setOpenAdder(null)}
+                        />
                       )}
                     </li>
                   )
@@ -896,5 +973,147 @@ function CapabilitiesTab({
       {/* Suppress unused warning until we wire agentId-bound actions */}
       <span className="hidden">{agentId}</span>
     </section>
+  )
+}
+
+// Resolve the right field schema for a (kind, provider) tuple, with the
+// same fallback chain Rails uses (exact → kind-wildcard → default).
+function lookupCredentialSchema(
+  schemas: Record<string, CredentialFieldDef[]>,
+  kind: string,
+  provider: string,
+): CredentialFieldDef[] {
+  return schemas[`${kind}:${provider}`] || schemas[`${kind}:*`] || schemas.__default__ || [
+    { key: "value", label: "Secret value", sensitive: true, primary: true },
+  ]
+}
+
+// Inline "Add key" form that POSTs to /settings/credentials WITHOUT
+// navigating away. Uses Inertia partial reload on success to refresh
+// the capabilities_overview / org_credentials / granted_credential_ids
+// props so the new key shows up immediately as agent-owned / org-shared.
+function InlineKeyForm({
+  providerSlug,
+  providerLabel,
+  kind,
+  scope,
+  agentSlug,
+  schema,
+  onClose,
+}: {
+  providerSlug: string
+  providerLabel: string
+  kind: string
+  scope: "agent" | "org"
+  agentSlug: string
+  schema: CredentialFieldDef[]
+  onClose: () => void
+}) {
+  const [name, setName] = useState(`${providerSlug}-${Math.random().toString(36).slice(2, 5)}`)
+  const [fields, setFields] = useState<Record<string, string>>({})
+  const [revealMap, setRevealMap] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState(false)
+
+  function csrf(): string {
+    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    const payload = {
+      credential: {
+        kind,
+        provider: providerSlug,
+        name,
+        fields,
+        meta: {},
+        ...(scope === "agent" ? { agent_id: agentSlug } : {}),
+      },
+    }
+    router.post("/settings/credentials", payload, {
+      headers: { "X-CSRF-Token": csrf() },
+      preserveScroll: true,
+      onFinish: () => setBusy(false),
+      onSuccess: () => {
+        // Refresh the capability overview + grant list so the new key
+        // immediately surfaces in this same tab.
+        router.reload({ only: ["capabilities_overview", "org_credentials", "granted_credential_ids"] })
+        onClose()
+      },
+    })
+  }
+
+  const scopeChip = scope === "agent"
+    ? <span className="rounded border border-purple-500/40 bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300">agent-only</span>
+    : <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">org-wide</span>
+
+  return (
+    <form onSubmit={submit} className="ml-6 mt-1 rounded-md border bg-muted/30 p-3 space-y-2.5 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="font-medium">Add {providerLabel} key</span>
+        {scopeChip}
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-[11px]">Name</Label>
+        <Input
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="h-7 text-xs"
+        />
+      </div>
+
+      {schema.map((f) => {
+        const revealed = !f.sensitive || revealMap[f.key]
+        return (
+          <div key={f.key} className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-[11px]">
+                {f.label}
+                {f.optional && <span className="ml-1 text-muted-foreground font-normal">optional</span>}
+              </Label>
+              {f.sensitive && !f.multiline && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setRevealMap((m) => ({ ...m, [f.key]: !m[f.key] }))}
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                >
+                  {revealed ? "Hide" : "Show"}
+                </button>
+              )}
+            </div>
+            {f.multiline ? (
+              <textarea
+                required={!f.optional}
+                value={fields[f.key] || ""}
+                onChange={(e) => setFields((p) => ({ ...p, [f.key]: e.target.value }))}
+                rows={4}
+                className="w-full rounded border bg-background px-2 py-1.5 text-[11px] font-mono"
+              />
+            ) : (
+              <Input
+                required={!f.optional}
+                type={f.sensitive && !revealed ? "password" : "text"}
+                value={fields[f.key] || ""}
+                onChange={(e) => setFields((p) => ({ ...p, [f.key]: e.target.value }))}
+                className="h-7 text-xs"
+              />
+            )}
+          </div>
+        )
+      })}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" className="h-7 text-xs" disabled={busy}>
+          {busy ? "Saving…" : "Save key"}
+        </Button>
+      </div>
+    </form>
   )
 }

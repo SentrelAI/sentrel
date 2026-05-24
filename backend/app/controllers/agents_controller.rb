@@ -440,6 +440,10 @@ class AgentsController < ApplicationController
       # render the Capabilities tab with one-click "add key" actions
       # pre-scoped to either this agent or the whole org.
       capabilities_overview: build_agent_capabilities_overview(@agent),
+      # Per-(kind, provider) field schema — the agent edit Capabilities
+      # tab uses this to render an inline "Add key" form without bouncing
+      # to /settings/credentials.
+      credential_field_schemas: Credential::FIELD_SCHEMAS.merge("__default__" => Credential::DEFAULT_FIELDS),
     }
   end
 
