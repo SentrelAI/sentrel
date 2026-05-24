@@ -1490,6 +1490,14 @@ async function buildQueryOptions(
     baseMcpServers.search = searchServer;
   }
 
+  // Document parsing — Llamaparse / Mistral OCR / Reducto.
+  if (caps.doc_parse.enabled) {
+    const { buildDocParseMcpServer } = await import("./capabilities/doc_parse/mcp.js");
+    const docServer = buildDocParseMcpServer(agent);
+    mcpServers.doc = docServer;
+    baseMcpServers.doc = docServer;
+  }
+
   // Slack-as-channel outbound. Gated on whether this agent has a connected
   // Slack ChannelConfig — without one, the tool would always 404 so we skip
   // registering it. The bot_token lives only in Rails; engine never sees it.
@@ -1648,6 +1656,9 @@ async function buildQueryOptions(
       ] : []),
       ...(caps.web_search.enabled ? [
         "mcp__search__web",
+      ] : []),
+      ...(caps.doc_parse.enabled ? [
+        "mcp__doc__extract",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
         "mcp__integrations__search_integrations",
