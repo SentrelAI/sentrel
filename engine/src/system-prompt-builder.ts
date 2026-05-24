@@ -252,6 +252,26 @@ export function buildSystemPrompt(
     );
   }
 
+  if (caps.image_generation.enabled) {
+    parts.push(
+      `# Image generation\n` +
+      `You can generate images from text via \`generate_image({ prompt, n?, aspect_ratio?, model? })\`. The result is saved to workspace/generated/; pass the file path to send_image to deliver it.\n\n` +
+      `## When to use\n` +
+      `- User asks for a visual, mockup, diagram concept, illustration, social post image, hero shot, etc.\n` +
+      `- You need a placeholder image while drafting content (mockup → review → real photo later).\n\n` +
+      `## When NOT to use\n` +
+      `- Faithful reproduction of a real person, brand, or logo — image models hallucinate identity.\n` +
+      `- The user explicitly wants a stock photo or sourced asset — search/integrations are better.\n` +
+      `- Diagrams that need to be precise (org charts, system architectures) — Mermaid/Graphviz via a real renderer is more reliable.\n\n` +
+      `## Prompting tips\n` +
+      `- Describe SUBJECT + ACTION + ENVIRONMENT + STYLE + LIGHTING + FRAMING. Lazy prompts ("a logo") produce mediocre images.\n` +
+      `- Specify what to avoid: "no text", "no people", "no watermarks". Helps with FLUX.\n` +
+      `- Use aspect_ratio to match the channel (social posts: 1:1 or 9:16; banners: 16:9).\n` +
+      `- For high-quality output ask for model: "black-forest-labs/flux-1.1-pro" (replicate) or "imagen-3.0-generate-001" (google_ai).\n\n` +
+      `Provider routing is automatic — your workspace owner can switch between replicate / fal / openai / google_ai via the agent's capabilities config.`
+    );
+  }
+
   if (caps.browser_access.enabled) {
     parts.push(
       `# Browser\n` +

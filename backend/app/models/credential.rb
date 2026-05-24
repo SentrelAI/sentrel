@@ -21,7 +21,7 @@ class Credential < ApplicationRecord
   # unique key, not a check constraint) — extend here as we add more.
   LLM_PROVIDERS    = %w[anthropic openai openrouter google_ai groq mistral together xai].freeze
   CLOUD_PROVIDERS  = %w[aws gcp azure heroku hetzner vercel digitalocean fly cloudflare].freeze
-  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear browserbase].freeze
+  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear browserbase replicate fal google_ai].freeze
 
   # Per-provider field schema. The UI uses this to render the right form
   # inputs; secrets.get returns the full fields map; AgentProvisioner reads
@@ -109,6 +109,15 @@ class Credential < ApplicationRecord
     "generic:browserbase" => [
       { key: "api_key",    label: "Browserbase API Key", sensitive: true, primary: true },
       { key: "project_id", label: "Project ID",          sensitive: false }
+    ],
+    "generic:replicate" => [
+      { key: "api_key", label: "Replicate API Token (r8_…)", sensitive: true, primary: true }
+    ],
+    "generic:fal" => [
+      { key: "api_key", label: "fal.ai API Key", sensitive: true, primary: true }
+    ],
+    "generic:google_ai" => [
+      { key: "api_key", label: "Google AI Studio API Key", sensitive: true, primary: true }
     ]
   }.freeze
 

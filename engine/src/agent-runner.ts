@@ -1473,6 +1473,15 @@ async function buildQueryOptions(
     baseMcpServers.browser = browserServer;
   }
 
+  // Image generation capability — multi-provider (replicate / fal / openai
+  // / google_ai). Registry picks the cheapest available when "auto".
+  if (caps.image_generation.enabled) {
+    const { buildImageGenMcpServer } = await import("./capabilities/image_gen/mcp.js");
+    const imageServer = buildImageGenMcpServer(agent);
+    mcpServers.image = imageServer;
+    baseMcpServers.image = imageServer;
+  }
+
   // Slack-as-channel outbound. Gated on whether this agent has a connected
   // Slack ChannelConfig — without one, the tool would always 404 so we skip
   // registering it. The bot_token lives only in Rails; engine never sees it.
@@ -1625,6 +1634,9 @@ async function buildQueryOptions(
         "mcp__browser__type",
         "mcp__browser__screenshot",
         "mcp__browser__close",
+      ] : []),
+      ...(caps.image_generation.enabled ? [
+        "mcp__image__generate_image",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
         "mcp__integrations__search_integrations",
