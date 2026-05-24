@@ -46,7 +46,14 @@ class CredentialsController < ApplicationController
       # right form (Access Key ID + Secret for AWS, Account SID + Auth Token
       # for Twilio, single value for the rest). The frontend posts back a
       # `fields` hash whose keys match the schema entries.
-      field_schemas: build_field_schemas
+      field_schemas: build_field_schemas,
+      # Capability overview — for each capability we offer (image gen,
+      # TTS, STT, browser, web search, doc parse, video gen, code sandbox)
+      # show which provider keys are configured. The UI surfaces an "Add
+      # key" CTA per missing provider so users see at-a-glance what's
+      # active vs missing without having to remember the (kind, provider)
+      # tuples themselves.
+      capabilities: build_capabilities_overview
     }
   end
 
@@ -164,6 +171,119 @@ class CredentialsController < ApplicationController
     Credential::FIELD_SCHEMAS.each { |k, v| out[k] = v }
     out["__default__"] = Credential::DEFAULT_FIELDS
     out
+  end
+
+  # Per-capability provider preference list. Order is cost-cheapest-first
+  # (matches the engine registries) so the UI can render them in priority
+  # order. `kind` is the primary credential kind; `also` lists alternative
+  # kinds (e.g. openai for image_gen reuses an existing llm_api_key row).
+  CAPABILITY_PROVIDERS = {
+    "image_generation" => {
+      label: "Image generation",
+      blurb: "Generate images from text via mcp__image__generate_image. Default to the first provider with a key.",
+      providers: [
+        { provider: "replicate", kind: "generic", also: [], label: "Replicate",        note: "flux-schnell ~$0.003/img — recommended" },
+        { provider: "fal",       kind: "generic", also: [], label: "fal.ai",           note: "flux-schnell, similar pricing to Replicate" },
+        { provider: "openai",    kind: "generic", also: [ "llm_api_key" ], label: "OpenAI gpt-image-1", note: "Reuses your OpenAI chat key. ~$0.04/img" },
+        { provider: "google_ai", kind: "generic", also: [ "llm_api_key" ], label: "Google Imagen 3",    note: "Free tier on AI Studio." }
+      ]
+    },
+    "tts" => {
+      label: "Text to speech",
+      blurb: "Voice-note replies via send_voice. Routed through the first provider with a key.",
+      providers: [
+        { provider: "elevenlabs", kind: "generic", also: [], label: "ElevenLabs",         note: "Best naturalness, $0.18/1K chars" },
+        { provider: "openai",     kind: "generic", also: [ "llm_api_key" ], label: "OpenAI tts-1",   note: "Cheap, decent quality" },
+        { provider: "google_ai",  kind: "generic", also: [ "llm_api_key" ], label: "Google Gemini",  note: "Free tier" },
+        { provider: "deepgram",   kind: "generic", also: [], label: "Deepgram Aura",     note: "Fast, decent quality" }
+      ]
+    },
+    "stt" => {
+      label: "Speech to text",
+      blurb: "Transcribes inbound voice notes from Telegram / WhatsApp before the agent sees them.",
+      providers: [
+        { provider: "groq",      kind: "generic", also: [ "llm_api_key" ], label: "Groq Whisper",  note: "~$0.04/hr — recommended" },
+        { provider: "deepgram",  kind: "generic", also: [], label: "Deepgram Nova-2", note: "Best accuracy on noisy audio" },
+        { provider: "openai",    kind: "generic", also: [ "llm_api_key" ], label: "OpenAI Whisper", note: "Reuses your OpenAI key" },
+        { provider: "google_ai", kind: "generic", also: [ "llm_api_key" ], label: "Google Gemini",  note: "Free tier" }
+      ]
+    },
+    "browser_access" => {
+      label: "Stealth browser",
+      blurb: "Camoufox sidecar handles this for free on every agent machine. Browserbase is a paid cloud fallback.",
+      providers: [
+        { provider: "camoufox",    kind: nil,       also: [], label: "Camoufox sidecar", note: "Built-in, no credential needed", always_available: true },
+        { provider: "browserbase", kind: "generic", also: [], label: "Browserbase",      note: "Cloud fallback when the sidecar isn't running" }
+      ]
+    },
+    "web_search" => {
+      label: "Web search",
+      blurb: "Managed search via mcp__search__web. Better than the SDK's built-in WebSearch for agent workflows.",
+      providers: [
+        { provider: "tavily",     kind: "generic", also: [], label: "Tavily",     note: "Free tier 1000 req/mo, recommended" },
+        { provider: "exa",        kind: "generic", also: [], label: "EXA",        note: "Neural / semantic results" },
+        { provider: "perplexity", kind: "generic", also: [], label: "Perplexity", note: "Answer-with-citations style" }
+      ]
+    },
+    "doc_parse" => {
+      label: "Document parsing",
+      blurb: "Extract clean markdown from PDFs / docx / scanned images via mcp__doc__extract.",
+      providers: [
+        { provider: "llamaparse",  kind: "generic", also: [], label: "Llamaparse",  note: "1000 pages/day free tier, recommended" },
+        { provider: "mistral_ocr", kind: "generic", also: [ "llm_api_key" ], label: "Mistral OCR", note: "Fast, multi-language" },
+        { provider: "reducto",     kind: "generic", also: [], label: "Reducto",     note: "Table-heavy / financial docs" }
+      ]
+    },
+    "video_generation" => {
+      label: "Video generation",
+      blurb: "5–10 second clips via mcp__video__generate.",
+      providers: [
+        { provider: "luma",      kind: "generic", also: [], label: "Luma Dream Machine", note: "Fastest cold-start, recommended" },
+        { provider: "fal",       kind: "generic", also: [], label: "fal.ai (Wan/Hailuo)", note: "Many model options" },
+        { provider: "runway",    kind: "generic", also: [], label: "Runway Gen-4",       note: "Highest quality, highest cost" },
+        { provider: "google_ai", kind: "generic", also: [ "llm_api_key" ], label: "Google Veo 3", note: "Free tier on AI Studio" }
+      ]
+    },
+    "code_sandbox" => {
+      label: "Code execution sandbox",
+      blurb: "Run model-generated Python / JS / bash in an isolated cloud sandbox via mcp__code__execute.",
+      providers: [
+        { provider: "e2b",   kind: "generic", also: [], label: "E2B",   note: "~100 hrs/mo free tier, recommended" },
+        { provider: "modal", kind: "generic", also: [], label: "Modal", note: "For orgs already on Modal infra" }
+      ]
+    }
+  }.freeze
+
+  def build_capabilities_overview
+    # One-pass index of (provider, kind) pairs we have a credential for.
+    have = Set.new
+    current_tenant.credentials.pluck(:kind, :provider).each { |k, p| have << "#{k}:#{p}" }
+
+    CAPABILITY_PROVIDERS.map do |cap_key, cfg|
+      providers = cfg[:providers].map do |p|
+        has_key = if p[:always_available]
+          true
+        else
+          kinds = [ p[:kind], *p[:also] ].compact
+          kinds.any? { |k| have.include?("#{k}:#{p[:provider]}") }
+        end
+        {
+          provider: p[:provider],
+          label: p[:label],
+          kind: p[:kind],
+          note: p[:note],
+          has_key: has_key,
+          always_available: p[:always_available] == true
+        }
+      end
+      {
+        key: cap_key,
+        label: cfg[:label],
+        blurb: cfg[:blurb],
+        providers: providers,
+        active: providers.any? { |pp| pp[:has_key] }
+      }
+    end
   end
 
   # Audit log helper — matches the shape Admin::BaseController uses for

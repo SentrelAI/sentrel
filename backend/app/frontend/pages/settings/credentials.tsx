@@ -15,6 +15,16 @@ import {
   Eye,
   EyeOff,
   ChevronRight,
+  Zap,
+  Image as ImageIcon,
+  Volume2,
+  Mic,
+  Globe,
+  FileText,
+  Film,
+  Code2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
@@ -60,11 +70,40 @@ interface Credential {
   created_at: string
 }
 
+interface CapabilityProviderRow {
+  provider: string
+  label: string
+  kind: Kind | null
+  note: string
+  has_key: boolean
+  always_available: boolean
+}
+
+interface CapabilityCard {
+  key: string
+  label: string
+  blurb: string
+  providers: CapabilityProviderRow[]
+  active: boolean
+}
+
 interface Props {
   credentials: Credential[]
   kinds: Kind[]
   providers: Record<Kind, string[]>
   field_schemas: Record<string, FieldDef[]>
+  capabilities: CapabilityCard[]
+}
+
+const CAPABILITY_ICONS: Record<string, typeof KeyRound> = {
+  image_generation: ImageIcon,
+  tts: Volume2,
+  stt: Mic,
+  browser_access: Globe,
+  web_search: Search,
+  doc_parse: FileText,
+  video_generation: Film,
+  code_sandbox: Code2,
 }
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -185,9 +224,16 @@ function lookupSchema(schemas: Record<string, FieldDef[]>, kind: Kind, provider:
   ]
 }
 
-export default function CredentialsPage({ credentials, kinds, providers, field_schemas }: Props) {
+export default function CredentialsPage({ credentials, kinds, providers, field_schemas, capabilities }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Credential | null>(null)
+  // When the user clicks "Add key" on a capability card, we prefill the
+  // modal's kind+provider and jump straight to the form step.
+  const [prefill, setPrefill] = useState<{ kind: Kind; provider: string } | null>(null)
+  function openWithPrefill(kind: Kind, provider: string) {
+    setPrefill({ kind, provider })
+    setAddOpen(true)
+  }
   const grouped = useMemo(() => {
     const g: Record<Kind, Credential[]> = { llm_api_key: [], cloud_provider: [], generic: [] }
     for (const c of credentials) g[c.kind].push(c)
@@ -217,6 +263,8 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
       />
 
       <div className="max-w-3xl space-y-8">
+        <CapabilitiesSection capabilities={capabilities} onAddKey={openWithPrefill} />
+
         {kinds.map((kind) => {
           const Icon = KIND_ICON[kind]
           const items = grouped[kind] ?? []
@@ -275,8 +323,10 @@ export default function CredentialsPage({ credentials, kinds, providers, field_s
         <CredentialModal
           providers={providers}
           fieldSchemas={field_schemas}
-          onClose={() => setAddOpen(false)}
+          onClose={() => { setAddOpen(false); setPrefill(null) }}
           mode="create"
+          prefillKind={prefill?.kind}
+          prefillProvider={prefill?.provider}
         />
       )}
       {editing && (
@@ -351,19 +401,28 @@ function CredentialModal({
   onClose,
   mode,
   cred,
+  prefillKind,
+  prefillProvider,
 }: {
   providers: Record<Kind, string[]>
   fieldSchemas: Record<string, FieldDef[]>
   onClose: () => void
   mode: "create" | "edit"
   cred?: Credential
+  prefillKind?: Kind
+  prefillProvider?: string
 }) {
-  // Two-step flow on create: pick provider, then fill the form. Edit jumps
-  // straight to the form because the provider can't change.
-  const [step, setStep] = useState<"pick" | "form">(mode === "create" ? "pick" : "form")
-  const [kind, setKind] = useState<Kind>(cred?.kind ?? "llm_api_key")
-  const [provider, setProvider] = useState<string>(cred?.provider ?? "")
-  const [name, setName] = useState(cred?.name ?? "")
+  // Two-step flow on create: pick provider, then fill the form. When a
+  // capability card prefills kind+provider, skip the pick step and jump
+  // straight to the form. Edit always opens the form directly.
+  const initialStep: "pick" | "form" =
+    mode === "edit" || prefillProvider ? "form" : "pick"
+  const [step, setStep] = useState<"pick" | "form">(initialStep)
+  const [kind, setKind] = useState<Kind>(cred?.kind ?? prefillKind ?? "llm_api_key")
+  const [provider, setProvider] = useState<string>(cred?.provider ?? prefillProvider ?? "")
+  const [name, setName] = useState(
+    cred?.name ?? (prefillProvider ? `${providerLabel(prefillProvider).toLowerCase()}-${randomTag()}` : ""),
+  )
   const [fields, setFields] = useState<Record<string, string>>({})
   const [revealMap, setRevealMap] = useState<Record<string, boolean>>({})
   const [baseUrl, setBaseUrl] = useState<string>((cred?.meta?.base_url as string) ?? "")
@@ -741,4 +800,108 @@ function ProviderPicker({
 
 function randomTag(): string {
   return Math.random().toString(36).slice(2, 5)
+}
+
+// ── Capabilities overview ────────────────────────────────────────────────
+//
+// At-a-glance section above the raw credentials list. For each
+// capability we offer (image gen / TTS / STT / browser / web search /
+// doc parse / video gen / code sandbox), shows which providers have
+// a configured key and which don't, with one-click "Add" CTAs that open
+// the credential modal prefilled with the right kind+provider.
+
+function CapabilitiesSection({
+  capabilities,
+  onAddKey,
+}: {
+  capabilities: CapabilityCard[]
+  onAddKey: (kind: Kind, provider: string) => void
+}) {
+  const activeCount = capabilities.filter((c) => c.active).length
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-baseline gap-2">
+          <Zap className="size-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Capabilities</h2>
+          <span className="text-xs text-muted-foreground">{activeCount} of {capabilities.length} active</span>
+        </div>
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Each capability uses the first provider whose key resolves. Add a key for any provider in the row to enable that capability — your agents pick it up on next run.
+      </p>
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+        {capabilities.map((cap) => (
+          <CapabilityCardItem key={cap.key} cap={cap} onAddKey={onAddKey} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function CapabilityCardItem({
+  cap,
+  onAddKey,
+}: {
+  cap: CapabilityCard
+  onAddKey: (kind: Kind, provider: string) => void
+}) {
+  const Icon = CAPABILITY_ICONS[cap.key] || KeyRound
+  return (
+    <Card className={cap.active ? "border-border" : "border-dashed border-border/60"}>
+      <CardContent className="p-3.5 space-y-2.5">
+        <div className="flex items-start gap-2.5">
+          <div
+            className={`flex size-8 shrink-0 items-center justify-center rounded-md border ${
+              cap.active
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
+                : "border-border bg-muted text-muted-foreground"
+            }`}
+          >
+            <Icon className="size-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-semibold">{cap.label}</h3>
+              {cap.active ? (
+                <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="size-2.5" /> Active
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                  <AlertCircle className="size-2.5" /> No key
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{cap.blurb}</p>
+          </div>
+        </div>
+
+        <ul className="space-y-1 border-t pt-2">
+          {cap.providers.map((p) => (
+            <li key={p.provider} className="flex items-center gap-2 text-[11px]">
+              {p.has_key ? (
+                <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
+              ) : (
+                <span className="size-3 shrink-0 rounded-full border border-muted-foreground/30" />
+              )}
+              <span className={`min-w-0 flex-1 truncate ${p.has_key ? "" : "text-muted-foreground"}`}>
+                <span className="font-medium text-foreground">{p.label}</span>
+                {p.note && <span className="text-muted-foreground"> — {p.note}</span>}
+              </span>
+              {!p.has_key && !p.always_available && p.kind && (
+                <button
+                  type="button"
+                  onClick={() => onAddKey(p.kind!, p.provider)}
+                  className="shrink-0 rounded border bg-background px-1.5 py-0.5 text-[10px] text-foreground hover:bg-muted"
+                >
+                  Add
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
 }
