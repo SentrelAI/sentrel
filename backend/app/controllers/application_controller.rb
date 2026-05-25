@@ -32,6 +32,11 @@ class ApplicationController < ActionController::Base
         admin: true_user&.as_json(only: [ :id, :name, :email ]),
         target: current_user&.as_json(only: [ :id, :name, :email ])
       } : nil,
+      # Tree of every agent in the workspace + each agent's unread inbox /
+      # pending-approval counts. Drives the sidebar's agent disclosure
+      # tree. Sub-agents nest under their manager. Skipped on unauth-ed
+      # / onboarding flows to keep the payload light.
+      agents_tree: current_tenant && current_user && current_tenant.onboarding_completed_at.present? ? build_agents_tree_payload : nil,
       flash: {
         success: flash[:notice],
         error: flash[:alert]
@@ -44,6 +49,41 @@ class ApplicationController < ActionController::Base
   end
 
   private
+
+  # Sidebar agent tree — flat array of every agent plus an indented_depth
+  # so the React side can render nesting without re-walking the tree.
+  # Includes pending approval + unread inbox counts as badges.
+  def build_agents_tree_payload
+    agents = current_tenant.agents
+                            .select(:id, :name, :slug, :role, :status, :manager_id)
+                            .order(:name)
+                            .to_a
+    pending_counts = current_tenant.pending_approvals.where(status: "pending").group(:agent_id).count
+    # "External" conversations with at least one inbound message in the last
+    # 7 days approximate "unread inbox" cheaply — without a per-user read
+    # state migration, this is the closest signal.
+    inbox_counts = Conversation.where(agent_id: agents.map(&:id), kind: "external")
+                                 .where.not(status: "archived")
+                                 .group(:agent_id).count
+    by_manager = agents.group_by(&:manager_id)
+    rows = []
+    build_node = ->(agent, depth) {
+      rows << {
+        id: agent.to_param,
+        name: agent.name,
+        slug: agent.slug,
+        role: agent.role,
+        status: agent.status,
+        depth: depth,
+        has_children: by_manager[agent.id]&.any? == true,
+        pending_approvals: pending_counts[agent.id] || 0,
+        active_conversations: inbox_counts[agent.id] || 0,
+      }
+      (by_manager[agent.id] || []).each { |child| build_node.call(child, depth + 1) }
+    }
+    (by_manager[nil] || []).each { |root| build_node.call(root, 0) }
+    rows
+  end
 
   def redirect_apex_to_www
     return unless Rails.env.production? && request.host == "double.md"
