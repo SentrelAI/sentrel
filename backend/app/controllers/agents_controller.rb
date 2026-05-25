@@ -171,6 +171,7 @@ class AgentsController < ApplicationController
       anthropic_account_connected: anthropic_account_connected,
       available_llm_providers: available_llm_providers,
       spend: AgentSpend.for_agent(@agent),
+      rail: build_rail_payload(@agent),
       conversations: @agent.conversations.where(kind: "external").where.not(status: "archived").includes(:messages).order(updated_at: :desc).limit(20).map { |c|
         last_msg = c.messages.order(created_at: :desc).first
         c.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status, :updated_at ]).merge(
@@ -487,6 +488,50 @@ class AgentsController < ApplicationController
 
   def set_agent
     @agent = find_by_public_id!(current_tenant.agents, params[:id])
+  end
+
+  # Right-rail payload for the agent show page. One round-trip of small
+  # signals (approvals, status, activity, spend, channels, hierarchy) so
+  # the rail is glanceable without N follow-up fetches.
+  def build_rail_payload(agent)
+    {
+      pending_approvals: agent.pending_approvals
+        .where(status: "pending")
+        .where("created_at >= ?", 7.days.ago)
+        .order(created_at: :desc)
+        .limit(8)
+        .map { |a|
+          {
+            id: a.id,
+            summary: a.summary || a.tool_name,
+            payload_type: a.payload_type,
+            risk_tier: a.risk_tier,
+            created_at: a.created_at,
+          }
+        },
+      # Last few tool calls / sent messages so the rail shows "what it just did".
+      recent_activity: agent.audit_logs
+        .where("created_at >= ?", 24.hours.ago)
+        .where.not(action: [ "secret_fetched" ]) # too noisy
+        .order(created_at: :desc)
+        .limit(8)
+        .map { |l|
+          {
+            id: l.id,
+            action: l.action,
+            tool_name: l.tool_name,
+            status: l.status,
+            created_at: l.created_at,
+            duration_ms: l.duration_ms,
+          }
+        },
+      channels: agent.channel_configs.where(enabled: true).order(:channel_type).pluck(:channel_type).uniq,
+      # Hierarchy slice — manager + direct reports. Lets the user jump
+      # to siblings without going back to the sidebar.
+      manager: agent.manager && { id: agent.manager.to_param, name: agent.manager.name, role: agent.manager.role },
+      reports: agent.sub_agents.order(:name).map { |a| { id: a.to_param, name: a.name, role: a.role, status: a.status } },
+      skills: agent.skill_definitions.order(:name).limit(12).pluck(:slug, :name).map { |slug, name| { slug: slug, name: name } },
+    }
   end
 
   # Fetches the agent's knowledge_base docs from the engine. Best-effort —

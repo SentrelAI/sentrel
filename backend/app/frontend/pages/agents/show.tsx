@@ -50,6 +50,7 @@ function formatAddrs(v: unknown, exclude: string[] = []): string {
 import { StatusDot } from "@/components/brand"
 import AppLayout from "@/layouts/app-layout"
 import { AgentChat } from "@/components/agent-chat"
+import { AgentRail } from "@/components/agents/agent-rail"
 import { MarkdownEditor } from "@/components/markdown-editor"
 import { EmailComposerModal } from "@/components/email-composer-modal"
 import { AgentOpsMenu } from "@/components/agent-ops-menu"
@@ -191,6 +192,7 @@ interface Props {
     logo: string | null
     description: string | null
   }>
+  rail?: import("@/components/agents/agent-rail").RailPayload
 }
 
 type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "memory" | "spend"
@@ -454,7 +456,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [] }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -1263,6 +1265,22 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
               </p>
             </div>
           </div>
+        )}
+
+        {/* Right-rail context panel — collapses to a 40px strip on click,
+            hides entirely on viewports below lg. Card components inside
+            keep their own collapse state in localStorage. */}
+        {rail && (
+          <AgentRail
+            agent={agent}
+            rail={rail}
+            spend={spend ? {
+              daily_total_usd: spend.today?.total_cost_usd ?? 0,
+              monthly_total_usd: spend.thirty_day?.total_cost_usd ?? 0,
+              daily_cap_usd: (agent as { spend_daily_cap_usd?: number | null }).spend_daily_cap_usd ?? null,
+              monthly_cap_usd: (agent as { spend_monthly_cap_usd?: number | null }).spend_monthly_cap_usd ?? null,
+            } : null}
+          />
         )}
       </div>
 
