@@ -49,13 +49,19 @@ module Email
           .first
         return existing if existing
 
-        # 4. Subject-only match (handles CC chains)
-        existing = agent.conversations
-          .where(kind: "external")
-          .where("subject ILIKE ?", clean_subject)
-          .order(updated_at: :desc)
-          .first
-        return existing if existing
+        # 4. Subject-only match (handles CC chains where the new sender
+        # has no contact_email match on the existing conversation). Only
+        # safe for distinctive subjects — short ones like "hi", "thanks",
+        # "ok" used to merge unrelated threads into one and mislabel the
+        # sender. Require ≥10 characters of meaningful subject.
+        if clean_subject.length >= 10
+          existing = agent.conversations
+            .where(kind: "external")
+            .where("subject ILIKE ?", clean_subject)
+            .order(updated_at: :desc)
+            .first
+          return existing if existing
+        end
       end
 
       # 5. Create new

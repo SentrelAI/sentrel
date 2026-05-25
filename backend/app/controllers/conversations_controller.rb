@@ -70,8 +70,18 @@ class ConversationsController < ApplicationController
   # Sprint 1d — include attachments (filename, size, content_type, download URL)
   # so the conversation UI can render download chips on inbound messages.
   def serialize_message(m)
-    base = m.as_json(only: [ :id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at ])
+    # CRITICAL: include sender_name / sender_email / sender_user_id so the
+    # conversation timeline displays the ACTUAL sender of each message.
+    # Without these the frontend falls back to conversation.contact_name —
+    # which is the thread's ORIGINAL sender — and every CC reply / new
+    # participant gets mislabeled (e.g. Mohamed's reply showed up as
+    # "Abdelmoumin Mokhtari" because Abdel started the thread).
+    base = m.as_json(only: [
+      :id, :role, :content, :direction, :channel, :tool_calls, :metadata, :created_at,
+      :sender_name, :sender_email, :sender_user_id
+    ])
     base.merge(
+      sender: m.display_sender,
       attachments: m.attachments.map do |att|
         {
           id: att.id,

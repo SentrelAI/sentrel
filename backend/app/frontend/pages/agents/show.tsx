@@ -1029,8 +1029,15 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                     <div className="flex-1 overflow-y-auto p-4 space-y-2">
                       {convMessages.map((msg) => {
                         const isOut = msg.direction === "outbound" || msg.role === "assistant"
-                        const senderName = (msg as { sender_name?: string | null }).sender_name
-                        const senderEmail = (msg as { sender_email?: string | null }).sender_email
+                        // Prefer the message's own sender (set on every inbound
+                        // by Email::InboundProcessor, and on every outbound by
+                        // OutboundSender). Falling back to conv.contact_name
+                        // here was the long-standing bug — it pasted the
+                        // thread's ORIGINAL sender onto every message,
+                        // mislabeling CC replies and new participants.
+                        const senderObj = (msg as { sender?: { name?: string | null; email?: string | null } }).sender
+                        const senderName = senderObj?.name || (msg as { sender_name?: string | null }).sender_name
+                        const senderEmail = senderObj?.email || (msg as { sender_email?: string | null }).sender_email
                         const displayName = senderName || (isOut ? agent.name : (conv.contact_name || conv.contact_email || "Contact"))
                         // "Thought" rows = anything in the thread that isn't an
                         // actual sent/received email (agent internal notes, tool
