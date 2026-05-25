@@ -58,7 +58,13 @@ class ApplicationController < ActionController::Base
                             .select(:id, :name, :slug, :role, :status, :manager_id)
                             .order(:name)
                             .to_a
-    pending_counts = current_tenant.pending_approvals.where(status: "pending").group(:agent_id).count
+    # Only count RECENT pending approvals — a long-dead approval from a
+    # paused agent shouldn't keep nagging in the sidebar forever. 7 days
+    # is the same staleness window the inbox uses for "active" conversations.
+    pending_counts = current_tenant.pending_approvals
+                                    .where(status: "pending")
+                                    .where("created_at >= ?", 7.days.ago)
+                                    .group(:agent_id).count
     # "External" conversations with at least one inbound message in the last
     # 7 days approximate "unread inbox" cheaply — without a per-user read
     # state migration, this is the closest signal.

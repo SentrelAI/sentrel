@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Library,
   CornerDownRight,
+  AlertCircle,
 } from "lucide-react"
 
 import AppLogo from "@/components/app-logo"
@@ -309,9 +310,10 @@ function AgentRow({
         )}
         {node.pending_approvals > 0 && (
           <span
-            className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-px text-[9px] font-semibold tabular-nums text-amber-600 dark:text-amber-400"
-            title={`${node.pending_approvals} pending approval${node.pending_approvals === 1 ? "" : "s"}`}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-px text-[9px] font-semibold tabular-nums text-amber-600 dark:text-amber-400"
+            title={`${node.pending_approvals} approval${node.pending_approvals === 1 ? "" : "s"} waiting on your decision (last 7 days)`}
           >
+            <AlertCircle className="size-2.5" />
             {node.pending_approvals}
           </span>
         )}
