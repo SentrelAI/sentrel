@@ -28,7 +28,8 @@ const MODELS: Array<{
   {
     group: "Anthropic (direct)",
     options: [
-      { provider: "anthropic", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7",   hint: "strongest reasoning, priciest" },
+      { provider: "anthropic", model_id: "claude-opus-4-8",           label: "Claude Opus 4.8",   hint: "newest Opus — strongest reasoning" },
+      { provider: "anthropic", model_id: "claude-opus-4-7",           label: "Claude Opus 4.7",   hint: "previous Opus, still excellent" },
       { provider: "anthropic", model_id: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", hint: "recommended default — fast + smart" },
       { provider: "anthropic", model_id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  hint: "fastest + cheapest" },
     ],
