@@ -38,6 +38,11 @@ env:
     AGENT_PROVISIONER: fly
     WEBHOOK_BASE_URL: https://www.double.md
     RAILS_INTERNAL_URL: https://www.double.md
+    # Analytics (public, client-side config). Blank/unset disables a provider.
+    # Keys (POSTHOG_KEY, SENTRY_FRONTEND_DSN) are secrets, set below.
+    PLAUSIBLE_DOMAIN: double.md
+    POSTHOG_HOST: https://us.i.posthog.com
+    GA_MEASUREMENT_ID: ""
   secret:
     - RAILS_MASTER_KEY
     - DATABASE_URL
@@ -62,6 +67,8 @@ env:
     - AWS_SECRET_ACCESS_KEY
     - AWS_ACCOUNT_ID
     - SENTRY_DSN
+    - SENTRY_FRONTEND_DSN
+    - POSTHOG_KEY
     - FLY_API_TOKEN
     - FLY_ORG_SLUG
     - FLY_REGION

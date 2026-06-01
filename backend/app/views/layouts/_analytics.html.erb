@@ -1,0 +1,30 @@
+<%# Third-party analytics + browser monitoring. All opt-in via env vars (see
+    AnalyticsHelper); nothing renders unless the matching key is set, so dev
+    and CI stay clean. NOTE: the app-wide CSP is currently disabled
+    (config/initializers/content_security_policy.rb). If you enable it, also
+    allowlist these origins: plausible.io, *.googletagmanager.com /
+    *.google-analytics.com, your PostHog host, and your Sentry ingest host. %>
+<% if analytics_enabled? %>
+  <%# Plausible — privacy-friendly web analytics. The default script tracks
+      SPA navigations (History API pushState) on its own, so Inertia visits
+      are counted without any extra wiring on our side. %>
+  <% if plausible_domain.present? %>
+    <script defer data-domain="<%= plausible_domain %>" src="<%= plausible_script_src %>"></script>
+  <% end %>
+
+  <%# Google Analytics 4 (gtag.js). GA4 Enhanced Measurement tracks page
+      changes from browser history events, so SPA route changes are captured
+      automatically as well. %>
+  <% if ga_measurement_id.present? %>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=<%= ga_measurement_id %>"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '<%= j ga_measurement_id %>');
+    </script>
+  <% end %>
+
+  <%# PostHog + browser-side Sentry config, read by app/frontend/lib/analytics.ts. %>
+  <%= analytics_config_script_tag %>
+<% end %>

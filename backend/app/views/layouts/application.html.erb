@@ -12,6 +12,10 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
+    <%# Analytics + monitoring (Plausible, GA4, PostHog, Sentry). Opt-in via
+        env vars — renders nothing unless configured. See layouts/_analytics. %>
+    <%= render "layouts/analytics" %>
+
     <%# Social share preview (Open Graph + Twitter). Inertia pages can override
         any of these by yielding into :head with their own tags. %>
     <% og_title = "Double.md — Meet your new AI team" %>
