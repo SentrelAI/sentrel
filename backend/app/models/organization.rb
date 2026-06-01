@@ -1,5 +1,10 @@
 class Organization < ApplicationRecord
+  # `users` are those whose *active* org is this one (the users.organization_id
+  # FK). For "everyone who belongs to this org" — including members currently
+  # switched into another org — use `members` / `memberships`.
   has_many :users, dependent: :destroy
+  has_many :memberships, dependent: :destroy
+  has_many :members, through: :memberships, source: :user
   has_many :agents, dependent: :destroy
   has_many :conversations, dependent: :destroy
   has_many :tasks, dependent: :destroy

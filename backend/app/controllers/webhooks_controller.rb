@@ -366,7 +366,9 @@ class WebhooksController < ApplicationController
       addr
     end
 
-    install.organization.users.find_by("LOWER(email) = ?", email.to_s.downcase) if email.present?
+    # Match against everyone who belongs to this org (membership-based), not
+    # just users whose active org is currently this one.
+    install.organization.members.find_by("LOWER(email) = ?", email.to_s.downcase) if email.present?
   rescue StandardError => e
     Rails.logger.warn "[Slack interactivity] resolve_org_user_from_slack failed: #{e.message}"
     nil
@@ -795,7 +797,9 @@ class WebhooksController < ApplicationController
     return user.id if user
 
     if channel == "telegram"
-      auto_claim_user = organization.users.where(role: %w[owner admin]).order(:id).first
+      # Owners/admins are identified by their membership role in THIS org
+      # (users.role tracks the active org, which may be a different one).
+      auto_claim_user = organization.memberships.where(role: %w[owner admin]).order(:id).first&.user
       if auto_claim_user
         UserIdentity.claim!(user: auto_claim_user, channel: channel, external_id: external_id, display_name: display) rescue nil
         Rails.logger.info "UserIdentity: auto-claimed #{channel}:#{external_id} for user #{auto_claim_user.id} (#{auto_claim_user.email}) in org #{organization.id}"

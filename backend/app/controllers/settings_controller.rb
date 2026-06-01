@@ -142,7 +142,10 @@ class SettingsController < ApplicationController
         :id, :name, :slug, :email_domain, :email_domain_verified, :context_md,
         :default_slack_agent_id
       ]),
-      members: current_tenant.users.order(:name).as_json(only: [ :id, :name, :email, :role, :created_at ]),
+      # All members of this org (membership-based), with their role in THIS org.
+      members: current_tenant.memberships.includes(:user).map { |m|
+        m.user.as_json(only: [ :id, :name, :email, :created_at ]).merge("role" => m.role)
+      }.sort_by { |u| u["name"].to_s },
       anthropic_account: {
         provider: "anthropic",
         connected: anthropic_cred.present?,

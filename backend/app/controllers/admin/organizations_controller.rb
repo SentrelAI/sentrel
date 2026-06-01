@@ -50,7 +50,9 @@ module Admin
     def serialize(o)
       counts = ActsAsTenant.with_tenant(o) do
         {
-          users: o.users.count,
+          # Member count (membership-based) — counts everyone who belongs to
+          # the org, including members currently switched into another org.
+          users: o.memberships.count,
           agents: o.agents.count,
         }
       end

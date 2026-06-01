@@ -5,10 +5,15 @@ class InvitationsController < ApplicationController
   # GET /invitations
   def index
     invitations = current_tenant.invitations.order(created_at: :desc)
-    members = current_tenant.users.order(:email)
+    # Everyone who belongs to this org (via memberships), not just users whose
+    # active org happens to be this one — a teammate switched into another of
+    # their orgs is still a member here. Role shown is their role IN this org.
+    members = current_tenant.memberships.includes(:user)
+                            .map { |m| member_json(m) }
+                            .sort_by { |m| m[:email].to_s }
     render inertia: "invitations/index", props: {
       invitations: invitations.map { |i| invite_json(i) },
-      members: members.map { |u| user_json(u) },
+      members: members,
       current_role: current_user.role
     }
   end
@@ -95,5 +100,12 @@ class InvitationsController < ApplicationController
 
   def user_json(u)
     { id: u.id, email: u.email, role: u.role, created_at: u.created_at }
+  end
+
+  # Like user_json, but role reflects the membership's role in THIS org rather
+  # than the user's active-org role (which may point at a different org).
+  def member_json(membership)
+    u = membership.user
+    { id: u.id, email: u.email, role: membership.role, created_at: membership.created_at }
   end
 end

@@ -11,9 +11,20 @@ export interface Organization {
   slug: string
 }
 
+// An org the current user belongs to, with their role in it. Drives the
+// org switcher in the sidebar user menu.
+export interface MembershipOrg {
+  id: number
+  name: string
+  slug: string
+  role: "owner" | "admin" | "member" | "viewer"
+  is_current: boolean
+}
+
 export interface Auth {
   user: User | null
   organization: Organization | null
+  organizations: MembershipOrg[]
 }
 
 export interface Flash {

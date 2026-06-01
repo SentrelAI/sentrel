@@ -23,10 +23,16 @@ class Invitation < ApplicationRecord
     accepted_at.nil? && expires_at <= Time.current
   end
 
+  # Add the user to this org (without removing them from any org they already
+  # belong to) and make it their active org so they land in the workspace they
+  # just joined. Idempotent on the membership so re-accepts don't blow up.
   def accept!(user)
     raise "Invitation already used" unless pending?
     transaction do
-      user.update!(organization_id: organization_id, role: role)
+      membership = Membership.find_or_initialize_by(user_id: user.id, organization_id: organization_id)
+      membership.role = role
+      membership.save!
+      user.switch_to!(organization)
       update!(accepted_at: Time.current)
     end
   end

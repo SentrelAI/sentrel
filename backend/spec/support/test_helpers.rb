@@ -1,9 +1,13 @@
 module TestHelpers
   def create_org(attrs = {})
+    suffix = SecureRandom.hex(4)
     Organization.create!({
       name: "Test Org",
-      slug: "test-org-#{SecureRandom.hex(4)}",
-      email_domain: "test.com",
+      slug: "test-org-#{suffix}",
+      # Unique per org: email_domain is globally unique, so hardcoding one
+      # value broke any test that creates more than one org (e.g. multi-org
+      # membership specs). Override explicitly when a test needs a known domain.
+      email_domain: "#{suffix}.test.com",
       email_domain_verified: true
     }.merge(attrs))
   end

@@ -22,7 +22,10 @@ class ApplicationController < ActionController::Base
     {
       auth: {
         user: current_user&.as_json(only: [ :id, :name, :email, :role ]),
-        organization: current_tenant&.as_json(only: [ :id, :name, :slug, :onboarding_completed_at ])
+        organization: current_tenant&.as_json(only: [ :id, :name, :slug, :onboarding_completed_at ]),
+        # Every org this user can switch into, with their role in each. Drives
+        # the org switcher in the sidebar user menu.
+        organizations: current_user ? current_user_organizations_payload : []
       },
       is_platform_admin: current_user&.platform_admin? || false,
       is_org_admin: current_user&.admin? || false,
@@ -123,6 +126,23 @@ class ApplicationController < ActionController::Base
       set_current_tenant(current_user.organization)
       set_sentry_context
     end
+  end
+
+  # Orgs the current user belongs to, with their per-org role, ordered by name.
+  # `is_current` marks the active org so the switcher can highlight it without
+  # comparing ids on the client. Memberships aren't tenant-scoped, so this is a
+  # single cross-org query.
+  def current_user_organizations_payload
+    active_org_id = current_user.organization_id
+    current_user.memberships.includes(:organization).map do |m|
+      {
+        id: m.organization_id,
+        name: m.organization.name,
+        slug: m.organization.slug,
+        role: m.role,
+        is_current: m.organization_id == active_org_id
+      }
+    end.sort_by { |o| o[:name].to_s.downcase }
   end
 
   def set_sentry_context

@@ -131,6 +131,13 @@ Rails.application.routes.draw do
 
     get "dashboard", to: "dashboard#index", as: :dashboard
 
+    # User-facing org management: create a new org (→ onboarding) and switch
+    # the active org. One account / email, many organizations. Distinct from
+    # the cross-tenant /admin/organizations panel above.
+    resources :organizations, only: [ :create ] do
+      member { post :switch }
+    end
+
     get "agents/tree", to: "agents#tree", as: :agents_tree
     post "agents/draft", to: "agents#draft", as: :agents_draft
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
