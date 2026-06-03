@@ -179,6 +179,34 @@ export default function AgentEdit({
     patch(agentPath(agent.id))
   }
 
+  type TabKey = "identity" | "behavior" | "permissions" | "capabilities" | "approvals"
+  const VALID_TABS: TabKey[] = ["identity", "behavior", "permissions", "capabilities", "approvals"]
+  // Tab state mirrors ?tab=… so refresh / share / deep-link work.
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (typeof window === "undefined") return "identity"
+    const raw = new URL(window.location.href).searchParams.get("tab")
+    return (VALID_TABS as string[]).includes(raw ?? "") ? (raw as TabKey) : "identity"
+  })
+  function selectTab(next: TabKey) {
+    setTab(next)
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (next === "identity") url.searchParams.delete("tab")
+    else url.searchParams.set("tab", next)
+    window.history.replaceState({}, "", url.toString())
+  }
+  const TABS: Array<{ key: TabKey; label: string }> = [
+    { key: "identity",     label: "Identity" },
+    { key: "behavior",     label: "Behavior" },
+    { key: "permissions",  label: "Permissions" },
+    { key: "capabilities", label: "Capabilities" },
+    { key: "approvals",    label: "Approvals" },
+  ]
+  // Child components declare agentId as number but Agent.id is a string slug
+  // at runtime (e.g. "agt_KxWp…"). Cast at the boundary to avoid lying in
+  // every child signature.
+  const agentId = agent.id as unknown as number
+
   return (
     <AppLayout
       crumbs={[
@@ -197,36 +225,7 @@ export default function AgentEdit({
         action={<SaveAsTemplateButton agentId={agent.id} agentName={agent.name} />}
       />
 
-      <EditTabs onSubmit={handleSubmit} processing={processing} agentId={agent.id} />
-    </AppLayout>
-  )
-
-  function EditTabs({ onSubmit, processing, agentId }: { onSubmit: (e: React.FormEvent) => void; processing: boolean; agentId: number }) {
-    type TabKey = "identity" | "behavior" | "permissions" | "capabilities" | "approvals"
-    const VALID_TABS: TabKey[] = ["identity", "behavior", "permissions", "capabilities", "approvals"]
-    // Tab state mirrors ?tab=… so refresh / share / deep-link work.
-    const [tab, setTab] = useState<TabKey>(() => {
-      if (typeof window === "undefined") return "identity"
-      const raw = new URL(window.location.href).searchParams.get("tab")
-      return (VALID_TABS as string[]).includes(raw ?? "") ? (raw as TabKey) : "identity"
-    })
-    function selectTab(next: TabKey) {
-      setTab(next)
-      if (typeof window === "undefined") return
-      const url = new URL(window.location.href)
-      if (next === "identity") url.searchParams.delete("tab")
-      else url.searchParams.set("tab", next)
-      window.history.replaceState({}, "", url.toString())
-    }
-    const TABS: Array<{ key: TabKey; label: string }> = [
-      { key: "identity",     label: "Identity" },
-      { key: "behavior",     label: "Behavior" },
-      { key: "permissions",  label: "Permissions" },
-      { key: "capabilities", label: "Capabilities" },
-      { key: "approvals",    label: "Approvals" },
-    ]
-    return (
-      <form onSubmit={onSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
         <div className="flex items-center gap-1 rounded-md border bg-card p-1 w-fit">
           {TABS.map((t) => (
             <button
@@ -526,8 +525,8 @@ export default function AgentEdit({
           </Button>
         </div>
       </form>
-    )
-  }
+    </AppLayout>
+  )
 }
 
 // Renders the org's credentials grouped by kind with checkboxes for "this
