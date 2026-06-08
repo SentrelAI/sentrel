@@ -84,11 +84,9 @@ module Forge
       # no drift between "skills want Gmail" and "template forgot to
       # suggest Gmail". AgentTemplate#missing_integrations_for(org) will
       # surface the unconnected ones at install time.
-      aggregated_integrations = resolved
-        .flat_map { |r| Array(r[:skill].requires_connections) }
-        .map(&:to_s)
-        .uniq
-        .reject(&:blank?)
+      aggregated_integrations = TemplateGenerator.sanitize_integrations(
+        resolved.flat_map { |r| Array(r[:skill].requires_connections) }
+      )
 
       tres.template.update!(
         suggested_skill_slugs: resolved_slugs,

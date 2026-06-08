@@ -170,10 +170,11 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       )
     : templates
 
-  // Per-action permission gates. Right now the agent edit page exposes
-  // these but the new-agent wizard hid them, so every new agent shipped
-  // with send_email defaulting to "auto" — meaning brand-new agents
-  // would send mail without approval the first time they tried.
+  // Per-action permission gates. Brand-new agents start in DRAFT mode
+  // for send_email — the helper text on the field says "Draft is safest
+  // while you're getting a feel for how the agent behaves", and the
+  // default should match. Users explicitly flip to "Auto" once they
+  // trust the agent's outbound after a few drafts.
   const { data, setData, post, processing, transform } = useForm({
     name: "",
     slug: "",
@@ -189,7 +190,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     },
     capabilities: {} as Record<string, { enabled?: boolean }>,
     channels: { email: true, telegram: false } as Record<string, boolean>,
-    permissions: { send_email: "auto" } as Record<string, string>,
+    permissions: { send_email: "draft" } as Record<string, string>,
     // AI-generated identity (only filled when AgentDrafter generates fresh
     // — no template fit). Posted alongside the form so the controller
     // uses them directly instead of template-rendering blank fields.
@@ -941,7 +942,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                 </div>
               </div>
               <Select
-                value={data.permissions?.send_email || "auto"}
+                value={data.permissions?.send_email || "draft"}
                 onValueChange={(v) => setData("permissions", { ...data.permissions, send_email: v })}
               >
                 <SelectTrigger className="w-48 h-8 text-xs shrink-0">

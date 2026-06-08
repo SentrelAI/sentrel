@@ -74,4 +74,36 @@ namespace :agent_templates do
       puts "\nDone. Re-run safely; only templates with current_version_id IS NULL are touched."
     end
   end
+
+  desc "Scrub stale/hallucinated skill slugs + bloated integration lists from existing templates"
+  task scrub_bad_data: :environment do
+    ActsAsTenant.without_tenant do
+      known_skill_slugs = SkillDefinition.pluck(:slug).to_set
+      puts "Known skill catalog: #{known_skill_slugs.size} slugs"
+
+      scrubbed = 0
+      AgentTemplate.find_each do |t|
+        old_skills = Array(t.suggested_skill_slugs)
+        old_ints   = Array(t.suggested_integrations)
+        new_skills = old_skills.select { |s| known_skill_slugs.include?(s) }
+        new_ints   = Forge::TemplateGenerator.sanitize_integrations(old_ints)
+
+        next if new_skills == old_skills && new_ints == old_ints
+
+        dropped_skills = old_skills - new_skills
+        dropped_ints   = old_ints - new_ints
+
+        t.update_columns(
+          suggested_skill_slugs: new_skills,
+          suggested_integrations: new_ints,
+        )
+        scrubbed += 1
+        puts "  #{t.slug}"
+        puts "    skills:       #{old_skills.length} → #{new_skills.length}#{dropped_skills.any? ? "  (dropped: #{dropped_skills.join(', ')})" : ''}"
+        puts "    integrations: #{old_ints.length} → #{new_ints.length}#{dropped_ints.any? ? "  (dropped: #{dropped_ints.join(', ')})" : ''}"
+      end
+
+      puts scrubbed.zero? ? "\nClean — no templates needed scrubbing." : "\nScrubbed #{scrubbed} template(s)."
+    end
+  end
 end

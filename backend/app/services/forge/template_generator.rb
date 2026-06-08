@@ -156,7 +156,7 @@ module Forge
           "suggested_model": "<model id from MODEL SELECTION>",
           "suggested_manager_role": "<role title of who they report to, or null for top-level>",
           "suggested_skill_slugs": ["slug-1", "slug-2"],
-          "suggested_integrations": ["service-name-1", "service-name-2"],
+          "suggested_integrations": ["service-name-1", "service-name-2"],   // MAX 6, MINIMUM VIABLE only — what the role can't do without. Skip "nice to haves".
           "capabilities": {
             "knowledge_base": { "enabled": true },
             "scheduling":     { "enabled": true|false },
@@ -178,6 +178,43 @@ module Forge
       PROMPT
     end
 
+    # Cap + dedupe + catalog-filter the AI's integration picks. Without
+    # this the model overshoots wildly — a single SDR template returned
+    # 21 integrations including QuickBooks, Jira, and Zendesk. We want
+    # the minimum viable set, 6 max, only services we actually support.
+    MAX_INTEGRATIONS = 6
+    # Variants the AI tends to mix up — picks one canonical form. Right
+    # side must be a slug that exists in ComposioSupported.all_toolkit_slugs.
+    INTEGRATION_ALIASES = {
+      "google-docs"     => "googledocs",
+      "google_docs"     => "googledocs",
+      "google-slides"   => "googleslides",
+      "google_slides"   => "googleslides",
+      "google-sheets"   => "googlesheets",
+      "google_sheets"   => "googlesheets",
+      "google-calendar" => "googlecalendar",
+      "google_calendar" => "googlecalendar",
+      "google-drive"    => "googledrive",
+      "google_drive"    => "googledrive",
+    }.freeze
+
+    def self.sanitize_integrations(raw)
+      catalog = begin
+        ComposioSupported.all_toolkit_slugs.to_set
+      rescue
+        nil
+      end
+      slugs = Array(raw)
+        .map { |s| s.to_s.downcase.strip }
+        .reject(&:blank?)
+        .map { |s| INTEGRATION_ALIASES[s] || s }
+        .uniq
+      slugs = slugs.select { |s| catalog.include?(s) } if catalog&.any?
+      slugs.first(MAX_INTEGRATIONS)
+    end
+
+    def sanitize_integrations(raw) = self.class.sanitize_integrations(raw)
+
     def validate!(parsed)
       %w[slug name role identity_md personality_md instructions_md].each do |key|
         raise AnthropicClient::Error, "Missing required field: #{key}" if parsed[key].to_s.strip.empty?
@@ -187,7 +224,7 @@ module Forge
       parsed["suggested_provider"] = (parsed["suggested_provider"].presence || "anthropic").to_s
       parsed["suggested_model"] = (parsed["suggested_model"].presence || "claude-sonnet-4-6").to_s
       parsed["suggested_skill_slugs"] = Array(parsed["suggested_skill_slugs"]).select { |s| @available_skills.include?(s) }
-      parsed["suggested_integrations"] = Array(parsed["suggested_integrations"]).map(&:to_s)
+      parsed["suggested_integrations"] = sanitize_integrations(parsed["suggested_integrations"])
       parsed["capabilities"] = (parsed["capabilities"] || {}).slice("knowledge_base", "scheduling", "tasks", "integrations", "recall", "send_media")
       parsed["variables"] = Array(parsed["variables"]).map(&:to_s)
       # email_signature_md is optional but if present should be a non-empty
