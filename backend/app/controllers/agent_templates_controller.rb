@@ -27,6 +27,8 @@ class AgentTemplatesController < ApplicationController
           system_template: t.system_template,
           author_name: author_name_for(t),
           owned_by_me: t.created_by_user_id == current_user.id,
+          license: t.license,
+          current_version_number: t.current_version&.version_number,
         ) }
         render inertia: "templates/index", props: {
           templates: templates,
@@ -36,18 +38,26 @@ class AgentTemplatesController < ApplicationController
     end
   end
 
-  # GET /agent_templates/:id  (slug)
+  # GET /agent_templates/:id  (slug)  [?version=N]
+  # Optional ?version= picks a specific historical version's definition;
+  # defaults to template.current_version. Renders both a metadata payload
+  # the show page uses for its rendered tab AND the raw definition for
+  # the JSON tab.
   def show
     tenant = current_tenant
     template = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(tenant).find_by!(slug: params[:id])
+      AgentTemplate.includes(:versions).visible_to(tenant).find_by!(slug: params[:id])
     end
+    version = pick_version(template, params[:version])
+    definition = version&.definition || legacy_definition_from(template)
+
     respond_to do |format|
       format.json {
         render json: template_json(template).merge(
           identity_md: template.identity_md,
           personality_md: template.personality_md,
           instructions_md: template.instructions_md,
+          definition: definition,
         )
       }
       format.html {
@@ -61,14 +71,19 @@ class AgentTemplatesController < ApplicationController
             system_template: template.system_template,
             author_name: author_name_for(template),
             owned_by_me: template.created_by_user_id == current_user.id,
-          )
+            license: template.license,
+          ),
+          definition: definition,
+          current_version: version_summary(version),
+          versions: template.versions.map { |v| version_summary(v) }.compact,
         }
       }
     end
   end
 
-  # POST /agent_templates  — "Save as template" snapshots an agent into a new
-  # community template. Owner = current user; org = current tenant.
+  # POST /agent_templates  — legacy "Save as template" snapshots an agent into
+  # a new community template. Kept for backward compat with the existing
+  # SaveAsTemplateButton; new code paths should use #publish (versioned).
   def create
     agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
 
@@ -84,6 +99,65 @@ class AgentTemplatesController < ApplicationController
     redirect_to agent_template_path(template.slug), notice: "Template “#{template.name}” saved"
   rescue ActiveRecord::RecordInvalid => e
     redirect_back fallback_location: agent_path(agent), alert: e.message
+  end
+
+  # POST /agent_templates/:id/publish
+  # Body: { agent_id, name?, category?, description?, license?, changelog? }
+  # Re-publishes an existing template — creates a new immutable version
+  # from a (possibly updated) source agent. Owner-only.
+  def publish
+    template = ActsAsTenant.without_tenant { AgentTemplate.find_by!(slug: params[:id]) }
+    forbid_mutation_for_non_owner!(template)
+    agent = find_by_public_id!(current_tenant.agents, params[:agent_id])
+
+    AgentTemplates::Publisher.new(
+      agent: agent,
+      template: template,
+      user: current_user,
+      name: params[:name].presence || template.name,
+      category: params[:category].presence || template.category,
+      description: params[:description].presence || template.description,
+      license: params[:license].presence || template.license,
+      changelog: params[:changelog],
+    ).call
+
+    redirect_to agent_template_path(template.slug), notice: "Published v#{template.reload.current_version.version_number}"
+  rescue ActiveRecord::RecordInvalid => e
+    redirect_back fallback_location: agent_template_path(template.slug), alert: e.message
+  end
+
+  # POST /agent_templates/import
+  # Body: either { definition: <hash> } or { json: <string> } or { url: <https://...> }
+  # Validates spec_version, creates AgentTemplate + v1.
+  def import
+    definition = resolve_definition!
+    template = AgentTemplates::Importer.new(
+      definition,
+      user: current_user,
+      organization: current_tenant,
+    ).call
+    redirect_to agent_template_path(template.slug), notice: "Imported as “#{template.name}”"
+  rescue AgentTemplates::Importer::UnsupportedSpec,
+         AgentTemplates::Importer::InvalidDefinition => e
+    redirect_back fallback_location: agent_templates_path, alert: "Import failed: #{e.message}"
+  rescue => e
+    Rails.logger.warn "[AgentTemplates#import] #{e.class}: #{e.message}"
+    redirect_back fallback_location: agent_templates_path, alert: "Import failed: #{e.message}"
+  end
+
+  # GET /agent_templates/:id/export
+  # Returns the current version's definition as a downloadable agent.json.
+  def export
+    tenant = current_tenant
+    template = ActsAsTenant.without_tenant do
+      AgentTemplate.visible_to(tenant).find_by!(slug: params[:id])
+    end
+    version = template.current_version
+    definition = version&.definition || legacy_definition_from(template)
+    send_data JSON.pretty_generate(definition),
+              filename: "#{template.slug}.agent.json",
+              type: "application/json",
+              disposition: "attachment"
   end
 
   # PATCH /agent_templates/:id — toggle published, rename, recategorize. Only
@@ -110,7 +184,7 @@ class AgentTemplatesController < ApplicationController
   private
 
   def template_params
-    params.require(:template).permit(:name, :description, :category, :published)
+    params.require(:template).permit(:name, :description, :category, :published, :license)
   end
 
   def author_name_for(t)
@@ -138,5 +212,84 @@ class AgentTemplatesController < ApplicationController
       suggested_model: t.suggested_model,
       variables: t.variables
     }
+  end
+
+  def pick_version(template, requested)
+    if requested.present? && requested.to_s != "current"
+      template.versions.find_by(version_number: requested.to_i) || template.current_version
+    else
+      template.current_version
+    end
+  end
+
+  def version_summary(version)
+    return nil unless version
+    {
+      version_number: version.version_number,
+      spec_version:   version.spec_version,
+      license:        version.license,
+      changelog:      version.changelog,
+      created_at:     version.created_at,
+      created_by:     version.created_by_user&.name,
+    }
+  end
+
+  # Fallback definition shape for legacy templates that haven't been
+  # backfilled to v1 yet. Mirrors what the backfill rake task emits.
+  def legacy_definition_from(t)
+    {
+      "spec_version" => "1.0",
+      "kind"         => "agent",
+      "name"         => t.name,
+      "role"         => t.role,
+      "description"  => t.description,
+      "category"     => t.category,
+      "icon"         => t.icon,
+      "license"      => t.license,
+      "persona" => {
+        "identity_md"        => t.identity_md,
+        "personality_md"     => t.personality_md,
+        "instructions_md"    => t.instructions_md,
+        "email_signature_md" => t.email_signature_md,
+      },
+      "model" => {
+        "provider" => t.suggested_provider,
+        "model_id" => t.suggested_model,
+      }.compact,
+      "capabilities" => t.capabilities || {},
+      "skills"       => Array(t.suggested_skill_slugs).map { |s| { "slug" => s } },
+      "integrations_required" => Array(t.suggested_integrations).map { |s| { "service" => s } },
+      "approval_rules" => [],
+    }
+  end
+
+  # Parse the import payload. Three shapes supported:
+  #   - definition: <Hash>   (already parsed by Inertia)
+  #   - json: <String>       (raw paste)
+  #   - url: <https://…>     (server-side fetch, 1MB cap, HTTPS only)
+  def resolve_definition!
+    if params[:definition].is_a?(Hash) || params[:definition].is_a?(ActionController::Parameters)
+      hash = params[:definition].respond_to?(:to_unsafe_h) ? params[:definition].to_unsafe_h : params[:definition].to_h
+      return hash
+    end
+    if params[:json].present?
+      return JSON.parse(params[:json].to_s)
+    end
+    if params[:url].present?
+      url = params[:url].to_s.strip
+      raise AgentTemplates::Importer::InvalidDefinition, "URL must be HTTPS" unless url.start_with?("https://")
+      require "net/http"
+      uri = URI.parse(url)
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 10, open_timeout: 5) do |http|
+        req = Net::HTTP::Get.new(uri.request_uri)
+        http.request(req)
+      end
+      raise AgentTemplates::Importer::InvalidDefinition, "fetch #{url} returned #{res.code}" unless res.is_a?(Net::HTTPSuccess)
+      raise AgentTemplates::Importer::InvalidDefinition, "response too large (>1MB)" if res.body.bytesize > 1_000_000
+      return JSON.parse(res.body)
+    end
+    raise AgentTemplates::Importer::InvalidDefinition, "provide definition / json / url"
+  rescue JSON::ParserError => e
+    raise AgentTemplates::Importer::InvalidDefinition, "not valid JSON: #{e.message}"
   end
 end

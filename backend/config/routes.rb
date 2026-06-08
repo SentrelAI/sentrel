@@ -203,7 +203,21 @@ Rails.application.routes.draw do
     # system_template = true) are visible to every org; org-owned templates
     # (created via "Save as template" on the agent edit page) stay private
     # to the org unless published = true.
-    resources :agent_templates, only: [ :index, :show, :create, :update, :destroy ]
+    resources :agent_templates, only: [ :index, :show, :create, :update, :destroy ] do
+      member do
+        get  :export    # current version's definition (agent.json)
+        post :publish   # new version from { agent_id, ... }
+      end
+      collection do
+        post :import    # paste / file / URL → new template + v1
+      end
+      # Browse + fetch any historical version of a template.
+      resources :versions, only: [ :index, :show ], controller: "agent_template_versions"
+    end
+
+    # Per-agent JSON export — same Exporter payload, no template intermediate.
+    # Used by the "Download agent.json" button on the agent edit page.
+    get "agents/:id/export", to: "agents#export", as: :export_agent
 
     # Skills editor + marketplace. Org-owned skills (organization_id is set)
     # are editable by anyone in that org; marketplace-published skills

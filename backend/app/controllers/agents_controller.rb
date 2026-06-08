@@ -1,6 +1,6 @@
 class AgentsController < ApplicationController
   before_action :authenticate_user!
-  before_action :set_agent, only: [ :show, :edit, :update, :destroy ]
+  before_action :set_agent, only: [ :show, :edit, :update, :destroy, :export ]
 
   def index
     render inertia: "agents/index", props: {
@@ -504,6 +504,18 @@ class AgentsController < ApplicationController
     # Fly teardown is handled by Agent's before_destroy :terminate_infrastructure.
     @agent.destroy
     redirect_to agents_path, notice: "Agent deleted"
+  end
+
+  # GET /agents/:id/export → portable agent.json. Triggers a browser
+  # download via Content-Disposition; safe to share publicly (no
+  # secrets / channel tokens / runtime state embedded).
+  def export
+    definition = AgentTemplates::Exporter.new(@agent, exported_by: current_user).call
+    filename   = "#{@agent.slug.presence || "agent"}.agent.json"
+    send_data JSON.pretty_generate(definition),
+              filename: filename,
+              type: "application/json",
+              disposition: "attachment"
   end
 
   private
