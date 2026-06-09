@@ -45,6 +45,10 @@ interface DraftResponse {
   template_slug: string | null
   role: string | null
   skill_slugs: string[]
+  // Derived server-side from the augmented skill set's
+  // requires_connections. Used for "Integrations to connect" so the
+  // displayed list matches what the agent will actually need.
+  integration_slugs: string[]
   capabilities: Record<string, { enabled?: boolean }>
   provider: string
   model_id: string
@@ -197,6 +201,11 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     identity_md: "",
     personality_md: "",
     instructions_md: "",
+    // Drafter's augmented skill list — used as a controller-side override
+    // so the installed agent has the skills the user's description called
+    // for, even if the matched template's stored skill list is narrower.
+    // Empty array → controller falls back to template defaults.
+    skill_slugs_override: [] as string[],
   })
 
   // Inertia ships the form as flat params; reshape `channels` into the
@@ -253,7 +262,18 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       : null
     // Prefer the LLM's pick → otherwise the first available template →
     // otherwise a blank custom shell so the user is never blocked.
-    const fallback = tpl || (draft.generated ? blankTemplate(draft.role) : templates[0] || blankTemplate(draft.role))
+    const baseTemplate = tpl || (draft.generated ? blankTemplate(draft.role) : templates[0] || blankTemplate(draft.role))
+    // Override the picked template's display fields with the drafter's
+    // augmented set when it returned skills. The augmented list includes
+    // everything the user's description called for (HubSpot, Calendar,
+    // Slack, etc.) — narrower templates would otherwise hide those gaps.
+    const augmentedSkills = draft.skill_slugs?.length ? draft.skill_slugs : baseTemplate.suggested_skill_slugs
+    const augmentedIntegrations = draft.integration_slugs?.length ? draft.integration_slugs : baseTemplate.suggested_integrations
+    const fallback: Template = {
+      ...baseTemplate,
+      suggested_skill_slugs: augmentedSkills,
+      suggested_integrations: augmentedIntegrations,
+    }
     setPicked(fallback)
 
     const mgr = fallback.suggested_manager_role
@@ -282,6 +302,9 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       identity_md: draft.identity_md || "",
       personality_md: draft.personality_md || "",
       instructions_md: draft.instructions_md || "",
+      // Posted alongside the form — controller uses this as the install
+      // skill list instead of the template's defaults when present.
+      skill_slugs_override: augmentedSkills,
     })
     setDraftReasoning(draft.reasoning)
     setIsGenerated(draft.generated === true)

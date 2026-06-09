@@ -372,6 +372,19 @@ class AgentsController < ApplicationController
       end || template.current_version
       definition = version&.definition || legacy_definition_from(template)
 
+      # If the new-agent wizard's drafter augmented the skill list to
+      # include integrations the user explicitly named, honor that:
+      # replace the definition's skills with the override entries by
+      # slug. The Installer's ensure_skill! finds each one by slug in
+      # the org's catalog and links — works for both platform seeds and
+      # org-owned skills. Avoids hiding "you also need hubspot-crm"
+      # behind a Skills-tab visit the user has to remember.
+      override_slugs = Array(params[:skill_slugs_override]).map(&:to_s).reject(&:blank?).uniq
+      if override_slugs.any?
+        definition = definition.deep_dup
+        definition["skills"] = override_slugs.map { |slug| { "slug" => slug } }
+      end
+
       @agent = begin
         AgentTemplates::Installer.new(
           definition: definition,

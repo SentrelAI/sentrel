@@ -43,6 +43,12 @@ class AgentDrafter
       template_slug: r.template_slug,
       role: r.role,
       skill_slugs: r.skill_slugs,
+      # Derive the integration list from the augmented skill set's
+      # requires_connections. Single source of truth: whatever the
+      # skills themselves declare they need. The form uses this for
+      # the "Integrations to connect" display so the user sees the
+      # right set instead of the template's stored (often stale) list.
+      integration_slugs: integrations_for(r.skill_slugs),
       capabilities: r.capabilities,
       provider: r.provider,
       model_id: r.model_id,
@@ -193,6 +199,17 @@ class AgentDrafter
       skill_slugs.each { |slug| out << slug unless out.include?(slug) }
     end
     out
+  end
+
+  def integrations_for(skill_slugs)
+    slugs = Array(skill_slugs)
+    return [] if slugs.empty?
+    skill_index = @skills.index_by(&:slug)
+    slugs
+      .flat_map { |slug| Array(skill_index[slug]&.requires_connections) }
+      .map { |s| s.to_s.downcase.strip }
+      .reject(&:blank?)
+      .uniq
   end
 
   def parse_json(raw)
