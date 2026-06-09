@@ -30,6 +30,7 @@ import { emitActionApproval } from "../gateway.js";
 import { host } from "../host/index.js";
 import type { Origin } from "../channels/origin-delivery.js";
 import { railsInternalUrl } from "../host/rails-url.js";
+import { postProposal } from "./connections.js";
 
 // Where the key came from. Capability MCP tools surface this so we can show
 // "running on Double.md platform key" / "running on this agent's own key" in
@@ -74,6 +75,10 @@ const approvedThisRun = new Set<string>();
 
 function cacheKey(agentId: number, args: { name?: string; provider?: string; kind?: string }) {
   return `${agentId}|${args.name ?? ""}|${args.provider ?? ""}|${args.kind ?? ""}`;
+}
+
+function titleCaseLocal(s: string): string {
+  return s.split(/[-_\s]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
 interface SecretsContext {
@@ -136,20 +141,30 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
         const res = await fetch(`${railsInternalUrl()}/api/secrets?${params.toString()}`, {
           headers: { "X-Engine-Secret": secret },
         });
-        if (res.status === 403) {
+        if (res.status === 403 || res.status === 404) {
+          // Auto-post an inline 'Add <provider> credential' card via
+          // the same propose_connection pipeline a Composio-OAuth gap
+          // would use. Same UX shape: user gets a one-tap card in the
+          // chat instead of plain text telling them to navigate
+          // somewhere. ONE flow for all external access (OAuth + API
+          // tokens + org secrets).
+          const provider = (args.provider || args.name || "credential").toString().toLowerCase();
+          await postProposal({
+            ctx: { agentId, orgId, origin },
+            slug: provider,
+            label: titleCaseLocal(provider),
+            why: args.purpose || (res.status === 403
+              ? `to ${args.provider || args.name}-authenticated work`
+              : `to authenticate to ${args.provider || args.name}`),
+            kind: "api_credential",
+          });
+          const reason = res.status === 403
+            ? "this agent isn't granted that credential yet"
+            : `no ${args.provider || args.name} credential is configured in this workspace yet`;
           return {
             content: [{
               type: "text",
-              text: "no access — this agent hasn't been granted that credential. The user can grant it from Edit Agent → Permissions → Credentials.",
-            }],
-            isError: true,
-          };
-        }
-        if (res.status === 404) {
-          return {
-            content: [{
-              type: "text",
-              text: "not found — no credential matches that name/provider in this workspace. The user can add one at /settings/credentials.",
+              text: `Posted an 'Add ${titleCaseLocal(provider)} credential' card — ${reason}. The user will paste their API token at /settings/credentials, then re-send the request. Don't retry until they confirm.`,
             }],
             isError: true,
           };

@@ -535,10 +535,12 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
     const seed = pendingActionApprovals.find((p) => p.payload_type === "connection_proposal")
     if (!seed) return null
     const payload = (seed.payload || {}) as Record<string, unknown>
+    const kind = payload.kind as ConnectionProposalState extends null ? never : NonNullable<ConnectionProposalState>["kind"]
     return {
       service: String(payload.service || ""),
       label: String(payload.label || seed.payload_type),
       why: String(payload.why || ""),
+      kind: kind || "composio_oauth",
       dismiss: () => setConnectionProposal(null),
     }
   })()
@@ -828,6 +830,7 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
         service: data.service,
         label: data.label || data.service,
         why: data.why || "",
+        kind: data.kind || "composio_oauth",
         dismiss: () => setConnectionProposal(null),
       })
     }

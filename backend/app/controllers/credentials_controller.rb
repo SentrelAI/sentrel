@@ -42,6 +42,12 @@ class CredentialsController < ApplicationController
         cloud_provider: Credential::CLOUD_PROVIDERS,
         generic:        Credential::GENERIC_HINTS
       },
+      # When an agent's propose_connection card sends the user here, we
+      # ship the requested provider slug back to the page so the New
+      # Credential modal can open pre-filled and the user doesn't have to
+      # re-discover what they came here for.
+      prefill_provider: params[:provider].to_s.presence,
+      auto_open_new:    params[:open].to_s == "new",
       # Per-(kind, provider) field schema so the Add/Edit modal renders the
       # right form (Access Key ID + Secret for AWS, Account SID + Auth Token
       # for Twilio, single value for the rest). The frontend posts back a

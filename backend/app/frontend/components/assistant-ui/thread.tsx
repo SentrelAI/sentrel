@@ -99,12 +99,17 @@ type ActionApprovalData = {
 const ActionApprovalContext = createContext<ActionApprovalData>(null);
 export const ActionApprovalProvider = ActionApprovalContext.Provider;
 
-// Item 5 — propose_connection: agent asks the user to connect an unconnected
-// toolkit (LinkedIn, HubSpot, etc.). Inline card with a Connect button.
+// Item 5 — propose_connection: agent asks the user to wire up external
+// access. ONE card type handles both kinds:
+//   composio_oauth → POST /integrations/:slug/connect → OAuth popup
+//   api_credential → open /settings/credentials?provider=:slug in new tab
+// Missing kind defaults to composio_oauth for back-compat with rows
+// persisted before the unified flow.
 type ConnectionProposalData = {
   service: string
   label: string
   why: string
+  kind?: "composio_oauth" | "api_credential" | "org_credential"
   dismiss: () => void
 } | null
 
@@ -491,37 +496,48 @@ const InlineConnectionProposal: FC = () => {
   const [error, setError] = useState<string | null>(null);
   if (!proposal) return null;
 
+  const isCredential = proposal.kind === "api_credential" || proposal.kind === "org_credential";
+  const headerVerb = isCredential ? "Add" : "Connect";
+  const buttonLabel = isCredential ? `Add ${proposal.label} credential` : `Connect ${proposal.label}`;
+
   const onConnect = async () => {
     setBusy(true);
     setError(null);
     try {
-      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
-      const res = await fetch(`/integrations/${proposal.service}/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf },
-      });
-
-      // Server may have returned an HTML redirect (legacy path) — treat that
-      // as failure and surface a useful message instead of crashing on JSON
-      // parse. Successful path always returns Content-Type: application/json.
-      const ct = res.headers.get("content-type") || "";
-      if (!ct.includes("application/json")) {
-        setError(`Couldn't reach Composio for ${proposal.label}. Check the integration is set up at composio.dev → Auth configs.`);
-        return;
-      }
-
-      const data = await res.json().catch(() => ({} as { redirect_url?: string; error?: string }));
-      if (data.redirect_url) {
-        const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100");
-        const timer = setInterval(() => {
-          if (popup?.closed) {
-            clearInterval(timer);
-            proposal.dismiss();
-            setTimeout(() => window.location.reload(), 500);
-          }
-        }, 500);
+      if (isCredential) {
+        // API-token credentials: open the credentials settings page in
+        // a new tab pre-filtered to this provider. User pastes their
+        // token, comes back to chat, retries.
+        const url = `/settings/credentials?provider=${encodeURIComponent(proposal.service)}&open=new`;
+        window.open(url, "_blank", "noopener,noreferrer");
+        proposal.dismiss();
       } else {
-        setError(data.error || `Composio rejected the ${proposal.label} connect request.`);
+        // Composio OAuth: POST to /integrations/:slug/connect, get a
+        // redirect_url, open it as a popup, reload chat on close so the
+        // agent picks up the new connection.
+        const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
+        const res = await fetch(`/integrations/${proposal.service}/connect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf },
+        });
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          setError(`Couldn't reach Composio for ${proposal.label}. Check the integration is set up at composio.dev → Auth configs.`);
+          return;
+        }
+        const data = await res.json().catch(() => ({} as { redirect_url?: string; error?: string }));
+        if (data.redirect_url) {
+          const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100");
+          const timer = setInterval(() => {
+            if (popup?.closed) {
+              clearInterval(timer);
+              proposal.dismiss();
+              setTimeout(() => window.location.reload(), 500);
+            }
+          }, 500);
+        } else {
+          setError(data.error || `Composio rejected the ${proposal.label} connect request.`);
+        }
       }
     } catch (err) {
       setError(`Network error: ${(err as Error).message}`);
@@ -535,7 +551,7 @@ const InlineConnectionProposal: FC = () => {
       <div className="rounded-xl border bg-card p-3 space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium">
           <ShieldAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
-          <span>Connect <strong>{proposal.label}</strong> {proposal.why ? `— ${proposal.why}` : ""}</span>
+          <span>{headerVerb} <strong>{proposal.label}</strong> {proposal.why ? `— ${proposal.why}` : ""}</span>
         </div>
         {error && (
           <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-2 text-xs text-red-700 dark:text-red-400">
@@ -554,7 +570,7 @@ const InlineConnectionProposal: FC = () => {
             disabled={busy}
             className="px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
           >
-            {busy ? "Opening…" : `Connect ${proposal.label}`}
+            {busy ? "Opening…" : buttonLabel}
           </button>
         </div>
       </div>

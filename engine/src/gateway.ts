@@ -675,15 +675,30 @@ export function emitActionApproval(data: {
   broadcast({ type: "action_approval", ...data, timestamp: Date.now() });
 }
 
-// Item 5 — auth-on-demand: push a Connect-<service> button into the chat
-// when an action needs an unconnected toolkit. Clicking opens the existing
-// /integrations/:service/connect Composio OAuth popup.
+// Unified "external access required" card. ONE card type, three kinds —
+// the chat surface dispatches the right action based on `kind`:
+//
+//   composio_oauth → POST /integrations/:slug/connect → OAuth popup
+//   api_credential → open /settings/credentials?provider=:slug in a new tab
+//   org_credential → same destination, framed for org-wide secrets
+//
+// Replaces the old propose_connection + secrets.get text path with a
+// single consistent UX. Legacy callers without `kind` default to
+// composio_oauth for back-compat (the field used to be implicit).
 export function emitConnectionProposal(data: {
   service: string;
   label: string;
   why: string;
+  kind?: "composio_oauth" | "api_credential" | "org_credential";
 }): void {
-  broadcast({ type: "connection_proposal", ...data, timestamp: Date.now() });
+  broadcast({
+    type: "connection_proposal",
+    kind: data.kind || "composio_oauth",
+    service: data.service,
+    label: data.label,
+    why: data.why,
+    timestamp: Date.now(),
+  });
 }
 
 // Sprint 3 — media sent during the current agent run. Collected here so

@@ -32,60 +32,55 @@ interface ConnectionsContext {
 export function buildConnectionsMcpServer(ctx: ConnectionsContext) {
   const proposeConnectionTool = tool(
     "propose_connection",
-    "Surface an inline 'Connect <service>' button to the user when they ask for something that requires a service the org hasn't connected yet. The button opens the OAuth flow in a popup. Use this INSTEAD of just telling them to go to /integrations themselves — they get a one-tap card right in the chat. After they connect, they'll re-prompt you. The supported service list is dynamic (sourced from Composio's auth_configs); the system prompt has the current set.",
+    "Surface an inline 'Connect <service>' or 'Add <provider> credential' card in the chat when the user wants something that requires external access the org hasn't set up yet. The user clicks once: for Composio toolkits (Apollo, HubSpot, Slack, Gmail, …) the OAuth popup opens; for API-token services (Intercom, Stripe, Heroku, any custom REST API) a credentials form opens in a new tab. ALWAYS prefer this card over telling the user to navigate to /integrations or /settings/credentials themselves.",
     {
       service: z.string().describe(
-        "Toolkit slug. MUST be one currently in our supported list (see system prompt). Lowercase, match exactly.",
+        "Service slug. For Composio integrations: must be in the supported list (system prompt). For API-token credentials: any provider name the user would recognize ('intercom', 'stripe', 'heroku').",
       ),
-      label: z.string().optional().describe("Display name for the button — defaults to the official label for the slug. Override only if needed."),
-      why: z.string().describe("One-line user-facing reason: 'to publish your post', 'to mark the deal Closed Lost', 'to send the campaign'. Shows on the connect card."),
+      label: z.string().optional().describe("Display name. Defaults to the official label for Composio slugs; for credentials defaults to title-cased service."),
+      why: z.string().describe("One-line user-facing reason. Shows on the card."),
+      kind: z.enum(["composio_oauth", "api_credential"]).optional().describe(
+        "Which kind of access to request. composio_oauth (default) for OAuth-managed integrations in the Composio catalog; api_credential for raw API tokens / keys the workspace owner pastes at /settings/credentials.",
+      ),
     },
     async (args) => {
       const slug = args.service.toLowerCase();
-      const officialLabel = getSupportedLabel(slug);
-      if (!officialLabel) {
-        const list = getSupportedSlugs().join(", ");
-        logger.warn(`Connection proposal rejected: unsupported service '${args.service}' (current supported: ${list})`);
-        return {
-          content: [{
-            type: "text",
-            text: `'${args.service}' is not in our currently supported integrations. Supported right now: ${list}. Tell the user we don't support that service yet — don't surface a connect card for it.`,
-          }],
-          isError: true,
-        };
-      }
-      const label = args.label || officialLabel;
+      const kind = args.kind || "composio_oauth";
 
-      // Persist the proposal so the inline card survives a page refresh.
-      // Same table as action approvals — payload_type='connection_proposal'
-      // makes it distinguishable on the frontend hydration path.
-      const approvalToken = `conn_${Date.now()}_${slug}`;
-      try {
-        await host.createPendingActionApproval({
-          orgId: ctx.orgId,
-          agentId: ctx.agentId,
-          summary: `Connect ${label} — ${args.why}`,
-          payloadType: "connection_proposal",
-          payload: { service: slug, label, why: args.why },
-          options: [
-            { label: `Connect ${label}`, value: "connect" },
-            { label: "Not now", value: "dismiss" },
-          ],
-          riskTier: "low",
-          approvalToken,
-          allowAmendment: false,
-          origin: ctx.origin,
-        });
-      } catch (err) {
-        logger.warn("Failed to persist connection proposal", { error: (err as Error).message });
+      let label: string;
+      if (kind === "composio_oauth") {
+        const officialLabel = getSupportedLabel(slug);
+        if (!officialLabel) {
+          const list = getSupportedSlugs().join(", ");
+          logger.warn(`Connection proposal rejected: unsupported Composio service '${args.service}' (current: ${list})`);
+          return {
+            content: [{
+              type: "text",
+              text: `'${args.service}' isn't in our Composio toolkits. If this service has a public API token (like Intercom, Heroku, Stripe), retry with kind='api_credential' instead.`,
+            }],
+            isError: true,
+          };
+        }
+        label = args.label || officialLabel;
+      } else {
+        // api_credential: free-form provider name. Title-case the slug if no
+        // label was given. The credentials page accepts any provider string.
+        label = args.label || titleCase(slug);
       }
 
-      emitConnectionProposal({ service: slug, label, why: args.why });
-      logger.info(`Connection proposal: ${label} (${args.why})`);
+      await postProposal({
+        ctx,
+        slug,
+        label,
+        why: args.why,
+        kind,
+      });
+
+      const actionVerb = kind === "composio_oauth" ? "authenticate via OAuth" : "paste their API token";
       return {
         content: [{
           type: "text",
-          text: `Posted a 'Connect ${label}' card. The user will see a button to authenticate; once they click + connect, they can re-send their request and you'll have ${label} tools available.`,
+          text: `Posted a 'Connect ${label}' card. The user will see a button to ${actionVerb}; once they're done they can re-send the request and you'll have ${label} access.`,
         }],
       };
     },
@@ -96,4 +91,54 @@ export function buildConnectionsMcpServer(ctx: ConnectionsContext) {
     version: "0.1.0",
     tools: [proposeConnectionTool],
   });
+}
+
+// Shared helper — also used by tools/secrets.ts when secrets.get(404)s,
+// so a missing credential auto-surfaces the same card the agent would
+// have posted via propose_connection. Single source of truth for the
+// "post an access-required card" path.
+export async function postProposal(opts: {
+  ctx: ConnectionsContext;
+  slug: string;
+  label: string;
+  why: string;
+  kind: "composio_oauth" | "api_credential" | "org_credential";
+}): Promise<void> {
+  const { ctx, slug, label, why, kind } = opts;
+  const approvalToken = `${kind === "composio_oauth" ? "conn" : "cred"}_${Date.now()}_${slug}`;
+  const summary = kind === "composio_oauth"
+    ? `Connect ${label} — ${why}`
+    : `Add ${label} credential — ${why}`;
+  const connectButtonLabel = kind === "composio_oauth" ? `Connect ${label}` : `Add ${label} credential`;
+
+  try {
+    await host.createPendingActionApproval({
+      orgId: ctx.orgId,
+      agentId: ctx.agentId,
+      summary,
+      payloadType: "connection_proposal",
+      payload: { service: slug, label, why, kind },
+      options: [
+        { label: connectButtonLabel, value: "connect" },
+        { label: "Not now", value: "dismiss" },
+      ],
+      riskTier: "low",
+      approvalToken,
+      allowAmendment: false,
+      origin: ctx.origin,
+    });
+  } catch (err) {
+    logger.warn("Failed to persist connection proposal", { error: (err as Error).message });
+  }
+
+  emitConnectionProposal({ service: slug, label, why, kind });
+  logger.info(`Proposal posted: ${kind} ${label} (${why})`);
+}
+
+function titleCase(s: string): string {
+  return s
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
