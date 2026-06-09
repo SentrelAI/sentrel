@@ -206,12 +206,31 @@ class IntegrationsController < ApplicationController
           row.status = "connected"
           row.save!
 
+          # Auto-install any SkillDefinition whose requires_connections
+          # includes this service. Example: connect Apollo → every
+          # integrations-enabled agent gets apollo-prospecting installed
+          # (giving the agent the rich SKILL.md with real Composio tool
+          # names + anti-patterns), instead of every agent having to
+          # discover Apollo's gotchas at runtime.
+          begin
+            result = IntegrationSkillAutoInstaller.new(row).call
+            if result.installed.positive?
+              Rails.logger.info "IntegrationSkillAutoInstaller: #{service} → installed #{result.skills_matched.join(', ')} on #{result.installed} agent-skill rows (#{result.skipped} already present)"
+            end
+          rescue => e
+            Rails.logger.warn "IntegrationSkillAutoInstaller failed for #{service}: #{e.class}: #{e.message}"
+          end
+
           # Wake every engine in the org so each agent's
           # getActiveToolkits cache (60s TTL) flushes immediately.
           # Without this, an agent the user pings right after
           # connecting Apollo still sees "Apollo not connected" for
           # up to a minute. The sync handler (engine main.ts line 107)
           # already invalidates the toolkit cache on receipt.
+          # NOTE: the auto-installer above already fired EngineSync
+          # per agent it touched; this fan-out covers agents that
+          # didn't need a skill install but still need the toolkit
+          # cache flush.
           sync_agents_after_integration_change(row)
         end
       end
