@@ -367,6 +367,22 @@ class AgentDrafter
     {}
   end
 
+  # Sensible defaults for a real agent. send_media off because most
+  # roles don't need voice/image/file output; everything else on
+  # because they're broadly useful (search history, set reminders,
+  # use Composio integrations, delegate tasks). Claude's response can
+  # override any individual key — but if Claude omits or returns false
+  # on something the role plausibly needs, we don't silently disable
+  # a useful capability.
+  CAPABILITY_DEFAULTS = {
+    "knowledge_base" => true,
+    "scheduling"     => true,
+    "tasks"          => true,
+    "integrations"   => true,
+    "recall"         => true,
+    "send_media"     => false,
+  }.freeze
+
   def build_result(parsed)
     picked = Array(parsed["skill_slugs"]).select { |s| @skills.any? { |sk| sk.slug == s } }
     # Two-stage deterministic backstop:
@@ -379,9 +395,14 @@ class AgentDrafter
     picked = augment_skills_from_description(picked, nil)
     picked = inject_role_essentials(picked).first(12)
 
-    caps = (parsed["capabilities"] || {}).each_with_object({}) do |(k, v), h|
-      next unless %w[knowledge_base scheduling tasks integrations recall send_media].include?(k.to_s)
-      h[k.to_s] = { "enabled" => !!v }
+    # Capabilities: start from defaults, let Claude override individual
+    # keys. Avoids the "all checkboxes off" outcome when Claude omits
+    # the field or returns conservative falses.
+    raw_caps = parsed["capabilities"] || {}
+    caps = CAPABILITY_DEFAULTS.each_with_object({}) do |(k, default), h|
+      v = raw_caps[k]
+      enabled = v.is_a?(Hash) ? !!v["enabled"] : (v.nil? ? default : !!v)
+      h[k] = { "enabled" => enabled }
     end
 
     Result.new(
