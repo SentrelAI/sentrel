@@ -205,6 +205,14 @@ class IntegrationsController < ApplicationController
           row.composio_connection_id = connected_account_id
           row.status = "connected"
           row.save!
+
+          # Wake every engine in the org so each agent's
+          # getActiveToolkits cache (60s TTL) flushes immediately.
+          # Without this, an agent the user pings right after
+          # connecting Apollo still sees "Apollo not connected" for
+          # up to a minute. The sync handler (engine main.ts line 107)
+          # already invalidates the toolkit cache on receipt.
+          sync_agents_after_integration_change(row)
         end
       end
     end
