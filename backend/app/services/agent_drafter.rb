@@ -142,12 +142,57 @@ class AgentDrafter
         [SYS] template fits the role at all. When a [SYS] and [COM] template
         both plausibly match, the [SYS] one wins.
       - skill_slugs MUST be a subset of the listed skill slugs (use [] if none fit).
+      - skill_slugs should INCLUDE EVERY SKILL THE ROLE NEEDS TO DO ITS JOB —
+        including the ones implied by the tools the user mentioned. If the user
+        says they use HubSpot, include the HubSpot skill. If Slack, include the
+        Slack skill. If "Google Calendar to book," include the calendar-booking
+        skill. Don't be conservative — 5–10 skills is normal for a real role.
+        DON'T just mirror the picked template's existing skill list — augment it
+        with everything the user's description requires.
       - Pick claude-haiku-4-5-20251001 for simple/fast tasks (support, SDR triage),
         claude-sonnet-4-6 as the default, claude-opus-4-7 for heavy reasoning
         (CEO, engineering, research).
       - Enable capabilities only if the role plausibly needs them.
       - name_suggestion: a single human first name that fits the role's vibe.
     PROMPT
+  end
+
+  # Common ways users refer to integrations in plain English. Maps a
+  # regex → the canonical integration slug it implies. Used to find the
+  # integrations the user mentioned anywhere in their description, so
+  # we can add the skills that depend on them. Keep small + explicit;
+  # we'd rather miss a mention than misroute one (the prompt instruction
+  # to Claude is the primary defense — this is the backstop for when it
+  # misses an obvious one).
+  INTEGRATION_NAME_PATTERNS = {
+    "googlecalendar" => /\b(google\s+calendar|gcal)\b/i,
+    "googledocs"     => /\bgoogle\s+docs?\b/i,
+    "googlesheets"   => /\bgoogle\s+sheets?\b/i,
+    "googledrive"    => /\bgoogle\s+drive\b/i,
+  }.freeze
+
+  # Walk every available skill's requires_connections list, find any
+  # integration the user mentioned in @description or @tools_description,
+  # and add the skills that depend on it. Idempotent — never adds a slug
+  # twice or one already picked.
+  def augment_skills_from_description(picked_slugs, template)
+    haystack = "#{@description} #{@tools_description} #{template&.description}".downcase
+    return picked_slugs if haystack.strip.empty?
+
+    # Inverse index: integration_slug → [skill_slugs that need it].
+    by_integration = Hash.new { |h, k| h[k] = [] }
+    @skills.each do |s|
+      Array(s.requires_connections).each { |c| by_integration[c.to_s.downcase] << s.slug }
+    end
+    return picked_slugs if by_integration.empty?
+
+    out = picked_slugs.dup
+    by_integration.each do |integration, skill_slugs|
+      pattern = INTEGRATION_NAME_PATTERNS[integration] || /\b#{Regexp.escape(integration)}\b/i
+      next unless haystack =~ pattern
+      skill_slugs.each { |slug| out << slug unless out.include?(slug) }
+    end
+    out
   end
 
   def parse_json(raw)
@@ -163,9 +208,13 @@ class AgentDrafter
     template_slug = nil unless @templates.any? { |t| t.slug == template_slug }
     template = @templates.find { |t| t.slug == template_slug }
 
-    skill_slugs = Array(parsed["skill_slugs"])
-      .select { |s| @skills.any? { |sk| sk.slug == s } }
-      .first(8)
+    picked = Array(parsed["skill_slugs"]).select { |s| @skills.any? { |sk| sk.slug == s } }
+    # When the user (or the template) names integrations like HubSpot,
+    # Slack, or Google Calendar, ensure the corresponding skill is in
+    # the list — even if Claude missed it or the matched template
+    # didn't carry it. Source of truth: each skill's own
+    # requires_connections column. No hardcoded slug names.
+    picked = augment_skills_from_description(picked, template).first(12)
 
     caps = (parsed["capabilities"] || {}).each_with_object({}) do |(k, v), h|
       next unless %w[knowledge_base scheduling tasks integrations recall send_media].include?(k.to_s)
@@ -176,7 +225,7 @@ class AgentDrafter
     Result.new(
       template_slug: template&.slug,
       role: parsed["role"].presence || template&.role,
-      skill_slugs: skill_slugs.presence || template&.suggested_skill_slugs || [],
+      skill_slugs: picked.presence || template&.suggested_skill_slugs || [],
       capabilities: caps,
       provider: parsed["provider"].presence || template&.suggested_provider || "anthropic",
       model_id: parsed["model_id"].presence || template&.suggested_model || "claude-sonnet-4-6",
