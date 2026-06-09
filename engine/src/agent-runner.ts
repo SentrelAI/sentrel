@@ -1828,8 +1828,16 @@ async function buildQueryOptions(
   // ai_config.thinking_level in Rails; provisioner forwards the value as
   // ENGINE_THINKING_LEVEL. Legacy ENGINE_ENABLE_THINKING=true maps to
   // "medium" so the env-only path keeps working.
-  const thinkingLevel = (process.env.ENGINE_THINKING_LEVEL || "").toLowerCase()
-    || (process.env.ENGINE_ENABLE_THINKING === "true" ? "medium" : "none");
+  //
+  // SKIP for fastChat turns — short inbound messages with no tool/web/
+  // memory intent. The model has nothing meaningful to "think" about
+  // ("hi" doesn't need 4000 thinking tokens), and the latency cost is
+  // brutal: a fresh agent spending 31s thinking about a greeting is the
+  // single biggest UX regression in the chat flow today.
+  const thinkingLevel = profile.fastChat
+    ? "none"
+    : (process.env.ENGINE_THINKING_LEVEL || "").toLowerCase()
+        || (process.env.ENGINE_ENABLE_THINKING === "true" ? "medium" : "none");
   const thinkingBudget: Record<string, number> = {
     low: 2000,
     medium: 4000,
