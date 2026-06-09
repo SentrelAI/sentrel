@@ -305,30 +305,75 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     }
   }
 
+  // Client-side ceiling on the fetch so we always surface SOMETHING
+  // even when the gateway times out (504) or drops the connection mid-
+  // flight (ERR_NETWORK_CHANGED). The backend's own Anthropic call has
+  // a 25s timeout; we add a 10s buffer for round-trip + gateway slack.
+  const DRAFT_TIMEOUT_MS = 35_000
+
   async function fetchDraft(opts: { regenerate?: boolean } = {}): Promise<DraftResponse | null> {
     const csrfToken = document
       .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
       ?.getAttribute("content")
-    const res = await fetch("/agents/draft", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-      },
-      body: JSON.stringify({
-        description,
-        tools_preference: toolsPreference,
-        tools_description: toolsPreference === "specify" ? toolsDescription : "",
-        regenerate: opts.regenerate || false,
-      }),
-    })
-    const body = (await res.json()) as DraftResponse | { error?: string }
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS)
+
+    let res: Response
+    try {
+      res = await fetch("/agents/draft", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+        },
+        body: JSON.stringify({
+          description,
+          tools_preference: toolsPreference,
+          tools_description: toolsPreference === "specify" ? toolsDescription : "",
+          regenerate: opts.regenerate || false,
+        }),
+      })
+    } catch (err) {
+      // AbortError, ERR_NETWORK_CHANGED, DNS failures — never reached the gateway
+      // (or the gateway never responded). Either way, fetch rejected.
+      const wasAbort = (err as Error)?.name === "AbortError"
+      setDraftError(
+        wasAbort
+          ? "The request took too long. Try a shorter description, or try again in a moment."
+          : "Couldn't reach the server. Check your connection and try again."
+      )
+      return null
+    } finally {
+      window.clearTimeout(timer)
+    }
+
     if (!res.ok) {
-      setDraftError((body as { error?: string }).error || "Couldn't draft an agent. Try again.")
+      // Status-specific messages — don't try to parse a 5xx body as JSON;
+      // gateways return HTML or empty.
+      if (res.status === 504 || res.status === 503 || res.status === 502) {
+        setDraftError("The drafter took too long to respond. Try a shorter description, or try again in a moment.")
+      } else if (res.status === 401 || res.status === 419) {
+        setDraftError("Your session expired. Refresh the page and try again.")
+      } else {
+        // 4xx with JSON body — surface the server's error message if present.
+        let serverMessage: string | null = null
+        try {
+          const body = (await res.json()) as { error?: string }
+          serverMessage = body?.error || null
+        } catch { /* not JSON */ }
+        setDraftError(serverMessage || `Couldn't draft an agent (HTTP ${res.status}). Try again.`)
+      }
       return null
     }
-    return body as DraftResponse
+
+    try {
+      return (await res.json()) as DraftResponse
+    } catch (err) {
+      setDraftError("The server returned an unexpected response. Try again in a moment.")
+      return null
+    }
   }
 
   async function handleIntroSubmit(e: React.FormEvent) {
@@ -342,11 +387,14 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     setDrafting(true)
     try {
       const draft = await withStagedSpinner(() => fetchDraft())
-      if (!draft) return
+      if (!draft) return  // fetchDraft already set draftError
       const name = introName.trim() || draft.name_suggestion || randomAgentName()
       applyDraft(name, draft)
     } catch (err) {
-      setDraftError("Network error. Try again.")
+      // Defensive — fetchDraft swallows its own errors now, but keep this
+      // catch so any unexpected throw still surfaces something to the user
+      // instead of leaving the spinner running silently.
+      setDraftError(`Unexpected error: ${(err as Error)?.message || "try again"}`)
     } finally {
       setDrafting(false)
     }
