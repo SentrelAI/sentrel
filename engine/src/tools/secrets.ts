@@ -142,17 +142,45 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
           headers: { "X-Engine-Secret": secret },
         });
         if (res.status === 403 || res.status === 404) {
-          // Auto-post an inline 'Add <provider> credential' card via
-          // the same propose_connection pipeline a Composio-OAuth gap
-          // would use. Same UX shape: user gets a one-tap card in the
-          // chat instead of plain text telling them to navigate
-          // somewhere. ONE flow for all external access (OAuth + API
-          // tokens + org secrets).
-          const provider = (args.provider || args.name || "credential").toString().toLowerCase();
+          const rawProvider = (args.provider || args.name || "credential").toString().toLowerCase();
+          // Normalize "APOLLO_API_KEY" / "apollo_api_key" / "apollo-token"
+          // → "apollo" so the Composio active-toolkit lookup matches.
+          const normalizedProvider = rawProvider
+            .replace(/[_-]?(api[_-]?key|access[_-]?token|secret[_-]?key|auth[_-]?token|token|key|secret)$/i, "")
+            .replace(/[_-]+$/, "");
+
+          // CRITICAL guard: if this provider is already wired up via
+          // Composio, an "Add API key" card is wrong — Apollo IS
+          // connected, the agent just needs to use the Composio
+          // APOLLO_* tools instead of asking for a raw key. Return a
+          // pointed error that tells the model to retry with the
+          // toolkit, not surface another credential prompt to the user.
+          try {
+            const { getActiveToolkits } = await import("../integrations/composio.js");
+            const active = await getActiveToolkits(orgId, null).catch(() => [] as string[]);
+            const activeSet = new Set(active.map((s) => s.toLowerCase()));
+            if (activeSet.has(normalizedProvider) || activeSet.has(rawProvider)) {
+              const label = titleCaseLocal(normalizedProvider);
+              const upper = normalizedProvider.toUpperCase();
+              return {
+                content: [{
+                  type: "text",
+                  text: `${label} is already connected via Composio (org-level OAuth). DO NOT propose an API-key card to the user — they'll be confused since the integration shows as connected. Use the Composio ${upper}_* tools directly (e.g. ${upper}_PEOPLE_SEARCH for Apollo, ${upper}_LIST_CONVERSATIONS for Intercom). If those returned 422 / "Parameters misconfigured", the toolkit rejected your args — most often because you sent placeholder strings like "placeholder", "test", or "example" for ID fields. Pull real values from a prior tool call or ask the user for them.`,
+                }],
+                isError: true,
+              };
+            }
+          } catch (err) {
+            logger.warn("secrets.get composio check failed (continuing with credential card)", { error: (err as Error).message });
+          }
+
+          // No Composio integration for this provider → fall through to
+          // the credential card. ONE flow for all external access
+          // (OAuth + API tokens + org secrets).
           await postProposal({
             ctx: { agentId, orgId, origin },
-            slug: provider,
-            label: titleCaseLocal(provider),
+            slug: rawProvider,
+            label: titleCaseLocal(normalizedProvider),
             why: args.purpose || (res.status === 403
               ? `to ${args.provider || args.name}-authenticated work`
               : `to authenticate to ${args.provider || args.name}`),
@@ -164,7 +192,7 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
           return {
             content: [{
               type: "text",
-              text: `Posted an 'Add ${titleCaseLocal(provider)} credential' card — ${reason}. The user will paste their API token at /settings/credentials, then re-send the request. Don't retry until they confirm.`,
+              text: `Posted an 'Add ${titleCaseLocal(normalizedProvider)} credential' card — ${reason}. The user will paste their API token at /settings/credentials, then re-send the request. Don't retry until they confirm.`,
             }],
             isError: true,
           };
