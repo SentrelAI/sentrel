@@ -68,11 +68,17 @@ export const CURATED_TOOLS: Record<string, string[]> = {
     "VERCEL_GET_PROJECT",
   ],
   apollo: [
-    "APOLLO_SEARCH_PEOPLE",
-    "APOLLO_ENRICH_PERSON",
-    "APOLLO_SEARCH_COMPANIES",
+    // Verified Composio tool names — noun BEFORE verb.
+    // (Old list had APOLLO_SEARCH_PEOPLE / APOLLO_ENRICH_PERSON /
+    // APOLLO_SEARCH_COMPANIES which DON'T EXIST; Composio silently
+    // dropped them so only ADD_CONTACTS_TO_SEQUENCE made it into
+    // the agent's tool set — the source of weeks of confusion.)
+    "APOLLO_PEOPLE_SEARCH",
+    "APOLLO_ORGANIZATION_SEARCH",
+    "APOLLO_MIXED_PEOPLE_AND_ACCOUNTS_SEARCH",
+    "APOLLO_BULK_PEOPLE_ENRICHMENT",
     "APOLLO_ADD_CONTACTS_TO_SEQUENCE",
-    "APOLLO_LIST_SEQUENCES",
+    "APOLLO_GET_AUTH_STATUS",
   ],
   hubspot: [
     "HUBSPOT_CREATE_CONTACT",

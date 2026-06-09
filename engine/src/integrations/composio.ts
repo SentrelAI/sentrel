@@ -287,6 +287,24 @@ export async function getComposioMcpServer(
             : { toolkits: [toolkit], limit: 20 };
           const raw = await (client as any).tools.get(tkOwner, params);
           const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
+
+          // Defensive check: if we asked Composio for N curated names
+          // and got back fewer, log which names were silently dropped.
+          // This was hiding the Apollo bug — curated.ts had wrong tool
+          // names (e.g. APOLLO_SEARCH_PEOPLE doesn't exist; the real
+          // one is APOLLO_PEOPLE_SEARCH) and Composio just returned
+          // the valid ones with no error, leaving the agent without
+          // people-search capability for weeks.
+          if (curated.length > 0 && arr.length < curated.length) {
+            const returnedNames = new Set(arr.map((t: any) => t.name));
+            const dropped = curated.filter((name) => !returnedNames.has(name));
+            if (dropped.length > 0) {
+              logger.warn(
+                `Composio: ${toolkit} dropped ${dropped.length}/${curated.length} curated tools — names invalid? ${dropped.join(", ")}`,
+              );
+            }
+          }
+
           for (const tool of arr) toolNameToOwner.set(tool.name, tkOwner);
           toolsArr.push(...arr);
         } catch (err) {
