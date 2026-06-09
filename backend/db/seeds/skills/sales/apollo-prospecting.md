@@ -27,7 +27,7 @@ The Composio Apollo toolkit exposes (verified names — case-sensitive):
 | `APOLLO_ADD_CONTACTS_TO_SEQUENCE` | Enroll contacts into a SPECIFIC existing sequence |
 | `APOLLO_GET_AUTH_STATUS` | Sanity-check the OAuth connection |
 
-**Common mistakes**: writing `APOLLO_SEARCH_PEOPLE` (wrong word order), or `APOLLO_FIND_PEOPLE` (doesn't exist). The verb comes LAST.
+**Tool-name pattern**: `APOLLO_<NOUN>_<VERB>` — the noun (PEOPLE, ORGANIZATION, CONTACTS) comes BEFORE the verb (SEARCH, ENRICHMENT). If you find yourself typing the verb in the middle, you've reversed it. Only use names from the table above; if a tool isn't listed there, it doesn't exist.
 
 ## Searching for people — the right way
 
@@ -91,7 +91,7 @@ If you call `APOLLO_ADD_CONTACTS_TO_SEQUENCE` with `sequence_id: "placeholder"` 
 - **422 "Parameters misconfigured"** → check your args for placeholder strings. Don't retry the same payload; either ASK the user for the missing value or pull it from a prior tool result.
 - **"connectedaccountnotfound" / 401 / 403** → the Composio Apollo connection was revoked. Call `propose_connection` with `service: "apollo"` (Composio OAuth) so the user can reconnect — DON'T ask for an API key.
 - **Empty results** → broaden filters one at a time: drop location restriction, widen employee range, swap keyword tags. Don't immediately tell the user "no results" — Apollo is fussy.
-- **Tool not found error** → re-check the tool name from the table above. Most "tool not found" errors come from typos (APOLLO_SEARCH_PEOPLE instead of APOLLO_PEOPLE_SEARCH).
+- **Tool not found error** → re-check the tool name from the table above. The pattern is `APOLLO_<NOUN>_<VERB>`. If you typed the verb in the middle, you've reversed it.
 
 ## Don't
 
