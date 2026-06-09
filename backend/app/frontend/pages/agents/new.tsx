@@ -257,54 +257,39 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
   }
 
   function applyDraft(name: string, draft: DraftResponse) {
-    const tpl = draft.template_slug
-      ? templates.find((t) => t.slug === draft.template_slug)
-      : null
-    // Prefer the LLM's pick → otherwise the first available template →
-    // otherwise a blank custom shell so the user is never blocked.
-    const baseTemplate = tpl || (draft.generated ? blankTemplate(draft.role) : templates[0] || blankTemplate(draft.role))
-    // Override the picked template's display fields with the drafter's
-    // augmented set when it returned skills. The augmented list includes
-    // everything the user's description called for (HubSpot, Calendar,
-    // Slack, etc.) — narrower templates would otherwise hide those gaps.
-    const augmentedSkills = draft.skill_slugs?.length ? draft.skill_slugs : baseTemplate.suggested_skill_slugs
-    const augmentedIntegrations = draft.integration_slugs?.length ? draft.integration_slugs : baseTemplate.suggested_integrations
+    // Fresh-agent drafts never carry a template_slug anymore — the
+    // drafter writes everything from scratch (skills, persona, model).
+    // We synthesize a blank Template shell so the downstream form
+    // rendering code keeps working, then populate its skill +
+    // integration display fields from the drafter response.
+    const baseTemplate = blankTemplate(draft.role)
     const fallback: Template = {
       ...baseTemplate,
-      suggested_skill_slugs: augmentedSkills,
-      suggested_integrations: augmentedIntegrations,
+      suggested_skill_slugs: draft.skill_slugs || [],
+      suggested_integrations: draft.integration_slugs || [],
     }
     setPicked(fallback)
-
-    const mgr = fallback.suggested_manager_role
-      ? agents.find((a) => a.role.toLowerCase() === fallback.suggested_manager_role!.toLowerCase())
-      : null
-
-    const merged = { ...fallback.capabilities, ...(draft.capabilities || {}) }
 
     setData({
       ...data,
       name,
       slug: slugify(name),
       role: draft.role || fallback.role,
-      template_slug: fallback.slug,
-      manager_id: mgr?.id || "none",
-      capabilities: merged,
+      template_slug: "",  // fresh agent → no template
+      manager_id: "none",
+      capabilities: draft.capabilities || {},
       ai_config: {
         ...data.ai_config,
-        provider: draft.provider || fallback.suggested_provider || data.ai_config.provider,
-        model_id: draft.model_id || fallback.suggested_model || data.ai_config.model_id,
+        provider: draft.provider || data.ai_config.provider,
+        model_id: draft.model_id || data.ai_config.model_id,
       },
       channels: { email: wantEmail, telegram: wantTelegram },
-      // When AgentDrafter generated fresh copy (no template fit), pipe it
-      // straight into the form so the controller saves it instead of
-      // doing a template render that would leave the fields blank.
       identity_md: draft.identity_md || "",
       personality_md: draft.personality_md || "",
       instructions_md: draft.instructions_md || "",
-      // Posted alongside the form — controller uses this as the install
-      // skill list instead of the template's defaults when present.
-      skill_slugs_override: augmentedSkills,
+      // Posted alongside the form so the controller installs these on
+      // the new agent.
+      skill_slugs_override: draft.skill_slugs || [],
     })
     setDraftReasoning(draft.reasoning)
     setIsGenerated(draft.generated === true)
@@ -768,14 +753,14 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
       <Head title={`New ${picked.name}`} />
       <PageHeader
-        eyebrow={`${picked.name} template`}
+        eyebrow={picked.slug ? `${picked.name} template` : `Fresh agent`}
         title={`Configure your ${data.role || picked.role}`}
         description={picked.description}
       />
 
       {draftReasoning && !isGenerated && (
         <div className="max-w-2xl mb-6 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Why this template:</span> {draftReasoning}
+          <span className="font-medium text-foreground">Why these picks:</span> {draftReasoning}
         </div>
       )}
 
@@ -828,8 +813,12 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                 <PickedIcon className="size-5" />
               </div>
               <div className="flex-1">
-                <div className="text-sm font-medium">{picked.name} template</div>
-                <div className="text-xs text-muted-foreground">Identity, personality, and instructions will be filled in from the template. You can edit them on the agent's Identity tab after creation.</div>
+                <div className="text-sm font-medium">{picked.slug ? `${picked.name} template` : `Fresh agent — built from your description`}</div>
+                <div className="text-xs text-muted-foreground">
+                  {picked.slug
+                    ? "Identity, personality, and instructions will be filled in from the template. You can edit them on the agent's Identity tab after creation."
+                    : "Identity, personality, and instructions were written fresh for this agent based on your description. You can fine-tune them on the agent's Identity tab after creation."}
+                </div>
               </div>
               <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={() => setStep("intro")}>
                 Start over
@@ -838,7 +827,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
 
             {(picked.suggested_skill_slugs.length > 0 || (picked.suggested_integrations?.length ?? 0) > 0) && (
               <div className="rounded-md border bg-muted/30 px-3 py-2.5 text-xs">
-                <div className="font-medium text-foreground mb-1">This template bundles:</div>
+                <div className="font-medium text-foreground mb-1">{picked.slug ? "This template bundles:" : "This agent will have:"}</div>
                 {picked.suggested_skill_slugs.length > 0 && (
                   <div className="text-muted-foreground">
                     <span className="font-medium">Skills:</span> {picked.suggested_skill_slugs.join(", ")}

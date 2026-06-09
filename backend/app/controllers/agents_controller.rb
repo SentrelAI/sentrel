@@ -424,7 +424,9 @@ class AgentsController < ApplicationController
       return redirect_to agent_path(@agent), notice: msg
     end
 
-    # Direct-create (no template) — unchanged.
+    # Direct-create (no template) — the fresh-agent path from the
+    # new-agent wizard. Persona markdown comes pre-filled from the
+    # AgentDrafter response; skills come from skill_slugs_override.
     @agent = current_tenant.agents.build(agent_params)
     if @agent.save
       ai_cfg = ai_config_params.to_h
@@ -432,12 +434,32 @@ class AgentsController < ApplicationController
         ai_cfg[:provider] = "anthropic_account"
       end
       @agent.create_ai_config!(ai_cfg)
+
+      # Install the skills the drafter recommended. Each slug is
+      # resolved against the org's catalog (org-owned + platform seeds);
+      # missing slugs are logged and skipped so a stale recommendation
+      # doesn't fail the whole create.
+      install_skill_slugs!(@agent, params[:skill_slugs_override])
+
       apply_initial_channels!(@agent)
       EngineSync.trigger(@agent)
       ProvisionAgentJob.perform_later(@agent.id)
       redirect_to agent_path(@agent), notice: "Agent created — machine provisioning in background"
     else
       redirect_back fallback_location: new_agent_path, alert: @agent.errors.full_messages.join(", ")
+    end
+  end
+
+  def install_skill_slugs!(agent, slugs)
+    Array(slugs).map(&:to_s).reject(&:blank?).uniq.each do |slug|
+      skill = SkillDefinition.where(slug: slug)
+        .where("organization_id = ? OR organization_id IS NULL", current_tenant.id)
+        .first
+      if skill
+        agent.agent_skills.find_or_create_by!(skill_definition: skill).update!(enabled: true)
+      else
+        Rails.logger.warn "[AgentsController#create] Skipped unknown skill slug #{slug.inspect}"
+      end
     end
   end
 
