@@ -50,6 +50,21 @@ class SkillDefinition < ApplicationRecord
     missing[:capabilities].empty? && missing[:integrations].empty?
   end
 
+  # Slugs of the skills hand-curated in db/seeds/skills/**/*.md.
+  # Cached at process startup. The drafter restricts its pool to these
+  # so a polluted catalog (e.g. Forge-generated junk from earlier runs)
+  # can't sneak hallucinated slug names into a fresh agent.
+  def self.canonical_seed_slugs
+    @canonical_seed_slugs ||= begin
+      seed_dir = Rails.root.join("db/seeds/skills")
+      if seed_dir.directory?
+        Dir.glob(seed_dir.join("**/*.md")).map { |p| File.basename(p, ".md") }.uniq
+      else
+        []
+      end
+    end
+  end
+
   def system?
     source == "built_in"
   end

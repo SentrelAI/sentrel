@@ -333,9 +333,15 @@ class AgentsController < ApplicationController
         .where(published: true)
         .to_a
     end
+    # Hard-restrict the drafter's skill pool to canonical seeds (read
+    # from db/seeds/skills/**/*.md at boot) + the org's own skills.
+    # Defends against catalog pollution from earlier Forge::Bootstrap
+    # runs that persisted hallucinated skill slugs as source='built_in'.
+    # The pool stays clean even if the catalog isn't.
+    canonical_slugs = SkillDefinition.canonical_seed_slugs
     drafter_skills = ActsAsTenant.without_tenant do
       SkillDefinition
-        .where("source = 'built_in' OR organization_id = ?", tenant&.id)
+        .where("slug IN (?) OR organization_id = ?", canonical_slugs, tenant&.id)
         .where(published: true)
         .to_a
     end

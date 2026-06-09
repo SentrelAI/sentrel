@@ -220,13 +220,15 @@ class AgentDrafter
 
   # Walk every available skill's requires_connections list, find any
   # integration the user mentioned in @description or @tools_description,
-  # and add the skills that depend on it. Idempotent — never adds a slug
-  # twice or one already picked.
+  # and add ONE skill per matched integration. Picks the first
+  # alphabetical skill that requires that integration — deterministic
+  # and avoids the "every gmail-related skill got added" failure mode
+  # when the catalog has multiple skills sharing a requires_connections
+  # value (a fingerprint of Forge-generated noise).
   def augment_skills_from_description(picked_slugs, template)
     haystack = "#{@description} #{@tools_description} #{template&.description}".downcase
     return picked_slugs if haystack.strip.empty?
 
-    # Inverse index: integration_slug → [skill_slugs that need it].
     by_integration = Hash.new { |h, k| h[k] = [] }
     @skills.each do |s|
       Array(s.requires_connections).each { |c| by_integration[c.to_s.downcase] << s.slug }
@@ -237,10 +239,13 @@ class AgentDrafter
     by_integration.each do |integration, skill_slugs|
       pattern = INTEGRATION_NAME_PATTERNS[integration] || /\b#{Regexp.escape(integration)}\b/i
       next unless haystack =~ pattern
-      skill_slugs.each { |slug| out << slug unless out.include?(slug) }
+      candidate = skill_slugs.sort.first
+      out << candidate unless out.include?(candidate)
     end
     out
   end
+
+  MAX_INTEGRATIONS = 8
 
   def integrations_for(skill_slugs)
     slugs = Array(skill_slugs)
@@ -251,6 +256,7 @@ class AgentDrafter
       .map { |s| s.to_s.downcase.strip }
       .reject(&:blank?)
       .uniq
+      .first(MAX_INTEGRATIONS)
   end
 
   def parse_json(raw)
