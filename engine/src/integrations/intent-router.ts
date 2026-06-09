@@ -84,6 +84,7 @@ export function routeIntegrationRequest(
   query: string,
   availableToolkits: string[],
   semanticMatches: string[] = [],
+  toolkitStatuses: Map<string, string> = new Map(),
 ): IntegrationRoutingDecision {
   const available = new Set(availableToolkits);
   const matches = new Set<string>();
@@ -118,7 +119,25 @@ export function routeIntegrationRequest(
   const missingNamed = namedToolkitsFrom(query, getSupportedSlugs()).filter((toolkit) => !available.has(toolkit));
   for (const toolkit of missingNamed) {
     const label = getSupportedLabel(toolkit) || humanizeToolkit(toolkit);
-    errors.push(`${label} is supported but not connected. Ask the user to connect ${label} before using it.`);
+    // Status-specific framing if Composio knows about a connection
+    // that just isn't ACTIVE (REVOKED, EXPIRED, INACTIVE, FAILED).
+    // Cuts the confusion when /integrations still claims "Connected"
+    // but the agent reports "not connected" — actually it's revoked,
+    // user needs to RECONNECT not first-connect.
+    const status = toolkitStatuses.get(toolkit);
+    if (status === "REVOKED") {
+      errors.push(`${label} was REVOKED on Composio's side (user or admin revoked the OAuth token). Ask the user to RECONNECT ${label} via propose_connection.`);
+    } else if (status === "EXPIRED") {
+      errors.push(`${label} connection EXPIRED (refresh token failed or hit max lifetime). Ask the user to RECONNECT ${label} via propose_connection.`);
+    } else if (status === "FAILED") {
+      errors.push(`${label} connection FAILED on Composio's side (last token exchange errored). Ask the user to RECONNECT ${label} via propose_connection.`);
+    } else if (status === "INITIATED" || status === "INITIALIZING") {
+      errors.push(`${label} OAuth was started but never completed. Ask the user to finish the connect flow at /integrations/${toolkit}.`);
+    } else if (status === "INACTIVE") {
+      errors.push(`${label} connection is INACTIVE on Composio. Ask the user to reconnect ${label} via propose_connection.`);
+    } else {
+      errors.push(`${label} is supported but not connected. Ask the user to connect ${label} via propose_connection.`);
+    }
   }
 
   return {

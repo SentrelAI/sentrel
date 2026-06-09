@@ -63,7 +63,9 @@ export function buildIntegrationSearchMcpServer(orgId: number, state: QueryState
         const semanticMatches = isEmbeddingReady()
           ? await searchToolkits(args.query, available)
           : [];
-        const routing = routeIntegrationRequest(args.query, available, semanticMatches);
+        const { getToolkitStatuses } = await import("../integrations/composio.js");
+        const statuses = await getToolkitStatuses(orgId, userId).catch(() => new Map<string, string>());
+        const routing = routeIntegrationRequest(args.query, available, semanticMatches, statuses);
         if (routing.errors.length > 0) {
           return {
             content: [{ type: "text", text: routing.errors.join("\n") }],

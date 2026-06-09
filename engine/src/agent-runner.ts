@@ -1577,8 +1577,12 @@ async function buildQueryOptions(
     // Layer 0 — deterministic routing by service mention and broad intent
     // category. This avoids one-off rules for every integration while still
     // keeping "spreadsheet" on spreadsheet tools, "lead enrichment" on lead
-    // tools, etc.
-    const layer0Decision = routeIntegrationRequest(routingText, availableToolkits, layer2);
+    // tools, etc. Pass through the full status map so "Apollo isn't ACTIVE"
+    // becomes "Apollo was REVOKED — reconnect" instead of the generic
+    // "Apollo not connected" (which contradicts what /integrations shows).
+    const { getToolkitStatuses } = await import("./integrations/composio.js");
+    const toolkitStatuses = await getToolkitStatuses(agent.organization_id, buildOriginatingUserId).catch(() => new Map<string, string>());
+    const layer0Decision = routeIntegrationRequest(routingText, availableToolkits, layer2, toolkitStatuses);
     const layer0 = layer0Decision.matches;
 
     relevantToolkits = toolRouting === "all"

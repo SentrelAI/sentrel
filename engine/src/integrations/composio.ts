@@ -157,6 +157,49 @@ export async function getToolkitOwners(orgId: number, userId?: number | null): P
   }
 }
 
+// {slug → status} for every connected account in the org/user buckets,
+// including REVOKED / EXPIRED / INACTIVE / INITIATED / FAILED. Used by
+// the intent router to give the user a SPECIFIC error message when a
+// needed toolkit isn't active: "your Apollo connection was revoked"
+// is way more actionable than "Apollo is not connected" (which sounds
+// like you never set it up — confusing when /integrations still shows
+// it as connected).
+const statusesCache = new Map<string, { statuses: Map<string, string>; expiresAt: number }>();
+
+export async function getToolkitStatuses(orgId: number, userId?: number | null): Promise<Map<string, string>> {
+  const cacheKey = userId ? `org_${orgId}+user_${userId}` : `org_${orgId}`;
+  const cached = statusesCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.statuses;
+
+  const client = getClient();
+  if (!client) return new Map();
+  try {
+    const buckets = composioUserIds(orgId, userId);
+    const statuses = new Map<string, string>();
+    for (const bucket of buckets) {
+      const connections: any = await composioBreaker.call(() =>
+        (client as any).connectedAccounts.list({ userIds: [bucket] }),
+      );
+      for (const c of connections.items || []) {
+        const slug = c.toolkit?.slug;
+        if (!slug) continue;
+        // Prefer ACTIVE over non-ACTIVE if the same slug has both
+        // (e.g. user has one revoked + one fresh).
+        const existing = statuses.get(slug);
+        if (existing === "ACTIVE") continue;
+        statuses.set(slug, c.status || "UNKNOWN");
+      }
+    }
+    statusesCache.set(cacheKey, { statuses, expiresAt: Date.now() + TOOLKITS_TTL_MS });
+    return statuses;
+  } catch (err) {
+    if (!(err instanceof CircuitOpenError)) {
+      logger.error("Composio: failed to list toolkit statuses", { error: (err as Error).message });
+    }
+    return new Map();
+  }
+}
+
 export function invalidateToolkitsCache(orgId: number, userId?: number | null): void {
   const exactKeys = userId
     ? [`org_${orgId}`, `org_${orgId}+user_${userId}`]
@@ -164,12 +207,14 @@ export function invalidateToolkitsCache(orgId: number, userId?: number | null): 
   for (const key of exactKeys) {
     toolkitsCache.delete(key);
     ownersCache.delete(key);
+    statusesCache.delete(key);
   }
   if (!userId) {
-    for (const key of [...toolkitsCache.keys(), ...ownersCache.keys()]) {
+    for (const key of [...toolkitsCache.keys(), ...ownersCache.keys(), ...statusesCache.keys()]) {
       if (key.startsWith(`org_${orgId}+user_`)) {
         toolkitsCache.delete(key);
         ownersCache.delete(key);
+        statusesCache.delete(key);
       }
     }
   }
