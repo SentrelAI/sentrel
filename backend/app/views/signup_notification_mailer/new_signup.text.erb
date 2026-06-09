@@ -1,0 +1,11 @@
+New signup on Double.md
+
+Email:        <%= @user.email %>
+<% if @user.name.present? -%>
+Name:         <%= @user.name %>
+<% end -%>
+<% if @organization -%>
+Organization: <%= @organization.name %>
+<% end -%>
+Source:       <%= @source %>
+Signed up:    <%= @signed_up_at.strftime("%B %-d, %Y at %l:%M %p %Z") %>

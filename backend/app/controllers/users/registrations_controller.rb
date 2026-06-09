@@ -17,6 +17,8 @@ class Users::RegistrationsController < Devise::RegistrationsController
       resource.save!
     end
 
+    SignupNotificationMailer.new_signup(resource, source: "email").deliver_later
+
     set_flash_message!(:notice, :signed_up)
     sign_up(resource_name, resource)
     redirect_to after_sign_up_path_for(resource)
