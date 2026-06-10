@@ -12,6 +12,34 @@
 class AgentBundlesController < ApplicationController
   before_action :authenticate_user!
 
+  # GET /deploy-agent?source=<github-url>
+  # The shareable "Deploy to double.md" wizard. With ?source= it fetches
+  # the bundle and renders a full preview (persona, skills, knowledge,
+  # channels, integrations, secrets) so the user sees exactly what
+  # they're installing before clicking Deploy. Without ?source= it's an
+  # empty form — paste a URL, Load, review, Deploy.
+  def new
+    source = params[:source].to_s.strip
+    preview = nil
+    error = nil
+
+    if source.present?
+      begin
+        files = AgentBundles::Fetcher.from_github(source)
+        manifest = AgentBundles::Manifest.parse!(files)
+        preview = preview_payload(manifest)
+      rescue AgentBundles::FetchError, AgentBundles::InvalidBundle => e
+        error = e.message
+      end
+    end
+
+    render inertia: "agent_bundles/new", props: {
+      source: source,
+      preview: preview,
+      error: error,
+    }
+  end
+
   def create
     files =
       if params[:github_url].present?
@@ -69,5 +97,39 @@ class AgentBundlesController < ApplicationController
       format.html { redirect_back fallback_location: new_agent_path, alert: "Bundle deploy failed: #{e.message}" }
       format.json { render json: { error: e.message }, status: :unprocessable_entity }
     end
+  end
+
+  private
+
+  # Everything the wizard needs to show what a bundle will install.
+  # Persona markdown ships in full (one bundle per page — payload is
+  # fine); skill SKILL.md bodies are truncated for the accordion.
+  def preview_payload(manifest)
+    {
+      name: manifest.name,
+      role: manifest.role,
+      description: manifest.description,
+      goal: manifest.goal,
+      model: manifest.model,
+      persona: {
+        identity_md: manifest.persona_md("identity"),
+        personality_md: manifest.persona_md("personality"),
+        instructions_md: manifest.persona_md("instructions"),
+      },
+      skills: manifest.skill_bundles.map { |b|
+        {
+          slug: b[:slug],
+          file_count: b[:files].size,
+          skill_md: b[:files]["SKILL.md"].to_s.truncate(2_000),
+        }
+      },
+      knowledge: manifest.knowledge_docs.map { |d| { path: d[:path], why: d[:why], bytes: d[:content].to_s.bytesize } },
+      channels: manifest.channels.map { |c| { type: c["type"], why: c["why"] } },
+      integrations: manifest.integrations.map { |i|
+        { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", why: i["why"] }
+      },
+      secrets: manifest.secret_names,
+      permissions: manifest.permissions,
+    }
   end
 end

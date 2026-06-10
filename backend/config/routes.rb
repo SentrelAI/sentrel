@@ -143,6 +143,11 @@ Rails.application.routes.draw do
     # GitHub URL or an uploaded .tar.gz — the server half of
     # `npx agent-spec deploy`.
     resources :agent_bundles, only: [ :create ]
+    # Shareable deploy link — the "Deploy to double.md" button target:
+    #   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
+    # Fetches + previews the bundle (persona, skills, secrets, channels);
+    # one click deploys via POST /agent_bundles.
+    get "deploy-agent", to: "agent_bundles#new", as: :deploy_agent
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
       resources :conversations, only: [ :index, :show ] do
