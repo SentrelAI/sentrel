@@ -13,6 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { agentsPath } from "@/routes"
 import { randomAgentName, slugify } from "@/lib/random-names"
 
+// Deterministic agent creation. No AI anywhere in this flow: pick a
+// template (or Blank), every field pre-fills from the template row,
+// edit whatever you want, hit Create. Persona markdown comes from the
+// template server-side at install time (AgentTemplates::Installer) —
+// for Blank agents you write it on the Identity tab after creation.
+
 interface Template {
   slug: string
   name: string
@@ -39,27 +45,6 @@ interface Props {
   templates: Template[]
   agents: AgentSummary[]
   org_email_domain: string | null
-}
-
-interface DraftResponse {
-  template_slug: string | null
-  role: string | null
-  skill_slugs: string[]
-  // Derived server-side from the augmented skill set's
-  // requires_connections. Used for "Integrations to connect" so the
-  // displayed list matches what the agent will actually need.
-  integration_slugs: string[]
-  capabilities: Record<string, { enabled?: boolean }>
-  provider: string
-  model_id: string
-  name_suggestion: string | null
-  reasoning: string | null
-  // Set when no existing template was a strong fit and AgentDrafter
-  // generated fresh identity/personality/instructions via Forge.
-  identity_md: string | null
-  personality_md: string | null
-  instructions_md: string | null
-  generated: boolean
 }
 
 interface ChannelChoice {
@@ -129,87 +114,68 @@ const CAPABILITIES: Array<{ key: string; label: string; description: string }> =
   },
 ]
 
-type Step = "intro" | "details"
+// Default capability set for a Blank agent — everything broadly useful
+// on, media off. Templates override with their own stored map.
+const DEFAULT_CAPS: Record<string, { enabled: boolean }> = {
+  knowledge_base: { enabled: true },
+  scheduling:     { enabled: true },
+  tasks:          { enabled: true },
+  integrations:   { enabled: true },
+  recall:         { enabled: true },
+  send_media:     { enabled: false },
+}
+
+// The "start from scratch" card. slug: "" means the controller takes the
+// direct-create path (no template render) and the persona stays empty
+// until the user writes it on the Identity tab.
+const BLANK: Template = {
+  slug: "",
+  name: "Blank",
+  role: "",
+  description: "Start from scratch. You write the identity, personality, and instructions on the agent's Identity tab after creation.",
+  icon: "SquarePen",
+  capabilities: DEFAULT_CAPS,
+  suggested_skill_slugs: [],
+  suggested_integrations: [],
+  suggested_manager_role: null,
+  suggested_provider: null,
+  suggested_model: null,
+  variables: [],
+}
 
 export default function AgentNew({ templates, agents, org_email_domain }: Props) {
-  // If the user arrived via /agents/new?template=<slug> (clicking Install
-  // on a template page), skip the intro wizard entirely — they already
-  // told us what they want by picking the template. Start them on the
-  // details step with the template pre-filled.
-  const initialStep: Step = (() => {
-    if (typeof window === "undefined") return "intro"
-    const slug = new URLSearchParams(window.location.search).get("template")
-    return slug && templates.some((t) => t.slug === slug) ? "details" : "intro"
-  })()
-  const [step, setStep] = useState<Step>(initialStep)
-  const [picked, setPicked] = useState<Template | null>(null)
+  const [picked, setPicked] = useState<Template>(BLANK)
 
-  // Intro form state
-  const [description, setDescription] = useState("")
-  const [toolsPreference, setToolsPreference] = useState<"recommend" | "specify">("recommend")
-  const [toolsDescription, setToolsDescription] = useState("")
-  const [wantEmail, setWantEmail] = useState(true)
-  const [wantTelegram, setWantTelegram] = useState(false)
-  const [introName, setIntroName] = useState(() => randomAgentName())
-  const [drafting, setDrafting] = useState(false)
-  const [draftError, setDraftError] = useState<string | null>(null)
-  const [draftReasoning, setDraftReasoning] = useState<string | null>(null)
-  // True when AgentDrafter generated fresh identity/personality/instructions
-  // because no existing template was a strong fit — drives the "AI-generated
-  // identity" card on the details step.
-  const [isGenerated, setIsGenerated] = useState(false)
-  // 3-stage spinner stage shown during drafting — keeps the user oriented
-  // on what's happening server-side (analyze → resolve skills → draft copy).
-  const [draftStage, setDraftStage] = useState<0 | 1 | 2 | 3>(0)
-  // Show/hide preview-vs-edit toggle per markdown field on the details step.
-  const [editingField, setEditingField] = useState<"identity" | "personality" | "instructions" | null>(null)
-
-  // Collapsible side panel on the intro step — lets users browse the
-  // template marketplace without leaving the scratch wizard.
-  const [showTemplatePanel, setShowTemplatePanel] = useState(false)
-  const [templateSearch, setTemplateSearch] = useState("")
-  const filteredTemplates = templateSearch.trim()
-    ? templates.filter((t) =>
-        [t.name, t.role, t.description].join(" ").toLowerCase().includes(templateSearch.trim().toLowerCase()),
-      )
-    : templates
-
-  // Per-action permission gates. Brand-new agents start in DRAFT mode
-  // for send_email — the helper text on the field says "Draft is safest
-  // while you're getting a feel for how the agent behaves", and the
-  // default should match. Users explicitly flip to "Auto" once they
-  // trust the agent's outbound after a few drafts.
   const { data, setData, post, processing, transform } = useForm({
-    name: "",
+    name: randomAgentName(),
     slug: "",
     role: "",
     manager_id: "none",
     template_slug: "",
     ai_config: {
       provider: "anthropic",
-      model_id: "claude-sonnet-4-20250514",
+      model_id: "claude-sonnet-4-6",
       temperature: 0.7,
       max_tokens: 8192,
       thinking_level: "none",
     },
-    capabilities: {} as Record<string, { enabled?: boolean }>,
-    channels: { email: true, telegram: false } as Record<string, boolean>,
+    capabilities: DEFAULT_CAPS as Record<string, { enabled?: boolean }>,
+    channels: { email: !!org_email_domain, telegram: false } as Record<string, boolean>,
+    // New agents start in DRAFT mode for send_email — flip to Auto once
+    // you trust the agent's outbound.
     permissions: { send_email: "draft" } as Record<string, string>,
-    // AI-generated identity (only filled when AgentDrafter generates fresh
-    // — no template fit). Posted alongside the form so the controller
-    // uses them directly instead of template-rendering blank fields.
-    identity_md: "",
-    personality_md: "",
-    instructions_md: "",
-    // Drafter's augmented skill list — used as a controller-side override
-    // so the installed agent has the skills the user's description called
-    // for, even if the matched template's stored skill list is narrower.
-    // Empty array → controller falls back to template defaults.
     skill_slugs_override: [] as string[],
   })
 
-  // Inertia ships the form as flat params; reshape `channels` into the
-  // channel_configs[] array our controller's apply_initial_channels! expects.
+  // Slug derives from name on first render (useForm initializers can't
+  // reference each other).
+  useEffect(() => {
+    if (!data.slug && data.name) setData("slug", slugify(data.name))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Reshape `channels` into the channel_configs[] array the controller's
+  // apply_initial_channels! expects.
   transform((d) => {
     const channel_configs: ChannelChoice[] = []
     if (d.channels.email)    channel_configs.push({ channel_type: "email",    config: {} })
@@ -224,271 +190,46 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       capabilities: d.capabilities,
       permissions: d.permissions,
       channel_configs,
-      identity_md: d.identity_md || undefined,
-      personality_md: d.personality_md || undefined,
-      instructions_md: d.instructions_md || undefined,
+      skill_slugs_override: d.skill_slugs_override,
     }
   })
 
-  function rerollName() {
-    const next = randomAgentName(introName)
-    setIntroName(next)
-  }
-
-  // Synthesizes a minimal Template-shaped object so the details step can
-  // render even when the templates table is empty (e.g. fresh install with
-  // no seeds). The controller already handles a missing template_slug — it
-  // just skips the markdown pre-fill.
-  function blankTemplate(role: string | null): Template {
-    return {
-      slug: "",
-      name: "Custom agent",
-      role: role || "Custom",
-      description: "Built from your description — no template applied. You can fine-tune identity, personality, and instructions on the agent's Identity tab after creation.",
-      icon: "User",
-      capabilities: {},
-      suggested_skill_slugs: [],
-      suggested_integrations: [],
-      suggested_manager_role: null,
-      suggested_provider: null,
-      suggested_model: null,
-      variables: [],
-    }
-  }
-
-  function applyDraft(name: string, draft: DraftResponse) {
-    // Fresh-agent drafts never carry a template_slug anymore — the
-    // drafter writes everything from scratch (skills, persona, model).
-    // We synthesize a blank Template shell so the downstream form
-    // rendering code keeps working, then populate its skill +
-    // integration display fields from the drafter response.
-    const baseTemplate = blankTemplate(draft.role)
-    const fallback: Template = {
-      ...baseTemplate,
-      suggested_skill_slugs: draft.skill_slugs || [],
-      suggested_integrations: draft.integration_slugs || [],
-    }
-    setPicked(fallback)
-
-    // Frontend-side capability defaults — backstop in case the backend
-    // returns {} or omits keys. Mirrors AgentDrafter::CAPABILITY_DEFAULTS;
-    // the user can still flip anything off before clicking Create.
-    const FRONTEND_CAP_DEFAULTS: Record<string, { enabled: boolean }> = {
-      knowledge_base: { enabled: true },
-      scheduling:     { enabled: true },
-      tasks:          { enabled: true },
-      integrations:   { enabled: true },
-      recall:         { enabled: true },
-      send_media:     { enabled: false },
-    }
-    const mergedCaps = { ...FRONTEND_CAP_DEFAULTS, ...(draft.capabilities || {}) }
-
-    setData({
-      ...data,
-      name,
-      slug: slugify(name),
-      role: draft.role || fallback.role,
-      template_slug: "",  // fresh agent → no template
-      manager_id: "none",
-      capabilities: mergedCaps,
-      ai_config: {
-        ...data.ai_config,
-        provider: draft.provider || data.ai_config.provider,
-        model_id: draft.model_id || data.ai_config.model_id,
-      },
-      channels: { email: wantEmail, telegram: wantTelegram },
-      identity_md: draft.identity_md || "",
-      personality_md: draft.personality_md || "",
-      instructions_md: draft.instructions_md || "",
-      // Posted alongside the form so the controller installs these on
-      // the new agent.
-      skill_slugs_override: draft.skill_slugs || [],
-    })
-    setDraftReasoning(draft.reasoning)
-    setIsGenerated(draft.generated === true)
-    setStep("details")
-    return true
-  }
-
-  // Stage timer for the 3-step spinner shown during drafting. Total ~3s
-  // visual feedback that the backend is doing real work. Each stage maps
-  // to a phase the user can recognize: analyze → resolve skills → draft.
-  async function withStagedSpinner<T>(fn: () => Promise<T>): Promise<T> {
-    setDraftStage(1)
-    const t1 = setTimeout(() => setDraftStage(2), 800)
-    const t2 = setTimeout(() => setDraftStage(3), 1800)
-    try {
-      const result = await fn()
-      return result
-    } finally {
-      clearTimeout(t1); clearTimeout(t2)
-      setDraftStage(0)
-    }
-  }
-
-  // Client-side ceiling. The backend's Anthropic call is now budgeted
-  // at 27s (richer persona generation needs ~18-25s for Sonnet 4.6 to
-  // stream ~2500 tokens), so we leave ~13s of headroom for gateway +
-  // TLS + render. Anything beyond 40s is almost certainly a stuck
-  // request; abort and surface "took too long" instead of hanging.
-  const DRAFT_TIMEOUT_MS = 40_000
-
-  async function fetchDraft(opts: { regenerate?: boolean } = {}): Promise<DraftResponse | null> {
-    const csrfToken = document
-      .querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
-      ?.getAttribute("content")
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => controller.abort(), DRAFT_TIMEOUT_MS)
-
-    let res: Response
-    try {
-      res = await fetch("/agents/draft", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-        },
-        body: JSON.stringify({
-          description,
-          tools_preference: toolsPreference,
-          tools_description: toolsPreference === "specify" ? toolsDescription : "",
-          regenerate: opts.regenerate || false,
-        }),
-      })
-    } catch (err) {
-      // AbortError, ERR_NETWORK_CHANGED, DNS failures — never reached the gateway
-      // (or the gateway never responded). Either way, fetch rejected.
-      const wasAbort = (err as Error)?.name === "AbortError"
-      setDraftError(
-        wasAbort
-          ? "The request took too long. Try a shorter description, or try again in a moment."
-          : "Couldn't reach the server. Check your connection and try again."
-      )
-      return null
-    } finally {
-      window.clearTimeout(timer)
-    }
-
-    if (!res.ok) {
-      // Status-specific messages — don't try to parse a 5xx body as JSON;
-      // gateways return HTML or empty.
-      if (res.status === 504 || res.status === 503 || res.status === 502) {
-        setDraftError("The drafter took too long to respond. Try a shorter description, or try again in a moment.")
-      } else if (res.status === 401 || res.status === 419) {
-        setDraftError("Your session expired. Refresh the page and try again.")
-      } else {
-        // 4xx with JSON body — surface the server's error message if present.
-        let serverMessage: string | null = null
-        try {
-          const body = (await res.json()) as { error?: string }
-          serverMessage = body?.error || null
-        } catch { /* not JSON */ }
-        setDraftError(serverMessage || `Couldn't draft an agent (HTTP ${res.status}). Try again.`)
-      }
-      return null
-    }
-
-    try {
-      return (await res.json()) as DraftResponse
-    } catch (err) {
-      setDraftError("The server returned an unexpected response. Try again in a moment.")
-      return null
-    }
-  }
-
-  async function handleIntroSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setDraftError(null)
-    if (!description.trim()) {
-      setDraftError("Tell us what you want this agent to do.")
-      return
-    }
-
-    setDrafting(true)
-    try {
-      const draft = await withStagedSpinner(() => fetchDraft())
-      if (!draft) return  // fetchDraft already set draftError
-      const name = introName.trim() || draft.name_suggestion || randomAgentName()
-      applyDraft(name, draft)
-    } catch (err) {
-      // Defensive — fetchDraft swallows its own errors now, but keep this
-      // catch so any unexpected throw still surfaces something to the user
-      // instead of leaving the spinner running silently.
-      setDraftError(`Unexpected error: ${(err as Error)?.message || "try again"}`)
-    } finally {
-      setDrafting(false)
-    }
-  }
-
-  async function handleRegenerate() {
-    setDraftError(null)
-    setDrafting(true)
-    try {
-      const draft = await withStagedSpinner(() => fetchDraft({ regenerate: true }))
-      if (!draft) return
-      // Keep the existing form name but refresh markdown fields + reasoning.
-      setData({
-        ...data,
-        identity_md: draft.identity_md || "",
-        personality_md: draft.personality_md || "",
-        instructions_md: draft.instructions_md || "",
-      })
-      setDraftReasoning(draft.reasoning)
-      setIsGenerated(draft.generated === true)
-    } catch (err) {
-      setDraftError("Network error during regenerate.")
-    } finally {
-      setDrafting(false)
-    }
-  }
-
-  // Mount-time pre-fill when arriving via /agents/new?template=<slug>.
-  // We call chooseTemplate after the form is initialized so it can write
-  // into setData. Empty dep array — runs once.
+  // Deep-link: /agents/new?template=<slug> (the Install button on a
+  // template page) pre-picks that template.
   useEffect(() => {
     if (typeof window === "undefined") return
     const slug = new URLSearchParams(window.location.search).get("template")
     if (!slug) return
     const t = templates.find((x) => x.slug === slug)
-    if (t) chooseTemplate(t)
+    if (t) choose(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function chooseTemplate(t: Template) {
+  function choose(t: Template) {
     setPicked(t)
     const mgr = t.suggested_manager_role
       ? agents.find((a) => a.role.toLowerCase() === t.suggested_manager_role!.toLowerCase())
       : null
-    const name = introName.trim() || randomAgentName()
     setData({
       ...data,
-      name,
-      slug: slugify(name),
       role: t.role,
       template_slug: t.slug,
       manager_id: mgr?.id || "none",
-      capabilities: t.capabilities,
+      capabilities: t.slug ? t.capabilities : DEFAULT_CAPS,
       ai_config: {
         ...data.ai_config,
-        provider: t.suggested_provider || data.ai_config.provider,
-        model_id: t.suggested_model  || data.ai_config.model_id,
+        provider: t.suggested_provider || "anthropic",
+        model_id: t.suggested_model || "claude-sonnet-4-6",
       },
-      channels: { email: wantEmail, telegram: wantTelegram },
+      skill_slugs_override: t.suggested_skill_slugs,
     })
-    setStep("details")
   }
 
   function handleNameChange(name: string) {
-    setData({
-      ...data,
-      name,
-      slug: slugify(name),
-    })
+    setData({ ...data, name, slug: slugify(name) })
   }
 
-  function rerollDetailsName() {
+  function rerollName() {
     const next = randomAgentName(data.name)
     setData({ ...data, name: next, slug: slugify(next) })
   }
@@ -509,351 +250,71 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     post(agentsPath())
   }
 
-  // ── Step 1: intro wizard ───────────────────────────────────────────────
-  if (step === "intro") {
-    return (
-      <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
-        <Head title="New agent" />
-        <div className="flex items-start justify-between gap-4 mb-2">
-          <PageHeader
-            eyebrow="New agent"
-            title="What should this agent do?"
-            description="Describe the role in plain English. We'll match it to a template, suggest skills, and pre-fill identity + model — fine-tune anything in the next step."
-          />
-          {templates.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 gap-1.5 shrink-0"
-              onClick={() => setShowTemplatePanel((v) => !v)}
-            >
-              <icons.LayoutGrid className="size-3.5" />
-              {showTemplatePanel ? "Hide templates" : "Browse templates"}
-            </Button>
-          )}
-        </div>
-
-      <div className={`flex gap-6 ${showTemplatePanel ? "items-start" : ""}`}>
-        <form onSubmit={handleIntroSubmit} className={`space-y-6 ${showTemplatePanel ? "flex-1 min-w-0 max-w-2xl" : "max-w-2xl"}`}>
-          <section>
-            <Overline className="mb-3">Job description</Overline>
-            <div className="rounded-lg border bg-card p-5 space-y-2">
-              <Label htmlFor="description" className="sr-only">Job description</Label>
-              <textarea
-                id="description"
-                rows={5}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. An SDR that books demos for our B2B SaaS — sources leads from LinkedIn, drafts personalized cold emails, and hands warm replies to AEs."
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
-                required
-              />
-              <p className="text-[10px] text-muted-foreground">A sentence or two is enough — be specific about what success looks like.</p>
-            </div>
-          </section>
-
-          <section>
-            <Overline className="mb-3">Tools</Overline>
-            <div className="rounded-lg border bg-card p-5 space-y-4">
-              <div className="space-y-2">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tools_preference"
-                    value="recommend"
-                    checked={toolsPreference === "recommend"}
-                    onChange={() => setToolsPreference("recommend")}
-                    className="mt-1"
-                  />
-                  <div>
-                    <div className="text-sm font-medium">Recommend tools for me</div>
-                    <div className="text-xs text-muted-foreground">We'll pick the right skills based on the role (e.g. Apollo for SDRs, Ahrefs for SEO).</div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tools_preference"
-                    value="specify"
-                    checked={toolsPreference === "specify"}
-                    onChange={() => setToolsPreference("specify")}
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">I'll specify the tools</div>
-                    <div className="text-xs text-muted-foreground">List the tools you want — we'll wire up matching skills.</div>
-                  </div>
-                </label>
-              </div>
-              {toolsPreference === "specify" && (
-                <div className="space-y-2 pt-2 border-t">
-                  <Label htmlFor="tools_description">Tools to use</Label>
-                  <textarea
-                    id="tools_description"
-                    rows={3}
-                    value={toolsDescription}
-                    onChange={(e) => setToolsDescription(e.target.value)}
-                    placeholder="e.g. Apollo for lead generation, Gmail for outreach, HubSpot to log activity"
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section>
-            <Overline className="mb-3">Channels</Overline>
-            <p className="text-xs text-muted-foreground mb-3 max-w-lg">
-              How should people reach this agent? You can connect more later.
-            </p>
-            <div className="rounded-lg border bg-card divide-y">
-              <label className={`flex items-start justify-between gap-4 p-4 ${org_email_domain ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">Email address</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {org_email_domain ? (
-                      <>We'll provision <span className="font-mono">{slugify(introName) || "name"}@{org_email_domain}</span>. Replies route to the agent automatically.</>
-                    ) : (
-                      <>Pick a workspace email domain in <a href="/settings" className="underline">Settings</a> first.</>
-                    )}
-                  </div>
-                </div>
-                <Checkbox checked={wantEmail && !!org_email_domain} disabled={!org_email_domain} onCheckedChange={(v) => setWantEmail(!!v)} className="mt-1" />
-              </label>
-              <label className="flex items-start justify-between gap-4 p-4 cursor-pointer">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">Telegram bot</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Reserve a Telegram channel for this agent. You'll paste a bot token from @BotFather after creation.
-                  </div>
-                </div>
-                <Checkbox checked={wantTelegram} onCheckedChange={(v) => setWantTelegram(!!v)} className="mt-1" />
-              </label>
-            </div>
-          </section>
-
-          <section>
-            <Overline className="mb-3">Name</Overline>
-            <div className="rounded-lg border bg-card p-5 space-y-2">
-              <Label htmlFor="intro_name">Agent name</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="intro_name"
-                  value={introName}
-                  onChange={(e) => setIntroName(e.target.value)}
-                  placeholder="e.g. Sarah, Atlas, Mira"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={rerollName}
-                  title="Roll a new random name"
-                  aria-label="Roll a new random name"
-                >
-                  <icons.Dices className="size-4" />
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                We pre-fill a random name. Click the dice to re-roll, or type your own.
-              </p>
-            </div>
-          </section>
-
-          {draftError && (
-            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              {draftError}
-            </div>
-          )}
-
-          <div className="flex justify-between items-center pb-8">
-            {templates.length > 0 && !showTemplatePanel ? (
-              <button
-                type="button"
-                onClick={() => setShowTemplatePanel(true)}
-                className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-              >
-                Or start from a template →
-              </button>
-            ) : (
-              <span />
-            )}
-            <Button type="submit" disabled={drafting || !description.trim()}>
-              {drafting ? draftStageLabel(draftStage) : "Draft my agent"}
-            </Button>
-          </div>
-        </form>
-
-        {showTemplatePanel && (
-          <aside className="w-[20rem] lg:w-[22rem] shrink-0 sticky top-4 self-start">
-            <div className="rounded-lg border bg-card">
-              <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <icons.LayoutGrid className="size-3.5 text-muted-foreground" />
-                  <span className="text-xs font-medium">Template library</span>
-                  <span className="text-[10px] text-muted-foreground">({templates.length})</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowTemplatePanel(false)}
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted"
-                  aria-label="Close template panel"
-                >
-                  <icons.X className="size-3.5" />
-                </button>
-              </div>
-              <div className="px-3 py-2 border-b">
-                <Input
-                  value={templateSearch}
-                  onChange={(e) => setTemplateSearch(e.target.value)}
-                  placeholder="Search templates…"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-2 space-y-1.5">
-                {filteredTemplates.length === 0 && (
-                  <p className="text-[11px] text-muted-foreground text-center py-6">No templates match "{templateSearch}".</p>
-                )}
-                {filteredTemplates.map((t) => {
-                  const Icon = (icons as any)[t.icon] || icons.User
-                  return (
-                    <button
-                      key={t.slug}
-                      type="button"
-                      onClick={() => chooseTemplate(t)}
-                      className="w-full group rounded-md border bg-background p-2.5 text-left transition-colors hover:border-foreground/30 hover:bg-muted/30"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="size-6 rounded-sm bg-muted flex items-center justify-center shrink-0">
-                          <Icon className="size-3" />
-                        </div>
-                        <div className="font-medium text-xs truncate">{t.name}</div>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-2 leading-snug">{t.description}</p>
-                      {t.suggested_skill_slugs.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {t.suggested_skill_slugs.slice(0, 3).map((s) => (
-                            <span key={s} className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground truncate max-w-[7rem]">{s}</span>
-                          ))}
-                          {t.suggested_skill_slugs.length > 3 && (
-                            <span className="text-[9px] text-muted-foreground">+{t.suggested_skill_slugs.length - 3}</span>
-                          )}
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </aside>
-        )}
-      </div>
-      </AppLayout>
-    )
-  }
-
-  // ── Step 2: details (pre-filled from intro draft or template panel) ───
-  if (!picked) {
-    // Defensive: if we somehow landed here without a picked template, send
-    // the user back to the intro.
-    setStep("intro")
-    return null
-  }
-  const PickedIcon = (icons as any)[picked.icon] || icons.User
+  const allCards = [BLANK, ...templates]
 
   return (
     <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
-      <Head title={`New ${picked.name}`} />
+      <Head title="New agent" />
       <PageHeader
-        eyebrow={picked.slug ? `${picked.name} template` : `Fresh agent`}
-        title={`Configure your ${data.role || picked.role}`}
-        description={picked.description}
+        eyebrow="New agent"
+        title="Create an agent"
+        description="Pick a starting point, adjust anything below, hit Create. Identity and instructions are editable on the agent's Identity tab after creation."
       />
 
-      {draftReasoning && !isGenerated && (
-        <div className="max-w-2xl mb-6 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Why these picks:</span> {draftReasoning}
-        </div>
-      )}
-
-      {isGenerated && (
-        <div className="max-w-2xl mb-6 rounded-lg border border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <icons.Sparkles className="size-4 text-purple-600" />
-              <span className="text-sm font-semibold">AI-generated identity</span>
-              <span className="rounded bg-purple-200 dark:bg-purple-800 px-1.5 py-0.5 text-[10px] uppercase">fresh</span>
-            </div>
-            <Button type="button" variant="ghost" size="sm" onClick={handleRegenerate} disabled={drafting}>
-              <icons.RefreshCw className={`size-3.5 ${drafting ? "animate-spin" : ""}`} />
-              <span className="ml-1.5 text-xs">{drafting ? draftStageLabel(draftStage) : "Regenerate"}</span>
-            </Button>
-          </div>
-          {draftReasoning && (
-            <p className="text-xs text-muted-foreground">{draftReasoning}</p>
-          )}
-          <GeneratedField
-            label="Identity"
-            value={data.identity_md}
-            onChange={(v) => setData("identity_md", v)}
-            editing={editingField === "identity"}
-            onToggleEdit={() => setEditingField(editingField === "identity" ? null : "identity")}
-          />
-          <GeneratedField
-            label="Personality"
-            value={data.personality_md}
-            onChange={(v) => setData("personality_md", v)}
-            editing={editingField === "personality"}
-            onToggleEdit={() => setEditingField(editingField === "personality" ? null : "personality")}
-          />
-          <GeneratedField
-            label="Instructions"
-            value={data.instructions_md}
-            onChange={(v) => setData("instructions_md", v)}
-            editing={editingField === "instructions"}
-            onToggleEdit={() => setEditingField(editingField === "instructions" ? null : "instructions")}
-          />
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+        {/* ── Starting point ─────────────────────────────────────────── */}
+        <section>
+          <Overline className="mb-3">Starting point</Overline>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {allCards.map((t) => {
+              const Icon = (icons as any)[t.icon] || icons.User
+              const active = picked.slug === t.slug && picked.name === t.name
+              return (
+                <button
+                  key={t.slug || "__blank__"}
+                  type="button"
+                  onClick={() => choose(t)}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    active
+                      ? "border-foreground bg-muted/40"
+                      : "bg-card hover:border-foreground/30 hover:bg-muted/20"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="size-6 rounded-sm bg-muted flex items-center justify-center shrink-0">
+                      <Icon className="size-3.5" />
+                    </div>
+                    <span className="font-medium text-xs truncate">{t.name}</span>
+                    {active && <icons.Check className="size-3.5 ml-auto shrink-0" />}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">
+                    {t.slug ? t.role : "Start from scratch"}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+
+          {(picked.suggested_skill_slugs.length > 0 || (picked.suggested_integrations?.length ?? 0) > 0) && (
+            <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2.5 text-xs">
+              {picked.suggested_skill_slugs.length > 0 && (
+                <div className="text-muted-foreground">
+                  <span className="font-medium text-foreground">Skills:</span> {picked.suggested_skill_slugs.join(", ")}
+                </div>
+              )}
+              {(picked.suggested_integrations?.length ?? 0) > 0 && (
+                <div className="text-muted-foreground mt-0.5">
+                  <span className="font-medium text-foreground">Integrations to connect:</span> {(picked.suggested_integrations || []).map((s) => s.replace(/_/g, " ")).join(", ")}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ── Identity ───────────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Identity</Overline>
           <div className="rounded-lg border bg-card p-5 space-y-4">
-            <div className="flex items-center gap-3 pb-3 border-b">
-              <div className="size-10 rounded-md bg-muted flex items-center justify-center">
-                <PickedIcon className="size-5" />
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-medium">{picked.slug ? `${picked.name} template` : `Fresh agent — built from your description`}</div>
-                <div className="text-xs text-muted-foreground">
-                  {picked.slug
-                    ? "Identity, personality, and instructions will be filled in from the template. You can edit them on the agent's Identity tab after creation."
-                    : "Identity, personality, and instructions were written fresh for this agent based on your description. You can fine-tune them on the agent's Identity tab after creation."}
-                </div>
-              </div>
-              <Button type="button" variant="ghost" size="sm" className="text-xs" onClick={() => setStep("intro")}>
-                Start over
-              </Button>
-            </div>
-
-            {(picked.suggested_skill_slugs.length > 0 || (picked.suggested_integrations?.length ?? 0) > 0) && (
-              <div className="rounded-md border bg-muted/30 px-3 py-2.5 text-xs">
-                <div className="font-medium text-foreground mb-1">{picked.slug ? "This template bundles:" : "This agent will have:"}</div>
-                {picked.suggested_skill_slugs.length > 0 && (
-                  <div className="text-muted-foreground">
-                    <span className="font-medium">Skills:</span> {picked.suggested_skill_slugs.join(", ")}
-                  </div>
-                )}
-                {(picked.suggested_integrations?.length ?? 0) > 0 && (
-                  <div className="text-muted-foreground">
-                    <span className="font-medium">Integrations to connect:</span> {(picked.suggested_integrations || []).map((s) => s.replace(/_/g, " ")).join(", ")}
-                  </div>
-                )}
-              </div>
-            )}
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
@@ -863,7 +324,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={rerollDetailsName}
+                    onClick={rerollName}
                     title="Roll a new random name"
                     aria-label="Roll a new random name"
                   >
@@ -878,7 +339,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>
-              <Input id="role" value={data.role} onChange={(e) => setData("role", e.target.value)} required />
+              <Input id="role" placeholder="e.g. Sales Development Rep" value={data.role} onChange={(e) => setData("role", e.target.value)} required />
               <p className="text-[10px] text-muted-foreground">Free-text. Used by other agents to target this one via <code className="font-mono text-[10px] px-1 py-0.5 rounded bg-muted">assign_to_role</code>.</p>
             </div>
 
@@ -902,6 +363,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           </div>
         </section>
 
+        {/* ── Model ──────────────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Model</Overline>
           <div className="rounded-lg border bg-card p-5 space-y-4">
@@ -950,10 +412,11 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           </div>
         </section>
 
+        {/* ── Capabilities ───────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Capabilities</Overline>
           <p className="text-xs text-muted-foreground mb-3 max-w-lg">
-            Toggles for what this agent can do. {picked.slug ? "The template pre-selects what makes sense for the role" : "Sensible defaults pre-selected based on your description"} — adjust as needed.
+            Toggles for what this agent can do — adjust as needed.
           </p>
           <div className="rounded-lg border bg-card divide-y">
             {CAPABILITIES.map((cap) => {
@@ -971,6 +434,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           </div>
         </section>
 
+        {/* ── Channels ───────────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Channels</Overline>
           <p className="text-xs text-muted-foreground mb-3 max-w-lg">
@@ -1002,6 +466,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           </div>
         </section>
 
+        {/* ── Permissions ────────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Permissions</Overline>
           <p className="text-xs text-muted-foreground mb-3 max-w-lg">
@@ -1012,7 +477,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
               <div className="flex-1">
                 <div className="text-sm font-medium">Send email</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  Default for new agents. Draft mode is safest while you're getting a feel for how the agent behaves.
+                  Draft mode is safest while you're getting a feel for how the agent behaves.
                 </div>
               </div>
               <Select
@@ -1032,63 +497,12 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           </div>
         </section>
 
-        <div className="flex justify-end gap-2 pb-8 max-w-2xl">
-          <Button type="button" variant="ghost" onClick={() => setStep("intro")}>Back</Button>
-          <Button type="submit" disabled={processing || !data.name}>
+        <div className="flex justify-end pb-8 max-w-2xl">
+          <Button type="submit" disabled={processing || !data.name || !data.role}>
             {processing ? "Creating…" : "Create agent"}
           </Button>
         </div>
       </form>
     </AppLayout>
-  )
-}
-
-// Maps the 0-3 draft stage value to a user-visible label. 0 means we're
-// not drafting; 1-3 walk through the conceptual server-side phases.
-function draftStageLabel(stage: number): string {
-  switch (stage) {
-    case 1: return "Analyzing capabilities…"
-    case 2: return "Resolving skills…"
-    case 3: return "Drafting identity…"
-    default: return "Drafting…"
-  }
-}
-
-// One field block on the AI-generated identity card. Preview-by-default
-// (truncated to 14 lines), expand to see full, Edit toggles a textarea
-// so the user can tweak before saving the agent. Edits flow straight
-// into the form `data` via the onChange callback.
-function GeneratedField({
-  label, value, onChange, editing, onToggleEdit,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  editing: boolean
-  onToggleEdit: () => void
-}) {
-  return (
-    <div className="rounded border bg-background p-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-medium uppercase text-muted-foreground">{label}</span>
-        <button
-          type="button"
-          onClick={onToggleEdit}
-          className="text-[11px] text-purple-700 dark:text-purple-300 hover:underline"
-        >
-          {editing ? "Done" : "Edit"}
-        </button>
-      </div>
-      {editing ? (
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={Math.min(20, Math.max(6, value.split("\n").length + 1))}
-          className="w-full rounded border bg-background px-2 py-1.5 text-xs font-mono"
-        />
-      ) : (
-        <pre className="whitespace-pre-wrap text-xs">{value || <span className="text-muted-foreground italic">(empty)</span>}</pre>
-      )}
-    </div>
   )
 }

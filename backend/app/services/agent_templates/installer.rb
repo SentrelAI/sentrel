@@ -56,10 +56,8 @@ module AgentTemplates
       attrs[:manager_id] = @agent_attrs[:manager_id] if @agent_attrs.key?(:manager_id)
       # Pre-set persona fields from the caller's @agent_attrs so
       # apply_persona!'s `||=` skips the template substitution when the
-      # caller (typically the new-agent wizard, with fresh markdown from
-      # AgentDrafter) has its own version. Caller can pass nil/empty
-      # to fall back to the template's persona — only present strings
-      # win.
+      # caller supplies its own markdown. Caller can pass nil/empty to
+      # fall back to the template's persona — only present strings win.
       attrs[:identity_md]     = @agent_attrs[:identity_md]     if @agent_attrs[:identity_md].present?
       attrs[:personality_md]  = @agent_attrs[:personality_md]  if @agent_attrs[:personality_md].present?
       attrs[:instructions_md] = @agent_attrs[:instructions_md] if @agent_attrs[:instructions_md].present?

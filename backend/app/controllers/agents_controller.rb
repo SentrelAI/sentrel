@@ -308,65 +308,6 @@ class AgentsController < ApplicationController
     }
   end
 
-  # POST /agents/draft — turn a free-text description ("an SDR that books demos
-  # for our SaaS") into a pre-fill payload for the new-agent form. Picks the
-  # best matching template, suggests skills/model/capabilities, and proposes a
-  # first name. Used by the new-agent wizard's intro step.
-  def draft
-    description = params[:description].to_s.strip
-    if description.blank?
-      render json: { error: "Tell us what you want this agent to do." }, status: :unprocessable_entity
-      return
-    end
-
-    # AgentDrafter picks from a TRIMMED catalog: curated system seeds
-    # (~16) + the user's own org templates + the user's own org skills +
-    # built-in (seeded) skills. We deliberately exclude community
-    # templates from OTHER orgs and Forge-generated skills from earlier
-    # bootstrap runs — those would otherwise inflate the prompt to ~50KB
-    # (109 templates × 150B + 265 skills × 120B), pushing Claude inference
-    # past the 30s gateway timeout and 504-ing the request.
-    tenant = current_tenant
-    drafter_templates = ActsAsTenant.without_tenant do
-      AgentTemplate
-        .where("system_template = TRUE OR organization_id = ?", tenant&.id)
-        .where(published: true)
-        .to_a
-    end
-    # Hard-restrict the drafter's skill pool to canonical seeds (read
-    # from db/seeds/skills/**/*.md at boot) + the org's own skills.
-    # Defends against catalog pollution from earlier Forge::Bootstrap
-    # runs that persisted hallucinated skill slugs as source='built_in'.
-    # The pool stays clean even if the catalog isn't.
-    canonical_slugs = SkillDefinition.canonical_seed_slugs
-    drafter_skills = ActsAsTenant.without_tenant do
-      SkillDefinition
-        .where("slug IN (?) OR organization_id = ?", canonical_slugs, tenant&.id)
-        .where(published: true)
-        .to_a
-    end
-
-    drafter = AgentDrafter.new(
-      description: description,
-      tools_preference: params[:tools_preference],
-      tools_description: params[:tools_description],
-      templates: drafter_templates,
-      skills: drafter_skills,
-      # generate_fallback: false — without this, when no template matches
-      # AgentDrafter calls Forge::TemplateGenerator which is a SECOND
-      # synchronous Anthropic call. Worst case: 25s pick + 25s generate
-      # = 50s, well past the gateway timeout → 504. The new-agent wizard
-      # handles a null template_slug via blankTemplate on the frontend,
-      # so we don't need a fresh-generated template; if the [SYS] pool
-      # has nothing for the role, the user just builds from scratch.
-      generate_fallback: false,
-      # `regenerate` is plumbed through but a no-op today — AgentDrafter is
-      # stateless. Reserved for future cache-busting when we add memoization
-      # of the underlying Claude responses.
-    )
-    render json: drafter.to_h
-  end
-
   def create
     # Tenant bypass: a user installing a system template (org_id: NULL)
     # needs to be able to look it up by slug. visible_to is the access
@@ -430,9 +371,9 @@ class AgentsController < ApplicationController
       return redirect_to agent_path(@agent), notice: msg
     end
 
-    # Direct-create (no template) — the fresh-agent path from the
-    # new-agent wizard. Persona markdown comes pre-filled from the
-    # AgentDrafter response; skills come from skill_slugs_override.
+    # Direct-create (no template) — the "Blank" path from the new-agent
+    # form. Persona stays empty until the user writes it on the Identity
+    # tab; skills come from skill_slugs_override if any were picked.
     @agent = current_tenant.agents.build(agent_params)
     if @agent.save
       ai_cfg = ai_config_params.to_h
