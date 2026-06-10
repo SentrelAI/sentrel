@@ -77,6 +77,19 @@ To enroll into a sequence:
 
 If you call `APOLLO_ADD_CONTACTS_TO_SEQUENCE` with `sequence_id: "placeholder"` you'll get HTTP 422 `Parameters misconfigured. placeholder is not a valid ID`. That's the error telling you you guessed.
 
+## NEVER fan out parallel Apollo calls
+
+Apollo's API rate-limits aggressively (and Composio adds its own per-toolkit concurrency limits on top). If you make 5 parallel `APOLLO_PEOPLE_SEARCH` calls "to find people at each of these 5 companies," they will ALL FAIL with no specific error — the UI just shows "failed." This is the most common Apollo failure mode after wrong tool names.
+
+**Rules**:
+
+1. **Run Apollo calls one at a time.** Never use parallel tool calls for `APOLLO_*` tools. Sequential only. Wait for one to return before issuing the next.
+2. **For "find people at multiple companies"** use `APOLLO_MIXED_PEOPLE_AND_ACCOUNTS_SEARCH` with multiple `organization_ids` or `q_organization_domains_list` values in ONE call. Don't loop.
+3. **For "more contacts at this one company"** call `APOLLO_PEOPLE_SEARCH` once with `organization_ids: ["<single-org-id>"]` and a higher `per_page` (up to 100). Don't issue 5 paginated calls in parallel.
+4. **For bulk enrichment** `APOLLO_BULK_PEOPLE_ENRICHMENT` takes up to 10 people in a SINGLE call. Don't enrich 10 people in 10 calls.
+
+If you absolutely must paginate, do it sequentially: page 1, wait, page 2, wait, etc. Maximum 1 concurrent Apollo call per turn.
+
 ## Workflow
 
 1. **Read the persona's ICP**, or ask the user if it's not defined.
@@ -92,6 +105,7 @@ If you call `APOLLO_ADD_CONTACTS_TO_SEQUENCE` with `sequence_id: "placeholder"` 
 - **"connectedaccountnotfound" / 401 / 403** → the Composio Apollo connection was revoked. Call `propose_connection` with `service: "apollo"` (Composio OAuth) so the user can reconnect — DON'T ask for an API key.
 - **Empty results** → broaden filters one at a time: drop location restriction, widen employee range, swap keyword tags. Don't immediately tell the user "no results" — Apollo is fussy.
 - **Tool not found error** → re-check the tool name from the table above. The pattern is `APOLLO_<NOUN>_<VERB>`. If you typed the verb in the middle, you've reversed it.
+- **Multiple Apollo calls in parallel all fail simultaneously** → you got rate-limited by Apollo or Composio. Switch to ONE call at a time. For multi-company queries use `APOLLO_MIXED_PEOPLE_AND_ACCOUNTS_SEARCH` with multiple filters in one call; for more contacts at one company use `per_page: 50` instead of 5 paginated parallel calls.
 
 ## Don't
 
