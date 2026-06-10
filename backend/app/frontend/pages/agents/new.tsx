@@ -373,7 +373,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                <icons.Github className="size-4 shrink-0" />
+                <icons.FolderGit2 className="size-4 shrink-0" />
                 <span className="font-medium text-xs">From GitHub</span>
                 {mode === "github" && <icons.Check className="size-3.5 ml-auto shrink-0" />}
               </div>

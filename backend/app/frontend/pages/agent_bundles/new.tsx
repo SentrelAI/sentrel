@@ -1,7 +1,7 @@
 import { Head, router } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, Github, KeyRound, Plug, Radio, Rocket, Search, Target, Wrench,
+  AlertTriangle, BookOpen, FolderGit2, KeyRound, Plug, Radio, Rocket, Search, Target, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -75,7 +75,7 @@ export default function DeployAgent({ source, preview, error }: Props) {
           <div className="rounded-lg border bg-card p-4 space-y-2">
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Github className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <FolderGit2 className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
