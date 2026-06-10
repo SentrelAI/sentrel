@@ -1,7 +1,7 @@
 import { Head, router } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, FolderGit2, KeyRound, Plug, Radio, Rocket, Search, Target, Wrench,
+  AlertTriangle, BookOpen, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Trash2, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -12,12 +12,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { MarkdownEditor } from "@/components/markdown-editor"
 import { slugify } from "@/lib/random-names"
+import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 
 // The shareable "Deploy to double.md" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
-// Server fetches + validates the bundle and ships a preview; this page
-// renders exactly what will be installed, then POSTs /agent_bundles.
+// Server fetches + validates the bundle; this page renders it as a fully
+// EDITABLE form — rename, change model, edit the goal, rewrite any persona
+// block (with {{variable}} chips, same editor as the agent Identity tab) —
+// then POSTs the merged result to /agent_bundles.
 
 interface Preview {
   name: string
@@ -40,10 +45,29 @@ interface Props {
   error: string | null
 }
 
+interface KpiRow {
+  key: string
+  value: string
+}
+
 export default function DeployAgent({ source, preview, error }: Props) {
   const [url, setUrl] = useState(source)
   const [agentName, setAgentName] = useState(preview?.name || "")
   const [agentSlug, setAgentSlug] = useState(preview ? slugify(preview.name) : "")
+  const [agentRole, setAgentRole] = useState(preview?.role || "")
+  const [provider, setProvider] = useState(preview?.model?.provider || "anthropic")
+  const [modelId, setModelId] = useState(preview?.model?.id || preview?.model?.model_id || "claude-sonnet-4-6")
+  const [mission, setMission] = useState(preview?.goal?.mission || "")
+  const [definitionOfDone, setDefinitionOfDone] = useState(preview?.goal?.definition_of_done || "")
+  const [kpis, setKpis] = useState<KpiRow[]>(
+    (preview?.goal?.kpis || []).map((kpi) => {
+      const [k, v] = Object.entries(kpi)[0] || ["", ""]
+      return { key: k, value: String(v) }
+    }),
+  )
+  const [identityMd, setIdentityMd] = useState(preview?.persona?.identity_md || "")
+  const [personalityMd, setPersonalityMd] = useState(preview?.persona?.personality_md || "")
+  const [instructionsMd, setInstructionsMd] = useState(preview?.persona?.instructions_md || "")
   const [saveAsTemplate, setSaveAsTemplate] = useState(true)
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
@@ -64,6 +88,20 @@ export default function DeployAgent({ source, preview, error }: Props) {
       github_url: source,
       agent_name: agentName.trim(),
       agent_slug: agentSlug.trim(),
+      agent_role: agentRole.trim(),
+      model: { provider, model_id: modelId },
+      goal: {
+        mission: mission.trim(),
+        kpis: kpis
+          .filter((k) => k.key.trim())
+          .map((k) => ({ [k.key.trim()]: Number(k.value) || 0 })),
+        definition_of_done: definitionOfDone.trim(),
+      },
+      persona: {
+        identity: identityMd,
+        personality: personalityMd,
+        instructions: instructionsMd,
+      },
       save_as_template: saveAsTemplate ? "1" : "0",
     }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
@@ -76,9 +114,9 @@ export default function DeployAgent({ source, preview, error }: Props) {
       <Head title="Deploy agent bundle" />
       <PageHeader
         eyebrow="Deploy"
-        title={preview ? `Deploy ${preview.name}` : "Deploy an agent bundle"}
+        title={preview ? `Deploy ${agentName.trim() || preview.name}` : "Deploy an agent bundle"}
         description={preview
-          ? "Review what this bundle installs, then deploy it as a live agent in your workspace."
+          ? "Everything below comes from the bundle and is editable — rename, adjust the goal, change the model, rewrite the persona. Deploy when it looks right."
           : "Paste a GitHub repo containing an agent-bundle/v1 (agent.yaml at its root) to preview and deploy it."}
       />
 
@@ -117,57 +155,140 @@ export default function DeployAgent({ source, preview, error }: Props) {
 
         {preview && (
           <>
-            {/* What you're installing */}
+            {/* Agent details — name/slug/role/model, all editable, at the top */}
             <section>
-              <Overline className="mb-3">Agent</Overline>
-              <div className="rounded-lg border bg-card p-4 space-y-3">
-                <div>
-                  <div className="text-sm font-semibold">{preview.name}</div>
-                  <div className="text-xs text-muted-foreground">{preview.role}</div>
-                </div>
+              <Overline className="mb-3">Agent details</Overline>
+              <div className="rounded-lg border bg-card p-4 space-y-4">
                 {preview.description && <p className="text-xs text-muted-foreground leading-relaxed">{preview.description}</p>}
-                {preview.goal?.mission && (
-                  <div className="rounded-md border bg-muted/30 px-3 py-2.5 text-xs space-y-1">
-                    <div className="flex items-center gap-1.5 font-medium"><Target className="size-3.5" /> Goal</div>
-                    <p className="text-muted-foreground">{preview.goal.mission}</p>
-                    {(preview.goal.kpis?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {preview.goal.kpis!.map((kpi, i) => {
-                          const [k, v] = Object.entries(kpi)[0] || ["", ""]
-                          return <Badge key={i} variant="outline" className="text-[10px]">{k.replace(/_/g, " ")}: {v}</Badge>
-                        })}
-                      </div>
-                    )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="agent_name">Name</Label>
+                    <Input id="agent_name" value={agentName} onChange={(e) => handleNameChange(e.target.value)} placeholder={preview.name} />
                   </div>
-                )}
-                {(preview.model.id || preview.model.model_id) && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Model: <span className="font-mono">{preview.model.provider || "anthropic"}/{preview.model.id || preview.model.model_id}</span>
-                  </p>
-                )}
+                  <div className="space-y-2">
+                    <Label htmlFor="agent_slug">Slug</Label>
+                    <Input id="agent_slug" value={agentSlug} onChange={(e) => setAgentSlug(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent_role">Role</Label>
+                  <Input id="agent_role" value={agentRole} onChange={(e) => setAgentRole(e.target.value)} placeholder="e.g. Sales Development Rep" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Provider</Label>
+                    <Select
+                      value={provider}
+                      onValueChange={(v) => {
+                        setProvider(v)
+                        setModelId(MODELS_BY_PROVIDER[v]?.[0]?.value || "")
+                      }}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="anthropic">Anthropic</SelectItem>
+                        <SelectItem value="openai">OpenAI</SelectItem>
+                        <SelectItem value="google">Google</SelectItem>
+                        <SelectItem value="openrouter">OpenRouter</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 min-w-0">
+                    <Label>Model</Label>
+                    <Select value={modelId} onValueChange={setModelId}>
+                      <SelectTrigger className="w-full min-w-0 [&>span]:truncate"><SelectValue placeholder="Pick a model" /></SelectTrigger>
+                      <SelectContent>
+                        {(MODELS_BY_PROVIDER[provider] || [{ value: modelId, label: modelId }]).map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            <span className="font-medium">{m.label}</span>
+                            {m.hint && <span className="text-muted-foreground"> — {m.hint}</span>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  A taken slug gets a numeric suffix automatically. Variables like <code className="font-mono">{"{{agent_name}}"}</code> and <code className="font-mono">{"{{company_name}}"}</code> are filled in with your workspace's values at deploy.
+                </p>
               </div>
             </section>
 
-            {/* Persona */}
+            {/* Goal — editable */}
+            <section>
+              <Overline className="mb-3">Goal</Overline>
+              <div className="rounded-lg border bg-card p-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="mission" className="flex items-center gap-1.5"><Target className="size-3.5" /> Mission</Label>
+                  <textarea
+                    id="mission"
+                    rows={2}
+                    value={mission}
+                    onChange={(e) => setMission(e.target.value)}
+                    placeholder="What this agent exists to do — leave empty for no explicit goal."
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>KPIs</Label>
+                  {kpis.map((kpi, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        value={kpi.key}
+                        onChange={(e) => setKpis(kpis.map((k, j) => (j === i ? { ...k, key: e.target.value } : k)))}
+                        placeholder="meetings_booked_per_week"
+                        className="flex-1 font-mono text-xs"
+                      />
+                      <Input
+                        value={kpi.value}
+                        onChange={(e) => setKpis(kpis.map((k, j) => (j === i ? { ...k, value: e.target.value } : k)))}
+                        placeholder="5"
+                        type="number"
+                        className="w-24"
+                      />
+                      <Button type="button" variant="ghost" size="icon" onClick={() => setKpis(kpis.filter((_, j) => j !== i))} aria-label="Remove KPI">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setKpis([...kpis, { key: "", value: "" }])}>
+                    <Plus className="size-3" /> Add KPI
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dod">Definition of done</Label>
+                  <textarea
+                    id="dod"
+                    rows={2}
+                    value={definitionOfDone}
+                    onChange={(e) => setDefinitionOfDone(e.target.value)}
+                    placeholder='e.g. A meeting is "booked" when the prospect confirms a calendar slot — not when they merely reply.'
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Persona — same editor as the agent Identity tab, variable chips included */}
             <section>
               <Overline className="mb-3">Persona</Overline>
-              <div className="rounded-lg border bg-card p-4 space-y-2">
-                {([
-                  ["Identity", preview.persona.identity_md],
-                  ["Personality", preview.persona.personality_md],
-                  ["Instructions", preview.persona.instructions_md],
-                ] as const).map(([label, md]) =>
-                  md ? (
-                    <details key={label} className="rounded border bg-background">
-                      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">{label}</summary>
-                      <pre className="whitespace-pre-wrap px-3 pb-3 text-[11px] leading-relaxed">{md}</pre>
-                    </details>
-                  ) : null,
-                )}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Identity</Label>
+                  <MarkdownEditor value={identityMd} onChange={setIdentityMd} minHeight="120px" ariaLabel="Identity" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Personality</Label>
+                  <MarkdownEditor value={personalityMd} onChange={setPersonalityMd} minHeight="120px" ariaLabel="Personality" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Instructions</Label>
+                  <MarkdownEditor value={instructionsMd} onChange={setInstructionsMd} minHeight="160px" ariaLabel="Instructions" />
+                </div>
               </div>
             </section>
 
-            {/* Skills + knowledge */}
+            {/* Skills + knowledge (from the bundle — read-only) */}
             <section>
               <Overline className="mb-3">Skills & knowledge</Overline>
               <div className="rounded-lg border bg-card divide-y">
@@ -225,21 +346,6 @@ export default function DeployAgent({ source, preview, error }: Props) {
 
             {/* Deploy */}
             <section className="space-y-3 pb-8">
-              <div className="rounded-lg border bg-card p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="agent_name">Name</Label>
-                    <Input id="agent_name" value={agentName} onChange={(e) => handleNameChange(e.target.value)} placeholder={preview.name} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="agent_slug">Slug</Label>
-                    <Input id="agent_slug" value={agentSlug} onChange={(e) => setAgentSlug(e.target.value)} />
-                  </div>
-                </div>
-                <p className="mt-2 text-[10px] text-muted-foreground">
-                  Rename freely — a taken slug gets a numeric suffix automatically. Variables like <code className="font-mono">{"{{company_name}}"}</code> in the persona are filled in with your workspace's values at deploy.
-                </p>
-              </div>
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <Checkbox checked={saveAsTemplate} onCheckedChange={(v) => setSaveAsTemplate(!!v)} />
                 Also save to the template library (versioned, re-installable)

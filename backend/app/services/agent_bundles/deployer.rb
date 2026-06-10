@@ -21,12 +21,21 @@ module AgentBundles
     # bundle verb → our permission level
     PERMISSION_MAP = { "ask" => "draft", "auto" => "auto", "block" => "never" }.freeze
 
-    def initialize(manifest:, user:, organization:, name: nil, slug: nil)
+    # Overrides come from the deploy wizard — everything the user edited
+    # before clicking Deploy wins over the bundle's values. Persona
+    # overrides may still contain {{tokens}}; substitution happens after
+    # the merge so edited text gets the same variable treatment.
+    def initialize(manifest:, user:, organization:, name: nil, slug: nil,
+                   role: nil, model: nil, goal: nil, persona: nil)
       @m = manifest
       @user = user
       @org = organization
       @name_override = name.to_s.strip.presence
       @slug_override = slug.to_s.strip.presence
+      @role_override = role.to_s.strip.presence
+      @model_override = model.is_a?(Hash) ? model.compact_blank : {}
+      @goal_override = goal.is_a?(Hash) ? goal : nil
+      @persona_override = persona.is_a?(Hash) ? persona : {}
       @notices = []
     end
 
@@ -56,12 +65,29 @@ module AgentBundles
       @org.agents.build(
         name: name,
         slug: slug,
-        role: @m.role.presence || "Agent",
-        identity_md:     substitute(@m.persona_md("identity"), ctx),
-        personality_md:  substitute(@m.persona_md("personality"), ctx),
-        instructions_md: substitute([@m.persona_md("instructions"), goal_section].compact.join("\n\n"), ctx),
+        role: effective_role,
+        identity_md:     substitute(persona_value("identity"), ctx),
+        personality_md:  substitute(persona_value("personality"), ctx),
+        instructions_md: substitute([persona_value("instructions"), goal_section].compact.join("\n\n"), ctx),
         permissions: mapped_permissions,
       )
+    end
+
+    def effective_role
+      @role_override || @m.role.presence || "Agent"
+    end
+
+    # Wizard-edited markdown wins over the bundle's file. nil/blank
+    # override → fall back to the bundle.
+    def persona_value(key)
+      @persona_override[key].presence || @persona_override[key.to_sym].presence || @m.persona_md(key)
+    end
+
+    # Wizard-edited goal wins. An override with a blank mission means the
+    # user cleared the goal — render nothing.
+    def effective_goal
+      return @m.goal if @goal_override.nil?
+      @goal_override["mission"].presence || @goal_override[:mission].presence ? @goal_override : nil
     end
 
     # Same {{token}} substitution AgentTemplates::Installer does, plus
@@ -73,7 +99,7 @@ module AgentBundles
         "agent_name"     => agent_name,
         "company_name"   => @org.name,
         "user_name"      => @user.try(:name).presence || @user.try(:email),
-        "role"           => @m.role.presence || "Agent",
+        "role"           => effective_role,
         "company_domain" => @org.try(:email_domain).presence,
       }.compact
     end
@@ -87,10 +113,10 @@ module AgentBundles
     # section appended to instructions_md so the engine's system prompt
     # carries it without needing a new column or prompt-builder change.
     def render_goal_section
-      g = @m.goal
+      g = effective_goal&.stringify_keys
       return nil unless g
       lines = ["## Goal", "", g["mission"].to_s.strip]
-      kpis = Array(g["kpis"]).filter_map { |kpi| kpi.is_a?(Hash) ? kpi.first : nil }
+      kpis = Array(g["kpis"]).filter_map { |kpi| kpi.is_a?(Hash) ? kpi.stringify_keys.first : nil }
       if kpis.any?
         lines << "" << "KPIs:"
         kpis.each { |k, v| lines << "- #{k.to_s.tr('_', ' ')}: #{v}" }
@@ -108,10 +134,10 @@ module AgentBundles
     end
 
     def create_ai_config!(agent)
-      cfg = @m.model
+      cfg = @m.model.merge(@model_override.stringify_keys)
       agent.create_ai_config!(
         provider:       cfg["provider"].presence || "anthropic",
-        model_id:       (cfg["id"] || cfg["model_id"]).presence || "claude-sonnet-4-6",
+        model_id:       (cfg["model_id"] || cfg["id"]).presence || "claude-sonnet-4-6",
         temperature:    cfg["temperature"] || 0.7,
         max_tokens:     cfg["max_tokens"] || 8192,
         thinking_level: cfg["thinking_level"].presence || "none",

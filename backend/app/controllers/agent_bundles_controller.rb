@@ -57,6 +57,10 @@ class AgentBundlesController < ApplicationController
       organization: current_tenant,
       name: params[:agent_name],
       slug: params[:agent_slug],
+      role: params[:agent_role],
+      model: unsafe_hash(params[:model]),
+      goal: unsafe_hash(params[:goal]),
+      persona: unsafe_hash(params[:persona]),
     ).call
 
     agent = result.agent
@@ -102,6 +106,11 @@ class AgentBundlesController < ApplicationController
   end
 
   private
+
+  def unsafe_hash(p)
+    return nil if p.blank?
+    p.respond_to?(:to_unsafe_h) ? p.to_unsafe_h : p.to_h
+  end
 
   # Everything the wizard needs to show what a bundle will install.
   # Persona markdown ships in full (one bundle per page — payload is
