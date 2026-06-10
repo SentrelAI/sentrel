@@ -1,7 +1,7 @@
 import { Head, router } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Trash2, Wrench,
+  AlertTriangle, BookOpen, Check, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Trash2, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -43,6 +43,23 @@ interface Props {
   source: string
   preview: Preview | null
   error: string | null
+  connected_services: string[]
+  credential_providers: string[]
+}
+
+// "APOLLO_API_KEY" / "apollo-token" → "apollo" — same normalization the
+// engine's secrets tool uses, so the saved credential resolves for the
+// agent at runtime.
+function providerFromSecretName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[_-]?(api[_-]?key|access[_-]?token|secret[_-]?key|auth[_-]?token|token|key|secret)$/i, "")
+    .replace(/[_-]+$/, "")
+    .replace(/_/g, "-") || name.toLowerCase()
+}
+
+function csrfToken(): string {
+  return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 }
 
 interface KpiRow {
@@ -50,7 +67,7 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, preview, error }: Props) {
+export default function DeployAgent({ source, preview, error, connected_services, credential_providers }: Props) {
   const [url, setUrl] = useState(source)
   const [agentName, setAgentName] = useState(preview?.name || "")
   const [agentSlug, setAgentSlug] = useState(preview ? slugify(preview.name) : "")
@@ -71,6 +88,73 @@ export default function DeployAgent({ source, preview, error }: Props) {
   const [saveAsTemplate, setSaveAsTemplate] = useState(true)
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
+
+  // Live connect state — seeded from org data, updated as the user
+  // connects / saves inside the wizard.
+  const [connected, setConnected] = useState<Set<string>>(new Set(connected_services.map((s) => s.toLowerCase())))
+  const [savedSecrets, setSavedSecrets] = useState<Set<string>>(
+    new Set((preview?.secrets || []).filter((s) => credential_providers.map((p) => p.toLowerCase()).includes(providerFromSecretName(s)))),
+  )
+  const [secretValues, setSecretValues] = useState<Record<string, string>>({})
+  const [secretBusy, setSecretBusy] = useState<string | null>(null)
+  const [connectBusy, setConnectBusy] = useState<string | null>(null)
+  const [connectError, setConnectError] = useState<string | null>(null)
+
+  // Composio OAuth in a popup — same flow the inline chat card uses.
+  async function connectIntegration(service: string) {
+    setConnectBusy(service)
+    setConnectError(null)
+    try {
+      const res = await fetch(`/integrations/${service}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken() },
+      })
+      const data = await res.json().catch(() => ({} as { redirect_url?: string; error?: string }))
+      if (data.redirect_url) {
+        const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100")
+        const timer = setInterval(() => {
+          if (popup?.closed) {
+            clearInterval(timer)
+            setConnected((prev) => new Set([...prev, service.toLowerCase()]))
+          }
+        }, 500)
+      } else {
+        setConnectError(data.error || `Couldn't start the ${service} OAuth flow.`)
+      }
+    } catch (err) {
+      setConnectError(`Network error: ${(err as Error).message}`)
+    } finally {
+      setConnectBusy(null)
+    }
+  }
+
+  // Save a secret as an org-level generic credential. Provider derives
+  // from the secret name so the agent's secrets.get resolves it later.
+  async function saveSecret(name: string) {
+    const value = (secretValues[name] || "").trim()
+    if (!value) return
+    setSecretBusy(name)
+    setConnectError(null)
+    try {
+      const res = await fetch("/settings/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken() },
+        body: JSON.stringify({
+          credential: { kind: "generic", provider: providerFromSecretName(name), name: name, value: value },
+        }),
+      })
+      if (res.ok || res.redirected) {
+        setSavedSecrets((prev) => new Set([...prev, name]))
+        setSecretValues((prev) => ({ ...prev, [name]: "" }))
+      } else {
+        setConnectError(`Couldn't save ${name} (HTTP ${res.status}).`)
+      }
+    } catch (err) {
+      setConnectError(`Network error: ${(err as Error).message}`)
+    } finally {
+      setSecretBusy(null)
+    }
+  }
 
   function loadPreview() {
     router.get("/deploy-agent", { source: url.trim() }, { preserveState: false })
@@ -313,34 +397,75 @@ export default function DeployAgent({ source, preview, error }: Props) {
               </div>
             </section>
 
-            {/* What you'll connect after deploy */}
+            {/* Connections — actionable right here: OAuth popups for Composio
+                integrations, inline paste-and-save for secrets. Everything is
+                org-level, so connecting before the agent exists is fine. */}
             {(preview.integrations.length > 0 || preview.secrets.length > 0 || preview.channels.length > 0) && (
               <section>
-                <Overline className="mb-3">After deploy, you'll connect</Overline>
+                <Overline className="mb-3">Connections</Overline>
+                <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+                  Connect now or after deploy — your call. Anything left unconnected shows up as a reminder on the agent's page.
+                </p>
                 <div className="rounded-lg border bg-card divide-y">
                   {preview.channels.map((c) => (
                     <div key={c.type} className="flex items-center gap-2 px-4 py-2.5 text-xs">
                       <Radio className="size-3.5 text-muted-foreground" />
                       <span className="font-medium capitalize">{c.type} channel</span>
                       {c.why && <span className="text-[10px] text-muted-foreground truncate">— {c.why}</span>}
+                      <span className="text-[10px] text-muted-foreground ml-auto shrink-0">provisioned at deploy</span>
                     </div>
                   ))}
-                  {preview.integrations.map((i) => (
-                    <div key={`${i.kind}-${i.service}`} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                      <Plug className="size-3.5 text-muted-foreground" />
-                      <span className="font-medium">{i.service}</span>
-                      <Badge variant="outline" className="text-[9px]">{i.kind}</Badge>
-                      {i.why && <span className="text-[10px] text-muted-foreground truncate">— {i.why}</span>}
-                    </div>
-                  ))}
-                  {preview.secrets.map((s) => (
-                    <div key={s} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                      <KeyRound className="size-3.5 text-muted-foreground" />
-                      <span className="font-mono text-[11px]">{s}</span>
-                      <span className="text-[10px] text-muted-foreground">— add at /settings/credentials</span>
-                    </div>
-                  ))}
+                  {preview.integrations.map((i) => {
+                    const isConnected = connected.has(i.service.toLowerCase())
+                    return (
+                      <div key={`${i.kind}-${i.service}`} className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                        <Plug className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium">{i.service}</span>
+                        <Badge variant="outline" className="text-[9px]">{i.kind}</Badge>
+                        {i.why && <span className="text-[10px] text-muted-foreground truncate">— {i.why}</span>}
+                        <span className="ml-auto shrink-0">
+                          {i.kind === "mcp" ? (
+                            <span className="text-[10px] text-muted-foreground">not supported yet</span>
+                          ) : isConnected ? (
+                            <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
+                          ) : (
+                            <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === i.service} onClick={() => connectIntegration(i.service)}>
+                              {connectBusy === i.service ? "Opening…" : "Connect"}
+                            </Button>
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  {preview.secrets.map((s) => {
+                    const saved = savedSecrets.has(s)
+                    return (
+                      <div key={s} className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                        <KeyRound className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="font-mono text-[11px] shrink-0">{s}</span>
+                        {saved ? (
+                          <Badge className="text-[10px] gap-1 ml-auto bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Saved</Badge>
+                        ) : (
+                          <span className="flex items-center gap-1.5 ml-auto flex-1 max-w-72">
+                            <Input
+                              type="password"
+                              value={secretValues[s] || ""}
+                              onChange={(e) => setSecretValues((prev) => ({ ...prev, [s]: e.target.value }))}
+                              placeholder="paste value…"
+                              className="h-7 text-[11px] font-mono"
+                            />
+                            <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] shrink-0" disabled={secretBusy === s || !(secretValues[s] || "").trim()} onClick={() => saveSecret(s)}>
+                              {secretBusy === s ? "Saving…" : "Save"}
+                            </Button>
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
+                {connectError && (
+                  <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{connectError}</div>
+                )}
               </section>
             )}
 

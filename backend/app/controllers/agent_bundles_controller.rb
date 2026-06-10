@@ -37,6 +37,11 @@ class AgentBundlesController < ApplicationController
       source: source,
       preview: preview,
       error: error,
+      # Org state so the wizard renders live status on the bundle's
+      # requirements: which Composio services are already connected, and
+      # which credential providers already have a stored secret.
+      connected_services: current_tenant.integrations.where(status: "connected").pluck(:service_name).uniq,
+      credential_providers: current_tenant.credentials.pluck(:provider).uniq,
     }
   end
 
