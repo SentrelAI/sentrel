@@ -139,6 +139,10 @@ Rails.application.routes.draw do
     end
 
     get "agents/tree", to: "agents#tree", as: :agents_tree
+    # Deploy an agent-bundle/v1 folder (the open agent-spec format) from a
+    # GitHub URL or an uploaded .tar.gz — the server half of
+    # `npx agent-spec deploy`.
+    resources :agent_bundles, only: [ :create ]
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
       resources :conversations, only: [ :index, :show ] do

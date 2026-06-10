@@ -1,4 +1,4 @@
-import { Head, useForm } from "@inertiajs/react"
+import { Head, router, useForm } from "@inertiajs/react"
 import { useEffect, useState } from "react"
 import * as icons from "lucide-react"
 
@@ -154,10 +154,13 @@ interface PersonaPreview {
 
 export default function AgentNew({ templates, agents, org_email_domain }: Props) {
   const [picked, setPicked] = useState<Template>(BLANK)
-  const [mode, setMode] = useState<"blank" | "template">("blank")
+  const [mode, setMode] = useState<"blank" | "template" | "github">("blank")
   const [templateSearch, setTemplateSearch] = useState("")
   const [preview, setPreview] = useState<PersonaPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [githubUrl, setGithubUrl] = useState("")
+  const [deploying, setDeploying] = useState(false)
+  const [deployError, setDeployError] = useState<string | null>(null)
 
   const { data, setData, post, processing, transform } = useForm({
     name: randomAgentName(),
@@ -248,6 +251,19 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     choose(BLANK)
   }
 
+  // Deploy an agent-bundle/v1 straight from a public GitHub repo. The
+  // server fetches the tarball, validates against the spec, creates the
+  // agent, and redirects to its page — completely separate from the
+  // form below (the bundle IS the configuration).
+  function deployFromGithub() {
+    setDeployError(null)
+    setDeploying(true)
+    router.post("/agent_bundles", { github_url: githubUrl.trim() }, {
+      onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
+      onFinish: () => setDeploying(false),
+    })
+  }
+
   // Persona preview, fetched lazily per selected template. The show
   // endpoint's JSON shape already includes the three markdown fields.
   async function fetchPersonaPreview(slug: string) {
@@ -313,7 +329,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         {/* ── Starting point ─────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Starting point</Overline>
-          <div className="grid grid-cols-2 gap-2 max-w-md">
+          <div className="grid grid-cols-3 gap-2 max-w-2xl">
             <button
               type="button"
               onClick={chooseBlank}
@@ -342,7 +358,48 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
               </div>
               <p className="text-[11px] text-muted-foreground leading-snug">{templates.length} available — search, preview, pick.</p>
             </button>
+            <button
+              type="button"
+              onClick={() => setMode("github")}
+              className={`rounded-lg border p-3 text-left transition-colors ${
+                mode === "github" ? "border-foreground bg-muted/40" : "bg-card hover:border-foreground/30 hover:bg-muted/20"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <icons.Github className="size-4 shrink-0" />
+                <span className="font-medium text-xs">From GitHub</span>
+                {mode === "github" && <icons.Check className="size-3.5 ml-auto shrink-0" />}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">Deploy an agent-bundle repo in one step.</p>
+            </button>
           </div>
+
+          {mode === "github" && (
+            <div className="mt-3 rounded-lg border bg-card p-4 space-y-3 max-w-2xl">
+              <div className="space-y-2">
+                <Label htmlFor="github_url">GitHub repo URL</Label>
+                <Input
+                  id="github_url"
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  placeholder="https://github.com/owner/repo  or  …/tree/main/agents/sdr"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Public repo containing an <code className="font-mono">agent.yaml</code> bundle (agent-bundle/v1).
+                  Everything — persona, skills, knowledge, channels — comes from the bundle; the form below doesn't apply.
+                  Secrets and integrations are connected after deploy.
+                </p>
+              </div>
+              {deployError && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
+              )}
+              <div className="flex justify-end">
+                <Button type="button" onClick={deployFromGithub} disabled={deploying || !githubUrl.trim()}>
+                  {deploying ? "Deploying…" : "Deploy bundle"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {mode === "template" && (
             <div className="mt-3 rounded-lg border bg-card overflow-hidden">
@@ -451,6 +508,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
           )}
         </section>
 
+        {mode !== "github" && (<>
         {/* ── Identity ───────────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Identity</Overline>
@@ -645,6 +703,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
             {processing ? "Creating…" : "Create agent"}
           </Button>
         </div>
+        </>)}
       </form>
     </AppLayout>
   )
