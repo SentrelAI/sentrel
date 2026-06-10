@@ -78,6 +78,8 @@ class Users::OmniauthCallbacksController < Devise::OmniauthCallbacksController
       end
     end
 
+    SignupNotificationMailer.new_signup(user, source: "google_oauth").deliver_later
+
     user
   rescue ActiveRecord::RecordInvalid => e
     User.new(email: email).tap do |u|
