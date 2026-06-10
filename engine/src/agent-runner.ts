@@ -24,7 +24,7 @@ import { buildSecretsMcpServer } from "./tools/secrets.js";
 import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
 import { buildShareFileMcpServer } from "./tools/share-file.js";
 import { createSlackChannelMcpServer } from "./tools/slack-channel.js";
-import { detectIntegrationIntents, hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
+import { hasIntegrationIntent, routeIntegrationRequest, toolkitsForIntent } from "./integrations/intent-router.js";
 import { resolveCapabilities } from "./capabilities.js";
 import { SpanCollector, computeCostUSD } from "./observability/span-collector.js";
 import { scanCommand } from "./security/command-scanner.js";
@@ -1281,109 +1281,65 @@ function buildToolProfile(
   knowledgePrefetch?: { passages?: unknown[] } | null,
 ): ToolProfile {
   const caps = resolveCapabilities(agent);
-  // Tool profile decides what MCP servers to boot for this turn. Keep this
-  // strictly current-turn based; old conversation messages are too noisy and
-  // were causing simple replies to load tasks/integrations because the prior
-  // thread mentioned sheets, Apollo, email, etc.
+  // Tool profile decides what MCP servers to boot for this turn. We used
+  // to gate every capability behind a regex match on the current user
+  // message ("apollo", "calendar", "task", …). Two years of patching
+  // those regexes proved unwinnable: every follow-up phrasing the
+  // user invents that misses a keyword silently drops the entire MCP
+  // server. "okay can u give me details abvout thgeir conpanies" has
+  // no "apollo" keyword, so the Composio MCP doesn't load, so the
+  // model's Apollo tool calls fail — even though the conversation is
+  // OBVIOUSLY about Apollo.
+  //
+  // Trust the capability flag. If the user turned on integrations on
+  // the agent's edit page, the model gets the MCP tools and decides
+  // for itself whether to call them. The inner Composio routing
+  // layer (layer0/1/2) still picks WHICH toolkits to load based on
+  // available connections + recent usage — that part is signal-based,
+  // not keyword-based.
+  //
+  // Cost: ~1-3k extra MCP tool tokens per turn for capabilities the
+  // current turn doesn't end up using. Sonnet's 200k context absorbs
+  // it; the model leaves unused tools alone.
   const text = buildCurrentTurnText(job);
   const isInbound = job.type === "inbound_message";
   const isTask = job.type === "task_assignment";
   const isScheduled = job.type === "scheduled_task" || job.type === "heartbeat";
   const hasAttachments = Boolean(job.payload?.attachments?.length || job.payload?.attachment_ids?.length);
-  const integrationIntent = detectIntegrationIntents(text).length > 0 || /\b(connect|integration|oauth|apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|google[-\s]?meet|zoom|calendly|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin)\b/i.test(text);
-  const taskIntent = /\b(task|todo|delegate|assign|ask\s+(sam|alex|casper)|follow\s*up|progress|status update)\b/i.test(text);
-  const schedulingIntent = /\b(remind|reminder|schedul(e|ing)|calendar|meeting|appointment|cron|availab(le|ility)|free\s+time|free\s+slot|open\s+slot|time\s+slot|book(ing)?\s+(a|some|time)|find\s+(a\s+)?time|suggest\s+(some\s+)?times?|when\s+(are\s+you|can\s+we)|what\s+times?|every\s+(day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|tomorrow|next\s+week)\b/i.test(text);
-  const recallIntent = /\b(remember|previous|earlier|last time|what did (i|we|you)|history|conversation)\b/i.test(text);
-  const knowledgeIntent = /\b(policy|contract|document|docs|knowledge|playbook|uploaded|company info|handbook)\b/i.test(text);
-  const mediaIntent = hasAttachments || /\b(send|create|attach|voice|audio|image|screenshot|file|pdf|csv)\b/i.test(text);
-  const webIntent = /\b(find|search|research|look up|latest|current|today|news|website|web)\b/i.test(text);
-  const timeIntent = /\b(what time|current time|date today|what date|right now)\b/i.test(text);
-  const confirmationIntent = /\b(approve|approval|confirm|confirmation|permission|ask me first|ask before|before you|ok to|okay to|should i|would you like|reply yes|yes\/no|send it|publish it|post it|delete it|spend)\b/i.test(text);
-
-  // Retry / continuation cues. "fixed lets try again", "try again", "now do
-  // it", "retry", "ready", "go", "done". These are short messages that
-  // almost always mean "do what we were just doing" — without this, the
-  // current-turn-only intent detection drops the conversation onto the
-  // fastChat path and the agent loses its integration / task / web tools
-  // mid-flow. When this fires AND recent history shows the assistant was
-  // using a specific tool category, we re-enable that category for the
-  // current turn.
-  const continuationIntent = /\b(try\s+again|retry|fixed|done|ready|let'?s\s+go|go\s+ahead|now\s+do|ok\s+now|okay\s+now|works?\s+now|that'?s\s+fixed|same\s+thing|same\s+request)\b/i.test(text);
-  const recentHistoryText = history.slice(-4).map((m) => {
-    const c = (m as { content?: unknown }).content;
-    if (typeof c === "string") return c;
-    if (Array.isArray(c)) return c.map((p) => (typeof p === "string" ? p : (p as { text?: string })?.text || "")).join(" ");
-    return "";
-  }).join(" ");
-
-  // "Active topic" detection — distinct from continuationIntent.
-  // continuationIntent fires on "try again" / "retry" / "fixed" (short
-  // retry cues). activeTopic fires whenever the AGENT'S most recent
-  // assistant message used an integration toolkit AND the current user
-  // message is a follow-up ("more", "what about", "details on", "and
-  // their X", short referring questions). Without this, follow-up
-  // questions on Apollo results lose the Apollo MCP server because the
-  // current-turn text has no "apollo" keyword — and the entire
-  // composio/integrations/connections MCP block is skipped at line 1631.
-  const lastAssistantMessage = [...history].reverse().find((m) => (m as { role?: string }).role === "assistant");
-  const lastAssistantText = (() => {
-    if (!lastAssistantMessage) return "";
-    const c = (lastAssistantMessage as { content?: unknown }).content;
-    if (typeof c === "string") return c;
-    if (Array.isArray(c)) return c.map((p) => (typeof p === "string" ? p : (p as { text?: string })?.text || "")).join(" ");
-    return "";
-  })();
-  const followUpCues = /\b(more|details?|tell me about|what about|and (the|their|those|these)|give me|extra|additional|expand|elaborate|same|too)\b/i.test(text) && text.length < 250;
-  const lastAssistantUsedIntegration = /\b(apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin)\b/i.test(lastAssistantText);
-  const lastAssistantUsedScheduling = /\b(scheduled|calendar|meeting|appointment|booked|reminded|reminder)\b/i.test(lastAssistantText);
-  const lastAssistantUsedTask = /\b(task|delegated|assigned|created task|follow\s*up)\b/i.test(lastAssistantText);
-
-  const historyMentionsIntegration =
-    (continuationIntent && /\b(apollo|gmail|google\s*(sheets?|docs?|calendar|drive|meet)|hubspot|salesforce|pipedrive|stripe|slack|notion|airtable|github|vercel|linkedin|composio|connect(ed|ion)?|integration)\b/i.test(recentHistoryText)) ||
-    (followUpCues && lastAssistantUsedIntegration);
-  const historyMentionsTask =
-    (continuationIntent && /\b(task|delegate|assign|follow\s*up)\b/i.test(recentHistoryText)) ||
-    (followUpCues && lastAssistantUsedTask);
-  const historyMentionsScheduling =
-    (continuationIntent && /\b(remind|schedul|calendar|meeting|appointment|book|availab)\b/i.test(recentHistoryText)) ||
-    (followUpCues && lastAssistantUsedScheduling);
 
   const profile: ToolProfile = {
-    // Always include recall when capability is enabled. Earlier we gated this
-    // on a narrow regex ("remember", "previous", "last time", ...) which
-    // missed common phrasings like "summarize the emails I CC'd you on" or
-    // "what came in from the vendor". The cost is ~200 tokens of tool
-    // definition per run; the agent simply doesn't invoke it when not
-    // needed. Far better than silently lacking the ability to find
-    // messages the user can see in their inbox.
-    recall: Boolean(caps.recall.enabled),
-    sendMedia: Boolean(caps.send_media.enabled && (isTask || isScheduled || mediaIntent)),
-    scheduling: Boolean(caps.scheduling.enabled && (isTask || isScheduled || schedulingIntent || historyMentionsScheduling)),
-    tasks: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || historyMentionsTask)),
-    approvals: Boolean(caps.tasks.enabled && (isTask || isScheduled || taskIntent || integrationIntent || confirmationIntent)),
-    knowledge: Boolean(caps.knowledge_base.enabled && (isTask || isScheduled || knowledgeIntent || (knowledgePrefetch?.passages?.length ?? 0) > 0)),
-    // Scheduling intent (meeting/appointment/availability) implies we need
-    // calendar tools — most agents that handle inbound mail need to look at
-    // a calendar to answer "when can we meet?". Codex's prior heuristic gated
-    // this on explicit toolkit names ("google calendar"), which missed the
-    // common case of "find some time on google meet" / "book a slot".
-    integrations: Boolean(caps.integrations.enabled && (isTask || isScheduled || integrationIntent || schedulingIntent || historyMentionsIntegration)),
-    fastChat: false,
+    recall:       Boolean(caps.recall.enabled),
+    sendMedia:    Boolean(caps.send_media.enabled),
+    scheduling:   Boolean(caps.scheduling.enabled),
+    tasks:        Boolean(caps.tasks.enabled),
+    approvals:    Boolean(caps.tasks.enabled),
+    knowledge:    Boolean(caps.knowledge_base.enabled),
+    integrations: Boolean(caps.integrations.enabled),
+    fastChat:     false,
   };
 
+  // fastChat = "trivial inbound, skip the heavy MCP stack." Signal-based,
+  // no keyword regexes. Fires when ALL of:
+  //   - it's an inbound user message
+  //   - no attachments
+  //   - the message is very short (greeting / acknowledgement territory)
+  //   - the last 2 turns of history don't show the agent using tools
+  //     (so this isn't a follow-up to a tool-driven exchange)
+  // For everything else we leave the full MCP stack on and let the
+  // model decide what to call.
+  const trimmedLen = text.trim().length;
+  const recentAssistantMessages = history.slice(-4).filter((m) => (m as { role?: string }).role === "assistant");
+  const recentAgentUsedTools = recentAssistantMessages.some((m) => {
+    const c = (m as { content?: unknown }).content;
+    if (!Array.isArray(c)) return false;
+    return c.some((p) => typeof p === "object" && p !== null && ((p as { type?: string }).type === "tool_use" || (p as { type?: string }).type === "tool_result"));
+  });
   profile.fastChat = Boolean(
     isInbound &&
     !hasAttachments &&
-    !profile.recall &&
-    !profile.sendMedia &&
-    !profile.scheduling &&
-    !profile.tasks &&
-    !profile.knowledge &&
-    !profile.integrations &&
-    !webIntent &&
-    !timeIntent &&
-    !confirmationIntent &&
-    !continuationIntent
+    trimmedLen > 0 &&
+    trimmedLen < 25 &&
+    !recentAgentUsedTools,
   );
 
   return profile;
