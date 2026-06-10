@@ -143,8 +143,21 @@ const BLANK: Template = {
   variables: [],
 }
 
+// Persona preview payload fetched on demand from /agent_templates/:slug.json
+// when a template row is selected — keeps the page payload small even with
+// 100+ templates in the org.
+interface PersonaPreview {
+  identity_md: string | null
+  personality_md: string | null
+  instructions_md: string | null
+}
+
 export default function AgentNew({ templates, agents, org_email_domain }: Props) {
   const [picked, setPicked] = useState<Template>(BLANK)
+  const [mode, setMode] = useState<"blank" | "template">("blank")
+  const [templateSearch, setTemplateSearch] = useState("")
+  const [preview, setPreview] = useState<PersonaPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   const { data, setData, post, processing, transform } = useForm({
     name: randomAgentName(),
@@ -201,7 +214,10 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     const slug = new URLSearchParams(window.location.search).get("template")
     if (!slug) return
     const t = templates.find((x) => x.slug === slug)
-    if (t) choose(t)
+    if (t) {
+      setMode("template")
+      choose(t)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -223,7 +239,41 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
       },
       skill_slugs_override: t.suggested_skill_slugs,
     })
+    if (t.slug) fetchPersonaPreview(t.slug)
   }
+
+  function chooseBlank() {
+    setMode("blank")
+    setPreview(null)
+    choose(BLANK)
+  }
+
+  // Persona preview, fetched lazily per selected template. The show
+  // endpoint's JSON shape already includes the three markdown fields.
+  async function fetchPersonaPreview(slug: string) {
+    setPreviewLoading(true)
+    setPreview(null)
+    try {
+      const res = await fetch(`/agent_templates/${slug}.json`, { headers: { Accept: "application/json" } })
+      if (!res.ok) return
+      const body = await res.json()
+      setPreview({
+        identity_md: body.identity_md || null,
+        personality_md: body.personality_md || null,
+        instructions_md: body.instructions_md || null,
+      })
+    } catch {
+      // Preview is best-effort — selection already applied.
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const filteredTemplates = templateSearch.trim()
+    ? templates.filter((t) =>
+        [t.name, t.role, t.description].join(" ").toLowerCase().includes(templateSearch.trim().toLowerCase()),
+      )
+    : templates
 
   function handleNameChange(name: string) {
     setData({ ...data, name, slug: slugify(name) })
@@ -250,8 +300,6 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     post(agentsPath())
   }
 
-  const allCards = [BLANK, ...templates]
-
   return (
     <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Agents", href: agentsPath() }, { label: "New" }]}>
       <Head title="New agent" />
@@ -261,52 +309,144 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         description="Pick a starting point, adjust anything below, hit Create. Identity and instructions are editable on the agent's Identity tab after creation."
       />
 
-      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {/* ── Starting point ─────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Starting point</Overline>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {allCards.map((t) => {
-              const Icon = (icons as any)[t.icon] || icons.User
-              const active = picked.slug === t.slug && picked.name === t.name
-              return (
-                <button
-                  key={t.slug || "__blank__"}
-                  type="button"
-                  onClick={() => choose(t)}
-                  className={`rounded-lg border p-3 text-left transition-colors ${
-                    active
-                      ? "border-foreground bg-muted/40"
-                      : "bg-card hover:border-foreground/30 hover:bg-muted/20"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="size-6 rounded-sm bg-muted flex items-center justify-center shrink-0">
-                      <Icon className="size-3.5" />
-                    </div>
-                    <span className="font-medium text-xs truncate">{t.name}</span>
-                    {active && <icons.Check className="size-3.5 ml-auto shrink-0" />}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">
-                    {t.slug ? t.role : "Start from scratch"}
-                  </p>
-                </button>
-              )
-            })}
+          <div className="grid grid-cols-2 gap-2 max-w-md">
+            <button
+              type="button"
+              onClick={chooseBlank}
+              className={`rounded-lg border p-3 text-left transition-colors ${
+                mode === "blank" ? "border-foreground bg-muted/40" : "bg-card hover:border-foreground/30 hover:bg-muted/20"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <icons.SquarePen className="size-4 shrink-0" />
+                <span className="font-medium text-xs">Blank</span>
+                {mode === "blank" && <icons.Check className="size-3.5 ml-auto shrink-0" />}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">Start from scratch — write the persona after creation.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("template")}
+              className={`rounded-lg border p-3 text-left transition-colors ${
+                mode === "template" ? "border-foreground bg-muted/40" : "bg-card hover:border-foreground/30 hover:bg-muted/20"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <icons.LayoutGrid className="size-4 shrink-0" />
+                <span className="font-medium text-xs">From a template</span>
+                {mode === "template" && <icons.Check className="size-3.5 ml-auto shrink-0" />}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">{templates.length} available — search, preview, pick.</p>
+            </button>
           </div>
 
-          {(picked.suggested_skill_slugs.length > 0 || (picked.suggested_integrations?.length ?? 0) > 0) && (
-            <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2.5 text-xs">
-              {picked.suggested_skill_slugs.length > 0 && (
-                <div className="text-muted-foreground">
-                  <span className="font-medium text-foreground">Skills:</span> {picked.suggested_skill_slugs.join(", ")}
+          {mode === "template" && (
+            <div className="mt-3 rounded-lg border bg-card overflow-hidden">
+              <div className="border-b px-3 py-2">
+                <div className="relative">
+                  <icons.Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                  <Input
+                    value={templateSearch}
+                    onChange={(e) => setTemplateSearch(e.target.value)}
+                    placeholder={`Search ${templates.length} templates by name, role, or description…`}
+                    className="h-8 pl-7 text-xs"
+                  />
                 </div>
-              )}
-              {(picked.suggested_integrations?.length ?? 0) > 0 && (
-                <div className="text-muted-foreground mt-0.5">
-                  <span className="font-medium text-foreground">Integrations to connect:</span> {(picked.suggested_integrations || []).map((s) => s.replace(/_/g, " ")).join(", ")}
+              </div>
+              <div className="grid grid-cols-[16rem_1fr] divide-x">
+                {/* List */}
+                <div className="max-h-80 overflow-y-auto">
+                  {filteredTemplates.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground text-center py-8">No templates match "{templateSearch}".</p>
+                  )}
+                  {filteredTemplates.map((t) => {
+                    const Icon = (icons as any)[t.icon] || icons.User
+                    const active = picked.slug === t.slug
+                    return (
+                      <button
+                        key={t.slug}
+                        type="button"
+                        onClick={() => choose(t)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-left border-b last:border-b-0 transition-colors ${
+                          active ? "bg-muted/50" : "hover:bg-muted/25"
+                        }`}
+                      >
+                        <div className="size-6 rounded-sm bg-muted flex items-center justify-center shrink-0">
+                          <Icon className="size-3" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-xs truncate">{t.name}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{t.role}</div>
+                        </div>
+                        {active && <icons.Check className="size-3.5 shrink-0" />}
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
+
+                {/* Preview */}
+                <div className="max-h-80 overflow-y-auto p-3">
+                  {!picked.slug ? (
+                    <p className="text-[11px] text-muted-foreground text-center py-8">Select a template on the left to preview it.</p>
+                  ) : (
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <div className="font-semibold text-sm">{picked.name}</div>
+                        <div className="text-muted-foreground">{picked.role}</div>
+                      </div>
+                      {picked.description && <p className="text-muted-foreground leading-relaxed">{picked.description}</p>}
+                      {picked.suggested_skill_slugs.length > 0 && (
+                        <div>
+                          <div className="font-medium mb-1">Skills</div>
+                          <div className="flex flex-wrap gap-1">
+                            {picked.suggested_skill_slugs.map((s) => (
+                              <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{s}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {(picked.suggested_integrations?.length ?? 0) > 0 && (
+                        <div>
+                          <div className="font-medium mb-1">Integrations to connect</div>
+                          <div className="flex flex-wrap gap-1">
+                            {(picked.suggested_integrations || []).map((s) => (
+                              <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{s.replace(/_/g, " ")}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {picked.suggested_model && (
+                        <div className="text-muted-foreground">
+                          <span className="font-medium text-foreground">Model:</span> <span className="font-mono text-[11px]">{picked.suggested_model}</span>
+                        </div>
+                      )}
+                      {previewLoading && (
+                        <p className="text-[11px] text-muted-foreground italic">Loading persona…</p>
+                      )}
+                      {preview && (preview.identity_md || preview.personality_md || preview.instructions_md) && (
+                        <div className="space-y-2">
+                          {([
+                            ["Identity", preview.identity_md],
+                            ["Personality", preview.personality_md],
+                            ["Instructions", preview.instructions_md],
+                          ] as const).map(([label, md]) =>
+                            md ? (
+                              <details key={label} className="rounded border bg-background">
+                                <summary className="cursor-pointer px-2 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground">{label}</summary>
+                                <pre className="whitespace-pre-wrap px-2 pb-2 text-[11px] leading-relaxed">{md}</pre>
+                              </details>
+                            ) : null,
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </section>
