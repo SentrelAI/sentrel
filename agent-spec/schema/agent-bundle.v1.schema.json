@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alchemy.scribemd.ai/schemas/agent-bundle.v1.schema.json",
+  "title": "Agent Bundle manifest (agent.yaml)",
+  "type": "object",
+  "required": ["spec", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "const": "agent-bundle/v1" },
+    "name": { "type": "string", "minLength": 1 },
+    "role": { "type": "string" },
+    "description": { "type": "string" },
+
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mission"],
+      "properties": {
+        "mission": { "type": "string", "minLength": 1 },
+        "kpis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "additionalProperties": { "type": "number" }
+          }
+        },
+        "definition_of_done": { "type": "string" }
+      }
+    },
+
+    "persona": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "personality": { "$ref": "#/$defs/relativePath" },
+        "identity": { "$ref": "#/$defs/relativePath" },
+        "instructions": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string" },
+        "id": { "type": "string" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "max_tokens": { "type": "integer", "minimum": 1 },
+        "thinking_level": { "enum": ["low", "medium", "high"] }
+      }
+    },
+
+    "skills": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relativePath" }
+    },
+
+    "knowledge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": { "$ref": "#/$defs/relativePath" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "minLength": 1 },
+          "config": { "$ref": "#/$defs/noSecretValues" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+
+    "integrations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["service"],
+            "properties": {
+              "service": { "type": "string", "minLength": 1 },
+              "why": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "name"],
+            "properties": {
+              "type": { "const": "mcp" },
+              "name": { "type": "string", "minLength": 1 },
+              "transport": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind"],
+                "properties": {
+                  "kind": { "enum": ["http", "sse", "stdio"] },
+                  "url": { "type": "string", "format": "uri" },
+                  "command": { "type": "string" }
+                }
+              },
+              "why": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+
+    "secrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+
+    "permissions": {
+      "type": "object",
+      "additionalProperties": { "enum": ["block", "ask", "auto"] }
+    }
+  },
+  "patternProperties": {
+    "^x-": {}
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "pattern": "^\\./",
+      "not": { "pattern": "\\.\\." },
+      "description": "Relative path inside the bundle. Must start with ./ and may not traverse upward."
+    },
+    "noSecretValues": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "pattern": "(token|secret|password|api_?key|private_key)"
+        }
+      },
+      "description": "Lowercase fast-path only; the validator performs the authoritative case-insensitive deep scan."
+    }
+  }
+}

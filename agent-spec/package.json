@@ -1,0 +1,17 @@
+{
+  "name": "@alchemy/agent-spec",
+  "version": "0.1.0",
+  "description": "Agent Bundle spec (agent-bundle/v1) — schema, validator, and examples. The Dockerfile of AI agents.",
+  "type": "module",
+  "bin": {
+    "agent-spec": "bin/validate.mjs"
+  },
+  "scripts": {
+    "validate:examples": "node bin/validate.mjs examples/sdr"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.9.0"
+  }
+}

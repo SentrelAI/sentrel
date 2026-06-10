@@ -1,0 +1,76 @@
+spec: agent-bundle/v1
+name: Sarah
+role: Sales Development Rep
+description: >-
+  Outbound SDR. Builds targeted lead lists with Apollo, enriches and
+  personalizes with LinkedIn and news research, runs warm sequences
+  through Instantly, and books qualified meetings.
+
+# What this agent exists to do. Runtimes surface this in the system
+# prompt and use kpis to report progress.
+goal:
+  mission: Book qualified meetings with decision-makers in our ICP.
+  kpis:
+    - meetings_booked_per_week: 5
+    - positive_reply_rate_pct: 8
+  definition_of_done: >-
+    A meeting is "booked" when the prospect confirms a calendar slot
+    with the account executive — not when they merely reply.
+
+persona:
+  personality: ./personality.md
+  identity: ./identity.md
+  instructions: ./instructions.md
+
+model:
+  provider: anthropic
+  id: claude-sonnet-4-6
+  temperature: 0.7
+
+skills:
+  - ./skills/apollo-enrichment
+  - ./skills/instantly-outreach
+  - ./skills/linkedin-prospecting
+  - ./skills/news-research
+
+# Reference material shipped with the bundle. Runtimes load these into
+# the agent's knowledge base / context on install.
+knowledge:
+  - path: ./knowledge/pitch-deck.md
+    why: The product pitch — source of truth for every value claim in outreach.
+
+channels:
+  - type: email
+    config:
+      address_hint: "sarah@{{company_domain}}"
+    why: Primary identity for outreach; replies land here.
+
+integrations:
+  - service: apollo
+    why: Lead search and contact/company enrichment.
+  - service: instantly
+    why: Warm email sending — sequences, deliverability, inbox rotation.
+  - type: mcp
+    name: linkedin
+    transport: { kind: http, url: "https://mcp.linkedin.example/v1" }
+    why: Prospect research and social touches.
+  - type: mcp
+    name: perplexity
+    transport: { kind: http, url: "https://api.perplexity.ai/mcp" }
+    why: News research for timely, relevant personalization hooks.
+
+# Names only — values are provided at deploy time, never in the bundle.
+secrets:
+  - name: APOLLO_API_KEY
+    why: Apollo REST access for search + enrichment.
+  - name: INSTANTLY_API_KEY
+    why: Instantly v2 API for campaigns, leads, and warmup analytics.
+  - name: PERPLEXITY_API_KEY
+    why: News lookups for personalization.
+
+permissions:
+  send_email: ask            # every outbound email needs human approval
+  cold_email_bulk: ask       # adding leads to a live sequence needs approval
+  reply_email: auto          # replying inside an existing thread is fine
+  book_meeting: auto         # booking is the goal — don't gate it
+  delete_data: block
