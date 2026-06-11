@@ -27,7 +27,8 @@ module AgentBundles
     # the merge so edited text gets the same variable treatment.
     def initialize(manifest:, user:, organization:, name: nil, slug: nil,
                    role: nil, model: nil, goal: nil, persona: nil,
-                   schedules: nil, platform_skill_slugs: nil)
+                   schedules: nil, platform_skill_slugs: nil,
+                   integration_choices: nil)
       @m = manifest
       @user = user
       @org = organization
@@ -43,6 +44,9 @@ module AgentBundles
       # Extra PLATFORM skills the user ticked in the wizard — canonical
       # seeds only, looked up by slug at install.
       @platform_skill_slugs = Array(platform_skill_slugs).map(&:to_s).reject(&:blank?).uniq
+      # For any_of integration groups: the service the user picked per
+      # group in the wizard. Drives the connect-next notices.
+      @integration_choices = Array(integration_choices).map(&:to_s).reject(&:blank?).uniq
       @notices = []
     end
 
@@ -290,7 +294,15 @@ module AgentBundles
     end
 
     def collect_notices
+      # Plain services + the user's pick from each any_of group. Groups
+      # with no pick (e.g. JSON API deploys) fall back to the first
+      # alternative so the notice still names something actionable.
       services = @m.integrations.filter_map { |i| i["service"] }
+      @m.integrations.select { |i| i["any_of"].is_a?(Array) }.each do |group|
+        chosen = (@integration_choices & group["any_of"].map(&:to_s)).first
+        services << (chosen || group["any_of"].first.to_s)
+      end
+      services = services.uniq
       @notices << "Connect at /integrations: #{services.join(', ')}" if services.any?
       mcp = @m.integrations.select { |i| i["type"] == "mcp" }.filter_map { |i| i["name"] }
       @notices << "MCP integrations aren't supported yet (skipped): #{mcp.join(', ')}" if mcp.any?

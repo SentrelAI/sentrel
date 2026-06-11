@@ -116,6 +116,19 @@
           {
             "type": "object",
             "additionalProperties": false,
+            "required": ["any_of"],
+            "properties": {
+              "any_of": {
+                "type": "array",
+                "minItems": 2,
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "why": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
             "required": ["type", "name"],
             "properties": {
               "type": { "const": "mcp" },

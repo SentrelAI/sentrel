@@ -75,6 +75,7 @@ class AgentBundlesController < ApplicationController
       persona: unsafe_hash(params[:persona]),
       schedules: unsafe_array(params[:schedules]),
       platform_skill_slugs: params[:platform_skill_slugs],
+      integration_choices: params[:integration_choices],
     ).call
 
     agent = result.agent
@@ -165,7 +166,14 @@ class AgentBundlesController < ApplicationController
       channels: manifest.channels.map { |c| { type: c["type"], why: c["why"] } },
       schedules: manifest.schedules.map { |s| { name: s["name"], cron: s["cron"], timezone: s["timezone"], why: s["why"], instruction: s["instruction"] } },
       integrations: manifest.integrations.map { |i|
-        { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", why: i["why"] }
+        if i["any_of"].is_a?(Array)
+          # Alternatives group — the agent needs ANY ONE of these
+          # (e.g. a calendar: googlecalendar | outlook | calendly).
+          # The wizard renders a picker with live connected-status.
+          { kind: "choice", options: i["any_of"].map(&:to_s), why: i["why"] }
+        else
+          { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", why: i["why"] }
+        end
       },
       secrets: manifest.secret_names,
       permissions: manifest.permissions,

@@ -36,7 +36,10 @@ interface Preview {
   knowledge: Array<{ path: string; why: string | null; bytes: number }>
   channels: Array<{ type: string; why: string | null }>
   schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null; instruction: string | null }>
-  integrations: Array<{ service: string; kind: "composio" | "mcp"; why: string | null }>
+  integrations: Array<
+    | { service: string; kind: "composio" | "mcp"; why: string | null; options?: never }
+    | { kind: "choice"; options: string[]; why: string | null; service?: never }
+  >
   secrets: string[]
   permissions: Record<string, string>
 }
@@ -111,18 +114,48 @@ export default function DeployAgent({ source, preview, error, connected_services
       instruction: s.instruction || "",
     })),
   )
+  // any_of integration groups: the user picks ONE alternative per group
+  // (e.g. which calendar to use). Default = the first option that's
+  // already connected in the org, else the first option.
+  const choiceGroups = (preview?.integrations || []).filter((i) => i.kind === "choice") as Array<{ kind: "choice"; options: string[]; why: string | null }>
+  const initialConnected = new Set(connected_services.map((s) => s.toLowerCase()))
+  const [integrationChoices, setIntegrationChoices] = useState<string[]>(
+    choiceGroups.map((g) => g.options.find((o) => initialConnected.has(o.toLowerCase())) || g.options[0]),
+  )
+
   // Platform skills pre-ticked when their required integration is part of
-  // the bundle (e.g. calendar-booking for googlecalendar) — they'd arrive
-  // via the integration auto-installer anyway; showing them makes the
-  // agent's final skill set visible and adjustable.
-  const bundleServices = new Set((preview?.integrations || []).filter((i) => i.kind === "composio").map((i) => i.service.toLowerCase()))
+  // the bundle — plain services plus the chosen alternative from each
+  // any_of group. Changing a choice swaps the auto-ticked skills for
+  // that group's options without touching manual picks elsewhere.
+  const plainServices = (preview?.integrations || []).filter((i) => i.kind === "composio").map((i) => i.service.toLowerCase())
+  const effectiveServices = new Set([...plainServices, ...integrationChoices.map((c) => c.toLowerCase())])
   const [pickedPlatformSkills, setPickedPlatformSkills] = useState<Set<string>>(
     new Set(
       platform_skills
-        .filter((s) => s.requires_connections.some((c) => bundleServices.has(c.toLowerCase())))
+        .filter((s) => s.requires_connections.some((c) => effectiveServices.has(c.toLowerCase())))
         .map((s) => s.slug),
     ),
   )
+
+  function chooseIntegration(groupIdx: number, service: string) {
+    const group = choiceGroups[groupIdx]
+    const previous = integrationChoices[groupIdx]
+    setIntegrationChoices(integrationChoices.map((c, i) => (i === groupIdx ? service : c)))
+    // Swap auto-ticked skills: drop skills tied ONLY to other options of
+    // this group, add skills matching the new choice.
+    const groupOptions = new Set(group.options.map((o) => o.toLowerCase()))
+    setPickedPlatformSkills((prev) => {
+      const next = new Set(prev)
+      for (const s of platform_skills) {
+        const reqs = s.requires_connections.map((c) => c.toLowerCase())
+        const tiedToGroup = reqs.some((c) => groupOptions.has(c))
+        if (!tiedToGroup) continue
+        if (reqs.includes(service.toLowerCase())) next.add(s.slug)
+        else if (reqs.includes(previous?.toLowerCase() || "")) next.delete(s.slug)
+      }
+      return next
+    })
+  }
 
   function togglePlatformSkill(slug: string) {
     setPickedPlatformSkills((prev) => {
@@ -235,6 +268,7 @@ export default function DeployAgent({ source, preview, error, connected_services
       },
       schedules: schedules.filter((s) => s.name.trim() && s.cron.trim() && s.instruction.trim()),
       platform_skill_slugs: [...pickedPlatformSkills],
+      integration_choices: integrationChoices,
       save_as_template: saveAsTemplate ? "1" : "0",
     }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
@@ -572,25 +606,78 @@ export default function DeployAgent({ source, preview, error, connected_services
                       <span className="text-[10px] text-muted-foreground ml-auto shrink-0">provisioned at deploy</span>
                     </div>
                   ))}
-                  {preview.integrations.map((i) => {
-                    const isConnected = connected.has(i.service.toLowerCase())
+                  {preview.integrations
+                    .filter((i): i is { service: string; kind: "composio" | "mcp"; why: string | null } => i.kind !== "choice")
+                    .map((i) => {
+                      const isConnected = connected.has(i.service.toLowerCase())
+                      return (
+                        <div key={`${i.kind}-${i.service}`} className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                          <Plug className="size-3.5 text-muted-foreground" />
+                          <span className="font-medium">{i.service}</span>
+                          <Badge variant="outline" className="text-[9px]">{i.kind}</Badge>
+                          {i.why && <span className="text-[10px] text-muted-foreground truncate">— {i.why}</span>}
+                          <span className="ml-auto shrink-0">
+                            {i.kind === "mcp" ? (
+                              <span className="text-[10px] text-muted-foreground">not supported yet</span>
+                            ) : isConnected ? (
+                              <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
+                            ) : (
+                              <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === i.service} onClick={() => connectIntegration(i.service)}>
+                                {connectBusy === i.service ? "Opening…" : "Connect"}
+                              </Button>
+                            )}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  {/* any_of groups: the bundle needs ANY ONE of these (e.g. a
+                      calendar). Pick which to use — connected options first-
+                      class; if none is connected yet, nudge to connect one. */}
+                  {choiceGroups.map((group, gi) => {
+                    const chosen = integrationChoices[gi]
+                    const anyConnected = group.options.some((o) => connected.has(o.toLowerCase()))
                     return (
-                      <div key={`${i.kind}-${i.service}`} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                        <Plug className="size-3.5 text-muted-foreground" />
-                        <span className="font-medium">{i.service}</span>
-                        <Badge variant="outline" className="text-[9px]">{i.kind}</Badge>
-                        {i.why && <span className="text-[10px] text-muted-foreground truncate">— {i.why}</span>}
-                        <span className="ml-auto shrink-0">
-                          {i.kind === "mcp" ? (
-                            <span className="text-[10px] text-muted-foreground">not supported yet</span>
-                          ) : isConnected ? (
-                            <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
-                          ) : (
-                            <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === i.service} onClick={() => connectIntegration(i.service)}>
-                              {connectBusy === i.service ? "Opening…" : "Connect"}
-                            </Button>
-                          )}
-                        </span>
+                      <div key={`choice-${gi}`} className="px-4 py-3 text-xs space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Plug className="size-3.5 text-muted-foreground" />
+                          <span className="font-medium">Pick one</span>
+                          <Badge variant="outline" className="text-[9px]">any of {group.options.length}</Badge>
+                          {group.why && <span className="text-[10px] text-muted-foreground truncate">— {group.why}</span>}
+                        </div>
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          {group.options.map((service) => {
+                            const isConnected = connected.has(service.toLowerCase())
+                            const isChosen = chosen === service
+                            return (
+                              <button
+                                key={service}
+                                type="button"
+                                onClick={() => chooseIntegration(gi, service)}
+                                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
+                                  isChosen ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                                }`}
+                              >
+                                <span className={`size-3 rounded-full border shrink-0 ${isChosen ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
+                                <span className="font-medium truncate">{service}</span>
+                                <span className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {isConnected ? (
+                                    <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
+                                  ) : (
+                                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === service} onClick={() => { chooseIntegration(gi, service); connectIntegration(service) }}>
+                                      {connectBusy === service ? "Opening…" : "Connect"}
+                                    </Button>
+                                  )}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {!anyConnected && (
+                          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                            <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                            <span>None of these is connected yet. The agent needs at least one — connect it now, or after deploy from the agent's page.</span>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
