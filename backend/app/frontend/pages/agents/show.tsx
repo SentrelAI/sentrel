@@ -21,8 +21,10 @@ import {
   Save,
   Check,
   Archive,
+  ShieldCheck,
 } from "lucide-react"
-import { useState, useCallback, useRef, useEffect } from "react"
+import { toast } from "sonner"
+import { Fragment, useState, useCallback, useRef, useEffect } from "react"
 import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown, Plug } from "lucide-react"
 
 function formatBytes(bytes: number): string {
@@ -111,6 +113,23 @@ interface MessageItem {
   sender?: { name: string | null; email: string | null; kind: string } | null
 }
 
+// An approval raised by a message in the open thread — engine stamps
+// message_id on every PendingApproval, so the detail pane can render the
+// decision inline right where the blocked action lives.
+interface InboxApproval {
+  id: number
+  message_id: number | null
+  tool_name: string
+  tool_input: Record<string, unknown>
+  context: string | null
+  status: string
+  summary?: string | null
+  payload_type?: string | null
+  options?: Array<{ label: string; value: string }> | null
+  risk_tier?: string | null
+  created_at: string
+}
+
 interface EmailSender {
   name: string | null
   email: string | null
@@ -180,6 +199,7 @@ interface Props {
     allow_amendment: boolean
     created_at: string
   }>
+  pending_approvals_by_conversation?: Record<number, number>
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
@@ -456,7 +476,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -525,6 +545,11 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
   }, [])
   const [channelFilter, setChannelFilter] = useState<string>("all")
   const [convMessages, setConvMessages] = useState<MessageItem[]>([])
+  const [convApprovals, setConvApprovals] = useState<InboxApproval[]>([])
+  // Live copy of the server's conv_id → pending-approval count, so badge
+  // counts drop immediately when a decision lands (no page reload).
+  const [pendingByConv, setPendingByConv] = useState<Record<number, number>>(pending_approvals_by_conversation)
+  const [approvalBusy, setApprovalBusy] = useState<number | null>(null)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerSeed, setComposerSeed] = useState<{
@@ -551,6 +576,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
       const res = await fetch(`/agents/${agent.id}/conversations/${conv.id}.json`)
       const data = await res.json()
       setConvMessages(data.messages || [])
+      setConvApprovals(data.approvals || [])
       // Enrich the fallback with the server's view of the conversation
       // (channel, subject, contact info). Critical for deep-links where
       // we only had a numeric id and no cached summary to seed from.
@@ -559,8 +585,48 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
       }
     } catch {
       setConvMessages([])
+      setConvApprovals([])
     }
     setLoadingMessages(false)
+  }
+
+  // Silent refetch — same endpoint as selectConversation but without the
+  // loading flicker. Used after an approval decision so the sent message
+  // (executed async server-side) shows up in the thread.
+  async function refreshConversation(id: number) {
+    try {
+      const res = await fetch(`/agents/${agent.id}/conversations/${id}.json`)
+      const data = await res.json()
+      setConvMessages(data.messages || [])
+      setConvApprovals(data.approvals || [])
+    } catch {
+      // Leave the pane as-is; the user can reselect the thread.
+    }
+  }
+
+  async function decideApproval(approval: InboxApproval, status: "approved" | "rejected", decision?: string) {
+    setApprovalBusy(approval.id)
+    try {
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      const res = await fetch(`/pending_approvals/${approval.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
+        body: JSON.stringify(decision ? { status, decision } : { status }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setConvApprovals((prev) => prev.map((a) => (a.id === approval.id ? { ...a, status } : a)))
+      const convId = selectedConvId
+      if (convId != null) {
+        setPendingByConv((prev) => ({ ...prev, [convId]: Math.max(0, (prev[convId] || 1) - 1) }))
+        // Approved actions execute async (e.g. the email send job) — give
+        // it a beat, then refetch so the sent message lands in the thread.
+        if (status === "approved") setTimeout(() => refreshConversation(convId), 2000)
+      }
+      toast.success(status === "approved" ? "Approved — the agent is proceeding" : "Rejected")
+    } catch {
+      toast.error("Couldn't submit the decision — try again")
+    }
+    setApprovalBusy(null)
   }
 
   // Deep-link bootstrap: if the URL carried `?conv=<id>` on first paint,
@@ -768,6 +834,11 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                 {count > 1 && (
                                   <span className="text-[10px] text-muted-foreground shrink-0">· {count}</span>
                                 )}
+                                {(pendingByConv[email.conversation_id] || 0) > 0 && (
+                                  <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-px text-[9px] font-medium text-amber-600 dark:text-amber-400 shrink-0">
+                                    <ShieldCheck className="size-2.5" /> approval
+                                  </span>
+                                )}
                               </div>
                               <span className="text-[10px] text-muted-foreground shrink-0">
                                 {formatSmartDate(email.created_at)}
@@ -805,7 +876,14 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-medium text-sm truncate">{conv.contact_name || conv.contact_email || conv.contact_phone || "Unknown"}</span>
-                              <span className="text-[10px] text-muted-foreground shrink-0">{formatSmartDate(conv.updated_at)}</span>
+                              <span className="flex items-center gap-1.5 shrink-0">
+                                {(pendingByConv[conv.id] || 0) > 0 && (
+                                  <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/15 px-1.5 py-px text-[9px] font-medium text-amber-600 dark:text-amber-400">
+                                    <ShieldCheck className="size-2.5" /> approval
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-muted-foreground">{formatSmartDate(conv.updated_at)}</span>
+                              </span>
                             </div>
                             {conv.subject && <p className="text-xs font-medium mt-0.5 truncate">{conv.subject}</p>}
                             {conv.last_message_preview && (
@@ -1047,22 +1125,29 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                         // note so the eye scans straight down the actual email
                         // exchange instead of mixing them in as peer cards.
                         const isThought = isEmailThread && msg.channel !== "email"
+                        // Approvals raised BY this message render right under
+                        // it — the decision lives where the blocked action is.
+                        const msgApprovals = convApprovals.filter((a) => a.message_id === msg.id)
                         if (isThought) {
                           return (
-                            <div
-                              key={msg.id}
-                              className="ml-3 border-l-2 border-border/60 pl-3 py-1 text-[11px] italic text-muted-foreground/80 whitespace-pre-wrap leading-snug"
-                            >
-                              <span className="not-italic font-medium text-muted-foreground/70 mr-1.5">
-                                {displayName} ·
-                              </span>
-                              {msg.content}
-                            </div>
+                            <Fragment key={msg.id}>
+                              <div
+                                className="ml-3 border-l-2 border-border/60 pl-3 py-1 text-[11px] italic text-muted-foreground/80 whitespace-pre-wrap leading-snug"
+                              >
+                                <span className="not-italic font-medium text-muted-foreground/70 mr-1.5">
+                                  {displayName} ·
+                                </span>
+                                {msg.content}
+                              </div>
+                              {msgApprovals.map((a) => (
+                                <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
+                              ))}
+                            </Fragment>
                           )
                         }
                         return (
+                          <Fragment key={msg.id}>
                           <div
-                            key={msg.id}
                             className={`rounded-lg border p-3 shadow-sm ${
                               isOut
                                 ? "border-blue-500/20 bg-blue-500/[0.04]"
@@ -1102,9 +1187,21 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                               </div>
                             )}
                           </div>
+                          {msgApprovals.map((a) => (
+                            <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
+                          ))}
+                          </Fragment>
                         )
                       })}
-                      {convMessages.length === 0 && <div className="text-center text-xs text-muted-foreground py-8">No messages</div>}
+                      {/* Approvals whose triggering message isn't in this
+                          thread render at the bottom so nothing pending is
+                          ever invisible. */}
+                      {convApprovals
+                        .filter((a) => !convMessages.some((m) => m.id === a.message_id))
+                        .map((a) => (
+                          <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
+                        ))}
+                      {convMessages.length === 0 && convApprovals.length === 0 && <div className="text-center text-xs text-muted-foreground py-8">No messages</div>}
                     </div>
                   </>
                 )
@@ -2633,6 +2730,120 @@ function MissingIntegrationsCallout({
             <span className="text-[10px] text-muted-foreground">{i.category}</span>
           </a>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// Inline approval card for the inbox detail pane — a compact version of the
+// /pending_approvals PendingCard, rendered under the message that raised it.
+// Pending → amber card with the decision buttons; decided → quiet status row.
+function InboxApprovalCard({
+  approval,
+  agentName,
+  busy,
+  onDecide,
+}: {
+  approval: InboxApproval
+  agentName: string
+  busy: boolean
+  onDecide: (approval: InboxApproval, status: "approved" | "rejected", decision?: string) => void
+}) {
+  const isEmail = approval.tool_name === "send_email"
+  const email = isEmail ? (approval.tool_input || {}) : null
+  const actionLabel = (approval.payload_type || approval.tool_name).replace(/_/g, " ")
+
+  if (approval.status !== "pending") {
+    const approved = approval.status === "approved"
+    return (
+      <div className="ml-3 flex items-center gap-2 border-l-2 border-border/60 pl-3 py-1 text-[11px] text-muted-foreground">
+        <ShieldCheck className={`size-3 ${approved ? "text-emerald-500" : "text-red-400"}`} />
+        <span className="capitalize">{actionLabel}</span>
+        <span className={`rounded-sm px-1.5 py-px text-[9px] font-medium ${approved ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-red-500/10 text-red-500 dark:text-red-400"}`}>
+          {approved ? "Approved" : "Rejected"}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.05] p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <ShieldCheck className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="font-medium text-xs truncate">{agentName} needs approval</span>
+          <Badge variant="secondary" className="font-mono text-[10px] capitalize shrink-0">{actionLabel}</Badge>
+          {approval.risk_tier === "high" && (
+            <Badge variant="secondary" className="font-mono text-[10px] bg-red-500/10 text-red-400 border-red-400/20 shrink-0">high risk</Badge>
+          )}
+        </div>
+        <span className="text-[10px] text-muted-foreground shrink-0">{formatSmartDate(approval.created_at)}</span>
+      </div>
+
+      {approval.summary && <p className="text-sm font-medium mb-1.5">{approval.summary}</p>}
+
+      {isEmail && email ? (
+        <div className="space-y-1 text-xs mb-2">
+          <div className="flex gap-2">
+            <span className="w-8 text-muted-foreground shrink-0">To</span>
+            <span className="font-medium">{Array.isArray(email.to) ? (email.to as string[]).join(", ") : String(email.to || "—")}</span>
+          </div>
+          {Array.isArray(email.cc) && (email.cc as string[]).length > 0 && (
+            <div className="flex gap-2">
+              <span className="w-8 text-muted-foreground shrink-0">CC</span>
+              <span>{(email.cc as string[]).join(", ")}</span>
+            </div>
+          )}
+          {!!email.subject && (
+            <div className="flex gap-2">
+              <span className="w-8 text-muted-foreground shrink-0">Subj</span>
+              <span className="font-medium">{String(email.subject)}</span>
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto border-t border-amber-500/20 pt-1.5 mt-1.5">
+            {String(email.body_text || email.body_html || "")}
+          </div>
+        </div>
+      ) : (
+        <>
+          {approval.context && <p className="text-xs text-muted-foreground mb-2">{approval.context}</p>}
+          {!approval.summary && !approval.context && (
+            <pre className="text-[11px] text-muted-foreground bg-muted/60 p-2 rounded overflow-auto max-h-32 font-mono mb-2 whitespace-pre-wrap">
+              {JSON.stringify(approval.tool_input, null, 2)}
+            </pre>
+          )}
+        </>
+      )}
+
+      <div className="flex gap-1.5">
+        {approval.options && approval.options.length > 0 ? (
+          approval.options.map((opt) => {
+            const isReject = opt.value === "reject" || opt.value === "rejected" || opt.value === "cancel"
+            return (
+              <Button
+                key={opt.value}
+                variant={isReject ? "outline" : "default"}
+                size="sm"
+                className="h-7 text-xs px-3"
+                disabled={busy}
+                onClick={() => onDecide(approval, isReject ? "rejected" : "approved", opt.value)}
+              >
+                {opt.label}
+              </Button>
+            )
+          })
+        ) : (
+          <>
+            <Button size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "approved")}>
+              <Check className="size-3 mr-1" />
+              {busy ? "Sending…" : "Approve"}
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "rejected")}>
+              <XIcon className="size-3 mr-1" />
+              Reject
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )

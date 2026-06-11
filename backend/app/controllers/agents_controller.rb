@@ -210,6 +210,12 @@ class AgentsController < ApplicationController
       agent_thinking: agent_thinking,
       approvals_by_message: approvals_by_message,
       pending_action_approvals: pending_action_approvals,
+      # conversation_id → pending-approval count, so the inbox list can
+      # flag threads that are blocked on a human decision.
+      pending_approvals_by_conversation: Message
+        .where(id: @agent.pending_approvals.where(status: "pending").select(:message_id))
+        .group(:conversation_id)
+        .count,
       tasks: @agent.tasks.order(created_at: :desc).limit(20).as_json(
         only: [ :id, :title, :status, :priority, :due_at, :completed_at ]
       ),

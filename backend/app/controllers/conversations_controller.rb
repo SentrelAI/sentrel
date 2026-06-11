@@ -25,20 +25,30 @@ class ConversationsController < ApplicationController
 
     payload_messages = messages.map { |m| serialize_message(m) }
 
+    # Approvals raised by messages in this thread (engine stamps message_id
+    # on every PendingApproval it inserts) — lets the inbox detail pane
+    # render approve/reject inline instead of bouncing to /pending_approvals.
+    approvals = @agent.pending_approvals
+                      .where(message_id: messages.map(&:id))
+                      .order(created_at: :asc)
+                      .map { |a| serialize_approval(a) }
+
     respond_to do |format|
       format.json do
         render json: {
           conversation: conversation.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status ]).merge(
             channel: messages.last&.channel,
           ),
-          messages: payload_messages
+          messages: payload_messages,
+          approvals: approvals
         }
       end
       format.html do
         render inertia: "conversations/show", props: {
           agent: @agent.as_json(only: [ :id, :name, :slug, :role ]),
           conversation: conversation.as_json(only: [ :id, :kind, :contact_name, :contact_email, :contact_phone, :subject, :status ]),
-          messages: payload_messages
+          messages: payload_messages,
+          approvals: approvals
         }
       end
     end
@@ -92,6 +102,13 @@ class ConversationsController < ApplicationController
         }
       end
     )
+  end
+
+  def serialize_approval(a)
+    a.as_json(only: [
+      :id, :message_id, :tool_name, :tool_input, :context, :status,
+      :summary, :payload_type, :options, :risk_tier, :created_at
+    ])
   end
 
   def set_agent
