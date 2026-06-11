@@ -42,6 +42,13 @@ class AgentBundlesController < ApplicationController
       # which credential providers already have a stored secret.
       connected_services: current_tenant.integrations.where(status: "connected").pluck(:service_name).uniq,
       credential_providers: current_tenant.credentials.pluck(:provider).uniq,
+      # Canonical platform skills the user can tick onto the agent at
+      # deploy — these aren't in the bundle (bundles only ship custom
+      # skills); they live on the platform and install by slug.
+      platform_skills: SkillDefinition
+        .where(slug: SkillDefinition.canonical_seed_slugs, published: true)
+        .order(:category, :slug)
+        .map { |s| { slug: s.slug, name: s.name, category: s.category, description: s.description.to_s.truncate(110), requires_connections: Array(s.requires_connections) } },
     }
   end
 
@@ -66,6 +73,8 @@ class AgentBundlesController < ApplicationController
       model: unsafe_hash(params[:model]),
       goal: unsafe_hash(params[:goal]),
       persona: unsafe_hash(params[:persona]),
+      schedules: unsafe_array(params[:schedules]),
+      platform_skill_slugs: params[:platform_skill_slugs],
     ).call
 
     agent = result.agent
@@ -117,6 +126,15 @@ class AgentBundlesController < ApplicationController
     p.respond_to?(:to_unsafe_h) ? p.to_unsafe_h : p.to_h
   end
 
+  # Inertia ships arrays of hashes as ActionController::Parameters; the
+  # wizard's edited schedules need plain hashes for the Deployer. nil
+  # when the param is absent (deploy not from the wizard) so the
+  # Deployer falls back to the bundle's own schedules.
+  def unsafe_array(p)
+    return nil if p.nil?
+    Array(p).map { |item| item.respond_to?(:to_unsafe_h) ? item.to_unsafe_h : item.to_h }
+  end
+
   # Everything the wizard needs to show what a bundle will install.
   # Persona markdown ships in full (one bundle per page — payload is
   # fine); skill SKILL.md bodies are truncated for the accordion.
@@ -141,7 +159,7 @@ class AgentBundlesController < ApplicationController
       },
       knowledge: manifest.knowledge_docs.map { |d| { path: d[:path], why: d[:why], bytes: d[:content].to_s.bytesize } },
       channels: manifest.channels.map { |c| { type: c["type"], why: c["why"] } },
-      schedules: manifest.schedules.map { |s| { name: s["name"], cron: s["cron"], timezone: s["timezone"], why: s["why"] } },
+      schedules: manifest.schedules.map { |s| { name: s["name"], cron: s["cron"], timezone: s["timezone"], why: s["why"], instruction: s["instruction"] } },
       integrations: manifest.integrations.map { |i|
         { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", why: i["why"] }
       },

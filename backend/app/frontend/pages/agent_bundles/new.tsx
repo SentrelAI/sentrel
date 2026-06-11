@@ -34,10 +34,25 @@ interface Preview {
   skills: Array<{ slug: string; file_count: number; skill_md: string }>
   knowledge: Array<{ path: string; why: string | null; bytes: number }>
   channels: Array<{ type: string; why: string | null }>
-  schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null }>
+  schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null; instruction: string | null }>
   integrations: Array<{ service: string; kind: "composio" | "mcp"; why: string | null }>
   secrets: string[]
   permissions: Record<string, string>
+}
+
+interface PlatformSkill {
+  slug: string
+  name: string
+  category: string
+  description: string
+  requires_connections: string[]
+}
+
+interface ScheduleRow {
+  name: string
+  cron: string
+  timezone: string
+  instruction: string
 }
 
 interface Props {
@@ -46,6 +61,7 @@ interface Props {
   error: string | null
   connected_services: string[]
   credential_providers: string[]
+  platform_skills: PlatformSkill[]
 }
 
 // "APOLLO_API_KEY" / "apollo-token" → "apollo" — same normalization the
@@ -68,7 +84,7 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, preview, error, connected_services, credential_providers }: Props) {
+export default function DeployAgent({ source, preview, error, connected_services, credential_providers, platform_skills }: Props) {
   const [url, setUrl] = useState(source)
   const [agentName, setAgentName] = useState(preview?.name || "")
   const [agentSlug, setAgentSlug] = useState(preview ? slugify(preview.name) : "")
@@ -86,6 +102,35 @@ export default function DeployAgent({ source, preview, error, connected_services
   const [identityMd, setIdentityMd] = useState(preview?.persona?.identity_md || "")
   const [personalityMd, setPersonalityMd] = useState(preview?.persona?.personality_md || "")
   const [instructionsMd, setInstructionsMd] = useState(preview?.persona?.instructions_md || "")
+  const [schedules, setSchedules] = useState<ScheduleRow[]>(
+    (preview?.schedules || []).map((s) => ({
+      name: s.name,
+      cron: s.cron,
+      timezone: s.timezone || "UTC",
+      instruction: s.instruction || "",
+    })),
+  )
+  // Platform skills pre-ticked when their required integration is part of
+  // the bundle (e.g. calendar-booking for googlecalendar) — they'd arrive
+  // via the integration auto-installer anyway; showing them makes the
+  // agent's final skill set visible and adjustable.
+  const bundleServices = new Set((preview?.integrations || []).filter((i) => i.kind === "composio").map((i) => i.service.toLowerCase()))
+  const [pickedPlatformSkills, setPickedPlatformSkills] = useState<Set<string>>(
+    new Set(
+      platform_skills
+        .filter((s) => s.requires_connections.some((c) => bundleServices.has(c.toLowerCase())))
+        .map((s) => s.slug),
+    ),
+  )
+
+  function togglePlatformSkill(slug: string) {
+    setPickedPlatformSkills((prev) => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else next.add(slug)
+      return next
+    })
+  }
   const [saveAsTemplate, setSaveAsTemplate] = useState(true)
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState<string | null>(null)
@@ -187,6 +232,8 @@ export default function DeployAgent({ source, preview, error, connected_services
         personality: personalityMd,
         instructions: instructionsMd,
       },
+      schedules: schedules.filter((s) => s.name.trim() && s.cron.trim() && s.instruction.trim()),
+      platform_skill_slugs: [...pickedPlatformSkills],
       save_as_template: saveAsTemplate ? "1" : "0",
     }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
@@ -395,14 +442,84 @@ export default function DeployAgent({ source, preview, error, connected_services
                     <span className="text-[10px] text-muted-foreground ml-auto">{Math.round(k.bytes / 1024)}KB</span>
                   </div>
                 ))}
-                {(preview.schedules || []).map((s) => (
-                  <div key={s.name} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                    <Clock className="size-3.5 text-muted-foreground" />
-                    <span className="font-medium">{s.name}</span>
-                    <Badge variant="outline" className="text-[9px] font-mono">{s.cron}{s.timezone ? ` ${s.timezone}` : ""}</Badge>
-                    {s.why && <span className="text-[10px] text-muted-foreground truncate">— {s.why}</span>}
+              </div>
+
+              {platform_skills.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Platform skills — not in the bundle, installed from this workspace's catalog. Skills matching the bundle's integrations are pre-selected.
+                  </p>
+                  <div className="rounded-lg border bg-card divide-y max-h-64 overflow-y-auto">
+                    {platform_skills.map((s) => (
+                      <label key={s.slug} className="flex items-start gap-2.5 px-4 py-2 text-xs cursor-pointer hover:bg-muted/25">
+                        <Checkbox checked={pickedPlatformSkills.has(s.slug)} onCheckedChange={() => togglePlatformSkill(s.slug)} className="mt-0.5" />
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1.5">{s.slug}</span>
+                          {s.requires_connections.length > 0 && (
+                            <Badge variant="outline" className="text-[9px] ml-1.5">{s.requires_connections.join(", ")}</Badge>
+                          )}
+                          <span className="block text-[10px] text-muted-foreground truncate">{s.description}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Schedules — standing cron jobs, fully editable */}
+            <section>
+              <Overline className="mb-3">Schedules</Overline>
+              <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+                Standing cron jobs the agent runs autonomously. Edit, remove, or add your own — created active at deploy.
+              </p>
+              <div className="space-y-3">
+                {schedules.map((s, i) => (
+                  <div key={i} className="rounded-lg border bg-card p-4 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <Clock className="size-4 text-muted-foreground mt-2" />
+                      <div className="grid grid-cols-[1fr_10rem_7rem] gap-2 flex-1">
+                        <Input
+                          value={s.name}
+                          onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                          placeholder="Schedule name"
+                        />
+                        <Input
+                          value={s.cron}
+                          onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, cron: e.target.value } : x)))}
+                          placeholder="30 8 * * 1-5"
+                          className="font-mono text-xs"
+                        />
+                        <Input
+                          value={s.timezone}
+                          onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, timezone: e.target.value } : x)))}
+                          placeholder="UTC"
+                          className="font-mono text-xs"
+                        />
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => setSchedules(schedules.filter((_, j) => j !== i))} aria-label="Remove schedule">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={s.instruction}
+                      onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, instruction: e.target.value } : x)))}
+                      placeholder="What the agent should do when this fires…"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
                   </div>
                 ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setSchedules([...schedules, { name: "", cron: "0 9 * * 1-5", timezone: "UTC", instruction: "" }])}
+                >
+                  <Plus className="size-3" /> Add schedule
+                </Button>
               </div>
             </section>
 

@@ -26,7 +26,8 @@ module AgentBundles
     # overrides may still contain {{tokens}}; substitution happens after
     # the merge so edited text gets the same variable treatment.
     def initialize(manifest:, user:, organization:, name: nil, slug: nil,
-                   role: nil, model: nil, goal: nil, persona: nil)
+                   role: nil, model: nil, goal: nil, persona: nil,
+                   schedules: nil, platform_skill_slugs: nil)
       @m = manifest
       @user = user
       @org = organization
@@ -36,6 +37,12 @@ module AgentBundles
       @model_override = model.is_a?(Hash) ? model.compact_blank : {}
       @goal_override = goal.is_a?(Hash) ? goal : nil
       @persona_override = persona.is_a?(Hash) ? persona : {}
+      # nil → use the bundle's schedules untouched; an array (possibly
+      # empty) → the wizard's edited list replaces them entirely.
+      @schedules_override = schedules.is_a?(Array) ? schedules : nil
+      # Extra PLATFORM skills the user ticked in the wizard — canonical
+      # seeds only, looked up by slug at install.
+      @platform_skill_slugs = Array(platform_skill_slugs).map(&:to_s).reject(&:blank?).uniq
       @notices = []
     end
 
@@ -148,8 +155,21 @@ module AgentBundles
 
     # Same collision policy as AgentTemplates::Importer: reuse an
     # equivalent org skill, fork a conflicting one to <slug>-imported-<n>,
-    # create verbatim otherwise.
+    # create verbatim otherwise. Wizard-ticked platform skills install
+    # first — straight slug lookups against canonical seeds + org skills,
+    # no file content involved.
     def install_skills!(agent)
+      @platform_skill_slugs.each do |slug|
+        skill = SkillDefinition.where(slug: slug)
+                               .where("organization_id = ? OR organization_id IS NULL", @org.id)
+                               .first
+        if skill
+          agent.agent_skills.find_or_create_by!(skill_definition: skill).update!(enabled: true)
+        else
+          @notices << "Platform skill #{slug} isn't available on this instance — skipped."
+        end
+      end
+
       @m.skill_bundles.each do |bundle|
         slug = sanitize_slug(bundle[:slug])
         next if slug.blank? || bundle[:files]["SKILL.md"].blank?
@@ -201,17 +221,23 @@ module AgentBundles
     # runtime via its scheduling tools.
     def create_schedules!(agent)
       ctx = substitution_context(agent.name)
-      @m.schedules.each do |sched|
+      schedule_list.each do |sched|
+        s = sched.respond_to?(:stringify_keys) ? sched.stringify_keys : sched
+        next if s["name"].blank? || s["cron"].blank? || s["instruction"].blank?
         agent.scheduled_work.create!(
           organization: @org,
           mode: "cron",
-          name: sched["name"],
-          instruction: substitute(sched["instruction"], ctx),
-          cron_expression: sched["cron"],
-          timezone: sched["timezone"].presence || "UTC",
+          name: s["name"],
+          instruction: substitute(s["instruction"], ctx),
+          cron_expression: s["cron"],
+          timezone: s["timezone"].presence || "UTC",
           active: true,
         )
       end
+    end
+
+    def schedule_list
+      @schedules_override.nil? ? @m.schedules : @schedules_override
     end
 
     def create_channels!(agent)
