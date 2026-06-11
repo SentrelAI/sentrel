@@ -160,7 +160,14 @@ module AgentTemplates
         Rails.logger.warn "[AgentTemplates::Installer] Skill #{slug} not in org and no embedded bundle — skipping"
         return nil
       end
-      # Install the embedded bundle into the org.
+      # Install the embedded bundle into the org. Slugs are GLOBALLY
+      # unique — if another org owns this one, fork the name instead of
+      # failing the whole install with "Slug has already been taken".
+      if SkillDefinition.exists?(slug: slug)
+        n = 1
+        n += 1 while SkillDefinition.exists?(slug: "#{slug}-imported-#{n}") && n <= 50
+        slug = "#{slug}-imported-#{n}"
+      end
       record = SkillDefinition.create!(
         organization_id: @organization.id,
         slug:        slug,

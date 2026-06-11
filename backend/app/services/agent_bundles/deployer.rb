@@ -177,9 +177,14 @@ module AgentBundles
         existing = SkillDefinition.where(slug: slug)
                                   .where("organization_id = ? OR organization_id IS NULL", @org.id)
                                   .first
+        # The reuse-lookup above is scoped to (this org OR platform), but
+        # SkillDefinition slugs are GLOBALLY unique — another org may own
+        # the slug. available_slug forks the name in that case, otherwise
+        # cross-org deploys of the same bundle fail with "Slug has
+        # already been taken" for every org after the first.
         skill =
           if existing.nil?
-            create_skill!(slug, bundle[:files])
+            create_skill!(available_slug(slug), bundle[:files])
           elsif existing.skill_md.to_s.strip == bundle[:files]["SKILL.md"].to_s.strip
             existing
           else
@@ -315,6 +320,12 @@ module AgentBundles
         n += 1
         return "#{base}-imported-#{SecureRandom.hex(2)}" if n > 50
       end
+    end
+
+    # The slug itself if no row anywhere holds it (slugs are globally
+    # unique), else a forked name.
+    def available_slug(slug)
+      SkillDefinition.exists?(slug: slug) ? unique_skill_slug(slug) : slug
     end
 
     def parse_frontmatter(md)

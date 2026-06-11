@@ -130,8 +130,13 @@ module AgentTemplates
                                    .first
         effective_slug =
           if existing.nil?
-            install_skill!(skill, original_slug)
-            original_slug
+            # No reusable skill in (this org OR platform) — but slugs are
+            # GLOBALLY unique and another org may own this one. Fork the
+            # name when taken, otherwise cross-org imports of the same
+            # bundle fail with "Slug has already been taken".
+            target = SkillDefinition.exists?(slug: original_slug) ? unique_skill_slug(original_slug) : original_slug
+            install_skill!(skill, target)
+            target
           elsif skills_equivalent?(existing, skill)
             original_slug
           else
