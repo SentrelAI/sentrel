@@ -74,6 +74,8 @@ module AgentBundles
     # Deploy-time parameters ({{key}} substitution targets) — e.g. the
     # repo list a bug-fixer may work in. Rendered as wizard form fields.
     def inputs          = Array(data["inputs"]).select { |i| i.is_a?(Hash) && i["key"].present? && i["label"].present? }
+    # Inbound webhook endpoints created at deploy (tokenized URLs).
+    def webhooks        = Array(data["webhooks"]).select { |w| w.is_a?(Hash) && w["name"].present? && w["instruction"].present? }
 
     def persona_md(key)
       rel = data.dig("persona", key) || default_persona_path(key)

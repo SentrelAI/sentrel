@@ -13,6 +13,11 @@ Rails.application.routes.draw do
 
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # Public inbound agent webhooks — the token is the credential. Sentry
+  # alert rules, GitHub repo webhooks, Linear, Zapier, curl … anything
+  # that can POST JSON can wake an agent. See HooksController.
+  post "/hooks/:token", to: "hooks#receive", as: :receive_hook
+
   # API for engine→Rails (blob uploads, etc.)
   namespace :api do
     resources :blobs, only: [ :create, :show ], param: :signed_id
@@ -175,6 +180,7 @@ Rails.application.routes.draw do
       end
       resources :agent_skills, only: [ :create, :update, :destroy ]
       resources :scheduled_tasks, only: [ :index, :create, :update, :destroy ]
+      resources :agent_webhooks, only: [ :create, :update, :destroy ], path: "webhooks"
       get "chat/stream", to: "chat_streams#show"
       get "chat/poll", to: "chat_polls#show"
       # Day-2 ops on the agent's Fly Machine — one-click restart / reload

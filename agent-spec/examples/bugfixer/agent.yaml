@@ -89,6 +89,40 @@ schedules:
       and the three noisiest unresolved Sentry issues. If the week was
       empty, say exactly that in one line.
 
+# Inbound webhooks — each gets a tokenized URL at deploy (agent page →
+# Webhooks tab). Wire them into the external services and Patch reacts
+# in real time instead of waiting for the morning sweep.
+webhooks:
+  - name: Sentry alerts
+    source: sentry
+    why: Point a Sentry alert rule's webhook action here for instant triage.
+    instruction: >-
+      A Sentry alert just fired. Extract the issue id, title, and stack
+      trace from the payload. Triage it per the triage policy: if it's
+      in your repositories ({{github_repos}}) and auto-fixable, follow
+      the fix-workflow skill and open a PR now; otherwise post a
+      root-cause analysis comment on the Sentry issue. Check the ledger
+      first — if this issue is already in flight, do nothing.
+  - name: GitHub events
+    source: github
+    why: Repo webhook (PR reviews + issue comments) so rework happens immediately.
+    instruction: >-
+      A GitHub event arrived. If it's a pull_request_review with changes
+      requested on one of YOUR open PRs: apply the requested changes on
+      the same branch per the fix-workflow skill and reply on the PR.
+      If it's an issue comment that mentions you or asks for a fix in
+      your repositories ({{github_repos}}), triage it per the triage
+      policy. Anything else (pushes, stars, CI noise): ignore silently.
+  - name: Linear bugs
+    source: linear
+    why: Linear webhook so new bug tickets get triaged on arrival.
+    instruction: >-
+      A Linear event arrived. If it's a newly created or reopened issue
+      labeled bug: triage it per the triage policy now — auto-fixable →
+      fix-workflow PR; otherwise root-cause comment on the ticket.
+      Updates to issues already in your ledger: update the ledger state.
+      Everything else: ignore silently.
+
 integrations:
   # Where fixes ship — branches, commits, PRs. Hard requirement: a
   # bug-fixer that can't open PRs is useless, so the wizard blocks

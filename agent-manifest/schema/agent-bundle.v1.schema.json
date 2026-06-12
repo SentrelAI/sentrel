@@ -118,6 +118,22 @@
       }
     },
 
+    "webhooks": {
+      "type": "array",
+      "description": "Inbound webhook endpoints created at deploy. Each gets a unique tokenized URL; external services POST to it and the agent runs the instruction against the payload immediately.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "instruction"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "source": { "enum": ["generic", "github", "sentry", "linear", "stripe", "slack"] },
+          "instruction": { "type": "string", "minLength": 1 },
+          "why": { "type": "string" }
+        }
+      }
+    },
+
     "integrations": {
       "type": "array",
       "items": {

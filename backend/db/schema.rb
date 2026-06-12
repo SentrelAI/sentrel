@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_09_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_12_212412) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -149,6 +149,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_000100) do
     t.index ["agent_id", "toolkit_slug"], name: "idx_agent_tool_policies_unique", unique: true
     t.index ["agent_id"], name: "index_agent_tool_policies_on_agent_id"
     t.index ["organization_id"], name: "index_agent_tool_policies_on_organization_id"
+  end
+
+  create_table "agent_webhooks", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.bigint "agent_id", null: false
+    t.datetime "created_at", null: false
+    t.text "instruction", null: false
+    t.datetime "last_received_at"
+    t.string "name", null: false
+    t.bigint "organization_id", null: false
+    t.integer "receive_count", default: 0, null: false
+    t.string "source", default: "generic", null: false
+    t.string "token", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id"], name: "index_agent_webhooks_on_agent_id"
+    t.index ["organization_id"], name: "index_agent_webhooks_on_organization_id"
+    t.index ["token"], name: "index_agent_webhooks_on_token", unique: true
   end
 
   create_table "agents", force: :cascade do |t|
@@ -679,6 +696,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_09_000100) do
   add_foreign_key "agent_templates", "users", column: "created_by_user_id", validate: false
   add_foreign_key "agent_tool_policies", "agents"
   add_foreign_key "agent_tool_policies", "organizations"
+  add_foreign_key "agent_webhooks", "agents"
+  add_foreign_key "agent_webhooks", "organizations"
   add_foreign_key "agents", "agents", column: "manager_id"
   add_foreign_key "agents", "organizations"
   add_foreign_key "ai_configs", "agents"

@@ -255,6 +255,12 @@ class AgentsController < ApplicationController
           recent_runs: recent_logs
         }
       },
+      # Inbound webhook endpoints — the Webhooks tab. URL carries the
+      # secret token, so it only ever renders to authenticated org members.
+      webhooks: @agent.agent_webhooks.order(created_at: :asc).map { |w|
+        w.as_json(only: [ :id, :name, :instruction, :source, :active, :receive_count, :last_received_at, :created_at ])
+         .merge(url: w.url(request.base_url))
+      },
       knowledge_documents: fetch_knowledge_documents(@agent),
       # Sprint 6 — skills
       installed_skills: @agent.agent_skills.includes(:skill_definition).filter_map { |as|

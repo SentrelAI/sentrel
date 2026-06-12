@@ -271,6 +271,11 @@ class AgentBundlesController < ApplicationController
         personality_md: manifest.persona_md("personality"),
         instructions_md: manifest.persona_md("instructions"),
       },
+      # Inbound webhook endpoints created at deploy (tokenized URLs land
+      # on the agent's Webhooks tab).
+      webhooks: manifest.webhooks.map { |w|
+        { name: w["name"], source: w["source"].presence || "generic", instruction: w["instruction"], why: w["why"] }
+      },
       # Deploy-time parameters — the wizard renders one form field per
       # input; values substitute {{key}} tokens at deploy.
       inputs: manifest.inputs.map { |i|

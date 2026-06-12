@@ -63,6 +63,7 @@ module AgentBundles
           install_skills!(agent)
           create_channels!(agent)
           create_schedules!(agent)
+          create_webhooks!(agent)
         end
       end
       ingest_knowledge(agent) # outside the transaction — engine call, best-effort
@@ -263,6 +264,25 @@ module AgentBundles
 
     def schedule_list
       @schedules_override.nil? ? @m.schedules : @schedules_override
+    end
+
+    # Bundle-declared inbound webhook endpoints — each gets a fresh token
+    # at deploy. The URLs live on the agent's Webhooks tab; the notice
+    # below points the user there to wire up Sentry/GitHub/Linear.
+    def create_webhooks!(agent)
+      ctx = substitution_context(agent.name)
+      @m.webhooks.each do |w|
+        agent.agent_webhooks.create!(
+          organization: @org,
+          name: w["name"],
+          source: AgentWebhook::SOURCES.include?(w["source"].to_s) ? w["source"] : "generic",
+          instruction: substitute(w["instruction"], ctx),
+          active: true,
+        )
+      end
+      if @m.webhooks.any?
+        @notices << "#{@m.webhooks.size} webhook URL#{'s' if @m.webhooks.size > 1} created — copy from the Webhooks tab into #{@m.webhooks.filter_map { |w| w['source'] }.uniq.join('/').presence || 'your services'}."
+      end
     end
 
     def create_channels!(agent)

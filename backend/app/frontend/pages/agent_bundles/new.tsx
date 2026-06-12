@@ -41,6 +41,7 @@ interface Preview {
   channels: Array<{ type: string; why: string | null }>
   schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null; instruction: string | null }>
   inputs: Array<{ key: string; label: string; description: string | null; placeholder: string | null; default: string | null; required: boolean }>
+  webhooks: Array<{ name: string; source: string; instruction: string; why: string | null }>
   integrations: Array<
     | { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null; options?: never }
     | { kind: "choice"; options: string[]; required?: boolean; why: string | null; service?: never }
@@ -720,6 +721,30 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 </Button>
               </div>
             </section>
+
+            {/* Webhooks the bundle ships — read-only preview; tokenized URLs
+                are generated at deploy and live on the agent's Webhooks tab. */}
+            {(preview.webhooks || []).length > 0 && (
+              <section>
+                <Overline className="mb-3">Webhooks</Overline>
+                <div className="rounded-lg border bg-card divide-y">
+                  {preview.webhooks.map((w) => (
+                    <div key={w.name} className="px-4 py-2.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Plug className="size-3.5 text-muted-foreground" />
+                        <span className="font-medium">{w.name}</span>
+                        <Badge variant="outline" className="text-[9px]">{w.source}</Badge>
+                        {w.why && <span className="text-[10px] text-muted-foreground truncate">— {w.why}</span>}
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground line-clamp-2">{w.instruction}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Each gets a unique URL at deploy — copy them from the agent's Webhooks tab into the external service.
+                </p>
+              </section>
+            )}
 
             {/* Setup inputs — bundle-declared deploy parameters. Each value
                 substitutes {{key}} tokens across persona/knowledge/schedules

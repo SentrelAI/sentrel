@@ -203,6 +203,7 @@ interface Props {
   // Keyed by BOTH prefixed (cnv_…) and raw conversation ids — see
   // agents_controller. Values are pending-approval counts.
   pending_approvals_by_conversation?: Record<string | number, number>
+  webhooks?: WebhookItem[]
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
@@ -218,7 +219,19 @@ interface Props {
   rail?: import("@/components/agents/agent-rail").RailPayload
 }
 
-type Section = "chat" | "inbox" | "tasks" | "schedule" | "skills" | "knowledge" | "identity" | "memory" | "spend"
+type Section = "chat" | "inbox" | "tasks" | "schedule" | "webhooks" | "skills" | "knowledge" | "identity" | "memory" | "spend"
+
+interface WebhookItem {
+  id: number
+  name: string
+  instruction: string
+  source: string
+  active: boolean
+  receive_count: number
+  last_received_at: string | null
+  created_at: string
+  url: string
+}
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -479,7 +492,7 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   )
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, webhooks = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -721,6 +734,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     { key: "inbox", label: "Inbox", icon: MessageSquare, count: conversations.length, alert: inboxNeedsAction },
     { key: "tasks", label: "Tasks", icon: CheckSquare, count: tasks.length },
     { key: "schedule", label: "Schedule", icon: Clock, count: scheduled_tasks.length },
+    { key: "webhooks", label: "Webhooks", icon: Plug, count: webhooks.length },
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
     { key: "knowledge", label: "Knowledge", icon: BookOpen, count: knowledge_documents.length },
     { key: "identity", label: "Identity", icon: User },
@@ -1296,6 +1310,11 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         {/* Schedule */}
         {section === "schedule" && (
           <ScheduleSection agentId={agent.id} initialTasks={scheduled_tasks} />
+        )}
+
+        {/* Webhooks */}
+        {section === "webhooks" && (
+          <WebhooksSection agentId={agent.id} agentName={agent.name} initialWebhooks={webhooks} />
         )}
 
         {/* Identity — file explorer + editor */}
@@ -2802,6 +2821,180 @@ function MissingIntegrationsCallout({
           </a>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Webhooks tab — inbound endpoints that wake the agent with an instruction
+// when an external service POSTs to them (Sentry alert rules, GitHub repo
+// webhooks, Linear, Zapier, curl). The token in the URL is the credential.
+function WebhooksSection({ agentId, agentName, initialWebhooks }: { agentId: string | number; agentName: string; initialWebhooks: WebhookItem[] }) {
+  const [hooks, setHooks] = useState<WebhookItem[]>(initialWebhooks)
+  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState({ name: "", source: "generic", instruction: "" })
+  const [busy, setBusy] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editInstruction, setEditInstruction] = useState("")
+
+  const SOURCES = ["generic", "github", "sentry", "linear", "stripe", "slack"]
+
+  async function api(path: string, method: string, body?: unknown) {
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    const res = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`)
+    return res.status === 204 ? null : res.json()
+  }
+
+  async function createHook() {
+    if (!draft.name.trim() || !draft.instruction.trim()) return
+    setBusy(true)
+    try {
+      const created = await api(`/agents/${agentId}/webhooks`, "POST", { agent_webhook: draft })
+      setHooks((prev) => [...prev, created])
+      setDraft({ name: "", source: "generic", instruction: "" })
+      setCreating(false)
+      toast.success("Webhook created — point your service at the URL")
+    } catch {
+      toast.error("Couldn't create the webhook")
+    }
+    setBusy(false)
+  }
+
+  async function patchHook(id: number, attrs: Partial<WebhookItem>) {
+    try {
+      const updated = await api(`/agents/${agentId}/webhooks/${id}`, "PATCH", { agent_webhook: attrs })
+      setHooks((prev) => prev.map((h) => (h.id === id ? updated : h)))
+    } catch {
+      toast.error("Couldn't update the webhook")
+    }
+  }
+
+  async function deleteHook(id: number) {
+    try {
+      await api(`/agents/${agentId}/webhooks/${id}`, "DELETE")
+      setHooks((prev) => prev.filter((h) => h.id !== id))
+      toast.success("Webhook deleted — its URL is dead immediately")
+    } catch {
+      toast.error("Couldn't delete the webhook")
+    }
+  }
+
+  function copyUrl(url: string) {
+    navigator.clipboard.writeText(url).then(
+      () => toast.success("URL copied"),
+      () => toast.error("Couldn't copy"),
+    )
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-4 max-w-3xl">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold">Webhooks</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            POST anything to a URL below and {agentName} acts on it immediately — Sentry alerts, GitHub events, Linear updates, Zapier, curl.
+          </p>
+        </div>
+        <Button size="sm" className="h-8 gap-1.5 shrink-0" onClick={() => setCreating(true)}>
+          <Plus className="size-3.5" /> New webhook
+        </Button>
+      </div>
+
+      {creating && (
+        <div className="rounded-lg border bg-card p-4 mb-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
+            <div className="space-y-1">
+              <Label className="text-xs">Name</Label>
+              <Input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Sentry errors" className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Source</Label>
+              <SelectUI value={draft.source} onValueChange={(v) => setDraft((d) => ({ ...d, source: v }))}>
+                <SelectUITrigger className="h-8 text-sm"><SelectUIValue /></SelectUITrigger>
+                <SelectUIContent>
+                  {SOURCES.map((s) => <SelectUIItem key={s} value={s}>{s}</SelectUIItem>)}
+                </SelectUIContent>
+              </SelectUI>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">What should {agentName} do when a payload arrives?</Label>
+            <textarea
+              value={draft.instruction}
+              onChange={(e) => setDraft((d) => ({ ...d, instruction: e.target.value }))}
+              placeholder="A new Sentry issue arrived. Triage it per the triage policy: auto-fixable → open a fix PR; otherwise post a root-cause analysis on the issue."
+              className="w-full min-h-[90px] rounded-md border bg-background p-2.5 text-sm leading-relaxed"
+            />
+          </div>
+          <div className="flex justify-end gap-1.5">
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setCreating(false)}>Cancel</Button>
+            <Button size="sm" className="h-7 text-xs" disabled={busy || !draft.name.trim() || !draft.instruction.trim()} onClick={createHook}>
+              {busy ? "Creating…" : "Create webhook"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {hooks.length === 0 && !creating ? (
+        <div className="rounded-lg border border-dashed py-14 text-center">
+          <Plug className="size-7 mx-auto mb-2 opacity-25" />
+          <p className="text-sm font-medium">No webhooks yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Create one and paste its URL into Sentry, GitHub, Linear, or any service that can POST JSON.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {hooks.map((h) => (
+            <div key={h.id} className={`rounded-lg border bg-card p-4 ${h.active ? "" : "opacity-60"}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-medium text-sm">{h.name}</span>
+                <Badge variant="secondary" className="text-[10px]">{h.source}</Badge>
+                {!h.active && <Badge variant="outline" className="text-[10px]">paused</Badge>}
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {h.receive_count > 0
+                    ? `${h.receive_count} received · last ${h.last_received_at ? formatSmartDate(h.last_received_at) : "—"}`
+                    : "never received"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <code className="flex-1 truncate rounded bg-muted px-2 py-1.5 text-[11px] font-mono">{h.url}</code>
+                <Button variant="outline" size="sm" className="h-7 text-xs px-2 shrink-0" onClick={() => copyUrl(h.url)}>Copy</Button>
+              </div>
+              {editingId === h.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editInstruction}
+                    onChange={(e) => setEditInstruction(e.target.value)}
+                    className="w-full min-h-[80px] rounded-md border bg-background p-2.5 text-xs leading-relaxed"
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingId(null)}>Cancel</Button>
+                    <Button size="sm" className="h-7 text-xs" disabled={!editInstruction.trim()} onClick={async () => { await patchHook(h.id, { instruction: editInstruction.trim() }); setEditingId(null) }}>
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{h.instruction}</p>
+              )}
+              <div className="flex gap-1.5 mt-3 pt-2.5 border-t border-border">
+                <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={() => { setEditingId(h.id); setEditInstruction(h.instruction) }}>
+                  <PenLine className="size-3 mr-1" /> Edit
+                </Button>
+                <Button variant="outline" size="sm" className="h-6 text-[11px] px-2" onClick={() => patchHook(h.id, { active: !h.active })}>
+                  {h.active ? <><Pause className="size-3 mr-1" /> Pause</> : <><Play className="size-3 mr-1" /> Resume</>}
+                </Button>
+                <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 ml-auto text-destructive hover:text-destructive" onClick={() => deleteHook(h.id)}>
+                  <Trash2 className="size-3 mr-1" /> Delete
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
