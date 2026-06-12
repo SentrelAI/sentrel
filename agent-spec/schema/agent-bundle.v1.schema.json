@@ -110,6 +110,10 @@
             "required": ["service"],
             "properties": {
               "service": { "type": "string", "minLength": 1 },
+              "required": {
+                "type": "boolean",
+                "description": "When true, deploy UIs must block deploying until this service is connected. Default false: connect now or after deploy."
+              },
               "why": { "type": "string" }
             }
           },
@@ -122,6 +126,10 @@
                 "type": "array",
                 "minItems": 2,
                 "items": { "type": "string", "minLength": 1 }
+              },
+              "required": {
+                "type": "boolean",
+                "description": "When true, deploy UIs must block deploying until at least one alternative (the chosen one) is connected."
               },
               "why": { "type": "string" }
             }

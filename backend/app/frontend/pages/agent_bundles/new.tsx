@@ -37,8 +37,8 @@ interface Preview {
   channels: Array<{ type: string; why: string | null }>
   schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null; instruction: string | null }>
   integrations: Array<
-    | { service: string; kind: "composio" | "mcp"; why: string | null; options?: never }
-    | { kind: "choice"; options: string[]; why: string | null; service?: never }
+    | { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null; options?: never }
+    | { kind: "choice"; options: string[]; required?: boolean; why: string | null; service?: never }
   >
   secrets: string[]
   permissions: Record<string, string>
@@ -117,7 +117,7 @@ export default function DeployAgent({ source, preview, error, connected_services
   // any_of integration groups: the user picks ONE alternative per group
   // (e.g. which calendar to use). Default = the first option that's
   // already connected in the org, else the first option.
-  const choiceGroups = (preview?.integrations || []).filter((i) => i.kind === "choice") as Array<{ kind: "choice"; options: string[]; why: string | null }>
+  const choiceGroups = (preview?.integrations || []).filter((i) => i.kind === "choice") as Array<{ kind: "choice"; options: string[]; required?: boolean; why: string | null }>
   const initialConnected = new Set(connected_services.map((s) => s.toLowerCase()))
   const [integrationChoices, setIntegrationChoices] = useState<string[]>(
     choiceGroups.map((g) => g.options.find((o) => initialConnected.has(o.toLowerCase())) || g.options[0]),
@@ -244,6 +244,20 @@ export default function DeployAgent({ source, preview, error, connected_services
     setAgentName(name)
     setAgentSlug(slugify(name))
   }
+
+  // Bundle-declared hard requirements: an integration (or choice group)
+  // marked `required` blocks Deploy until it's connected — for groups,
+  // the CHOSEN alternative is the one that must be connected. Everything
+  // else stays connect-now-or-later.
+  const missingRequired = [
+    ...(preview?.integrations || [])
+      .filter((i): i is { service: string; kind: "composio"; required?: boolean; why: string | null } => i.kind === "composio" && !!i.required)
+      .map((i) => i.service)
+      .filter((s) => !connected.has(s.toLowerCase())),
+    ...choiceGroups
+      .map((g, gi) => (g.required ? integrationChoices[gi] : null))
+      .filter((s): s is string => !!s && !connected.has(s.toLowerCase())),
+  ]
 
   function deploy() {
     setDeployError(null)
@@ -607,7 +621,7 @@ export default function DeployAgent({ source, preview, error, connected_services
                     </div>
                   ))}
                   {preview.integrations
-                    .filter((i): i is { service: string; kind: "composio" | "mcp"; why: string | null } => i.kind !== "choice")
+                    .filter((i): i is { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null } => i.kind !== "choice")
                     .map((i) => {
                       const isConnected = connected.has(i.service.toLowerCase())
                       return (
@@ -615,6 +629,9 @@ export default function DeployAgent({ source, preview, error, connected_services
                           <Plug className="size-3.5 text-muted-foreground" />
                           <span className="font-medium">{i.service}</span>
                           <Badge variant="outline" className="text-[9px]">{i.kind}</Badge>
+                          {i.required && !isConnected && (
+                            <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required before deploy</Badge>
+                          )}
                           {i.why && <span className="text-[10px] text-muted-foreground truncate">— {i.why}</span>}
                           <span className="ml-auto shrink-0">
                             {i.kind === "mcp" ? (
@@ -635,6 +652,7 @@ export default function DeployAgent({ source, preview, error, connected_services
                       class; if none is connected yet, nudge to connect one. */}
                   {choiceGroups.map((group, gi) => {
                     const chosen = integrationChoices[gi]
+                    const chosenConnected = !!chosen && connected.has(chosen.toLowerCase())
                     const anyConnected = group.options.some((o) => connected.has(o.toLowerCase()))
                     return (
                       <div key={`choice-${gi}`} className="px-4 py-3 text-xs space-y-2">
@@ -642,6 +660,9 @@ export default function DeployAgent({ source, preview, error, connected_services
                           <Plug className="size-3.5 text-muted-foreground" />
                           <span className="font-medium">Pick one</span>
                           <Badge variant="outline" className="text-[9px]">any of {group.options.length}</Badge>
+                          {group.required && (
+                            <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required before deploy</Badge>
+                          )}
                           {group.why && <span className="text-[10px] text-muted-foreground truncate">— {group.why}</span>}
                         </div>
                         <div className="grid gap-1.5 sm:grid-cols-2">
@@ -672,12 +693,19 @@ export default function DeployAgent({ source, preview, error, connected_services
                             )
                           })}
                         </div>
-                        {!anyConnected && (
+                        {group.required && !chosenConnected ? (
+                          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                            <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                            <span>
+                              This agent can't work without one of these. Connect <span className="font-semibold">{chosen}</span> (or pick a different one) to enable Deploy.
+                            </span>
+                          </div>
+                        ) : !anyConnected ? (
                           <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
                             <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                             <span>None of these is connected yet. The agent needs at least one — connect it now, or after deploy from the agent's page.</span>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )
                   })}
@@ -722,10 +750,23 @@ export default function DeployAgent({ source, preview, error, connected_services
               {deployError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
               )}
+              {missingRequired.length > 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                  <span>
+                    This bundle requires <span className="font-semibold">{missingRequired.join(", ")}</span> connected before deploy — use the Connect button{missingRequired.length > 1 ? "s" : ""} in Connections above.
+                  </span>
+                </div>
+              )}
               <div className="flex justify-end">
-                <Button type="button" onClick={deploy} disabled={deploying}>
+                <Button
+                  type="button"
+                  onClick={deploy}
+                  disabled={deploying || missingRequired.length > 0}
+                  title={missingRequired.length > 0 ? `Connect ${missingRequired.join(", ")} first` : undefined}
+                >
                   <Rocket className="size-4 mr-1.5" />
-                  {deploying ? "Deploying…" : `Deploy ${agentName.trim() || preview.name}`}
+                  {deploying ? "Deploying…" : missingRequired.length > 0 ? `Connect ${missingRequired[0]} to deploy` : `Deploy ${agentName.trim() || preview.name}`}
                 </Button>
               </div>
             </section>

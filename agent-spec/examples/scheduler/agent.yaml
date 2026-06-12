@@ -85,7 +85,10 @@ schedules:
 integrations:
   # A calendar — any ONE of these works. The deploy wizard shows which
   # are already connected and asks the user to pick (or connect one).
+  # required: a scheduler without a calendar can't do its job, so the
+  # wizard blocks Deploy until the CHOSEN alternative is connected.
   - any_of: [googlecalendar, outlook, calendly, calcom]
+    required: true
     why: Availability checks, event creation, travel blocks, attendee management.
   - service: gmail
     why: Reading request threads, sending proposals, follow-ups, and confirmations.

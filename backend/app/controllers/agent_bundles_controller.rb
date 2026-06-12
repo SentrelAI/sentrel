@@ -170,9 +170,10 @@ class AgentBundlesController < ApplicationController
           # Alternatives group — the agent needs ANY ONE of these
           # (e.g. a calendar: googlecalendar | outlook | calendly).
           # The wizard renders a picker with live connected-status.
-          { kind: "choice", options: i["any_of"].map(&:to_s), why: i["why"] }
+          # required: blocks Deploy until the chosen one is connected.
+          { kind: "choice", options: i["any_of"].map(&:to_s), required: i["required"] == true, why: i["why"] }
         else
-          { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", why: i["why"] }
+          { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", required: i["required"] == true, why: i["why"] }
         end
       },
       secrets: manifest.secret_names,
