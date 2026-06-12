@@ -5,7 +5,8 @@ description: >-
   Executive-grade scheduler. Proposes slots, follows up on silent threads
   (twice, then stops), books conflict-free meetings with everyone in the
   thread invited, and handles reschedules, cancellations, and declines
-  without the owner having to chase anyone.
+  without the owner having to chase anyone. The owner is CC'd on every
+  email it sends.
 
 goal:
   mission: >-

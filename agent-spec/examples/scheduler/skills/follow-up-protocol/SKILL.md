@@ -74,4 +74,5 @@ follow_up_count back to 0, new check scheduled.
 - follow_up_count never exceeds 2.
 - Never two follow-ups inside the same 24h.
 - Every follow-up contains exactly 3 currently-valid slots.
+- Every send CC's {{user_name}} (unless already on the thread's To/CC).
 - Every state change lands in the ledger before I do anything else.

@@ -61,6 +61,11 @@ import { runLockKey, withConversationRunLock } from "./runtime/conversation-lock
 // rotation entirely. See session-rotation.ts for the actual policy.
 const SESSION_TURN_HARD_CAP = 200;
 
+// Matches `gh` invoked as a command — at the start of the command line or
+// after a separator/subshell — without catching words that merely end in
+// "gh" (e.g. `hugh status`) or paths like `./gh`.
+const GH_CLI_RE = /(?:^|[;&|(`]|\$\()\s*gh\s+\S/;
+
 // Top-level orchestrator: routes a job to the right handler and runs the
 // Claude Agent SDK loop. Heavy lifting (prompt, outbox, approvals, summarization)
 // lives in dedicated modules.
@@ -1741,6 +1746,21 @@ async function buildQueryOptions(
           const command = toolInput?.command || "";
 
           if (!command) return { hookEventName: "PreToolUse" as const };
+
+          // GitHub work must go through the GITHUB integration, not the gh
+          // CLI — gh isn't authenticated in the sandbox, and the SDK's
+          // built-in prompt steers agents toward it by default.
+          if (GH_CLI_RE.test(command)) {
+            const githubConnected = allConnectedToolkits.some((t) => t.toLowerCase() === "github");
+            logger.info(`Blocked gh CLI command, redirecting to GitHub integration: ${command.slice(0, 80)}`);
+            return {
+              hookEventName: "PreToolUse" as const,
+              permissionDecision: "deny" as const,
+              permissionDecisionReason: githubConnected
+                ? `The gh CLI is not authenticated here. Use the connected GitHub integration instead: call search_integrations({ query: "github <what you need>" }) to load the GITHUB_* tools, then perform the action with those.`
+                : `The gh CLI is not authenticated here and GitHub is not connected. Call propose_connection({ service: "github", why: "..." }) so the user can connect GitHub, then use the GITHUB_* integration tools.`,
+            };
+          }
 
           const risk = scanCommand(command, agent.command_allowlist || []);
 

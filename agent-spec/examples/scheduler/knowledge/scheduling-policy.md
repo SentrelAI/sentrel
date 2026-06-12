@@ -19,6 +19,9 @@ persona references these values; edit here, not there.
   possible.
 - Buffer: leave **10 minutes** between consecutive meetings — don't
   propose back-to-back against an existing event.
+- CC: **{{user_name}} is CC'd on every outbound email** (proposals,
+  follow-ups, confirmations, declines) unless already on the thread's
+  To/CC.
 
 ## Follow-up cadence
 

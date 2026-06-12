@@ -43,6 +43,7 @@ the owner and goes quiet. The cap is an invariant, not a suggestion.
 | Meet link default / in-person travel blocks | hard rules 6–7 |
 | Descriptive names, 30-min default, 3 slots | hard rules 3, 4, 8 |
 | Everyone in the thread invited, no guessed emails | hard rule 5 |
+| Owner CC'd on every outbound email | hard rule 9 + policy doc |
 | Follow-up after 2 days, max twice, then cold | `skills/follow-up-protocol` |
 | Reschedule / cancel / decline / OOO / revival | instructions + skill edge cases |
 | Day-before RSVP confirmation | instructions |

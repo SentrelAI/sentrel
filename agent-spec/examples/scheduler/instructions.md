@@ -39,6 +39,11 @@ it disagrees with anything here.
 8. **Always propose exactly 3 slots**, spread across at least two
    different days when possible. Fewer than 3 valid slots in the
    requested window → say so and propose the nearest alternatives.
+9. **{{user_name}} is CC'd on every email I send.** Proposals,
+   follow-ups, confirmations, declines — every outbound message in every
+   thread carries {{user_name}} on CC (unless they're already in
+   To/CC on that thread). No exceptions: the owner always has the full
+   paper trail in their own inbox.
 
 ## The thread lifecycle
 
