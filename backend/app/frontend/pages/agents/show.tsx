@@ -613,6 +613,52 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     }
   }
 
+  // Persist inline edits to a pending email draft. send=false → Save (the
+  // draft stays pending with the new content); send=true → Save & send
+  // (edits merge server-side BEFORE the approval executes, so what goes
+  // out is exactly what's on screen). Returns success so the card knows
+  // whether to leave edit mode.
+  async function saveApprovalEdits(approval: InboxApproval, patch: Record<string, unknown>, send: boolean): Promise<boolean> {
+    setApprovalBusy(approval.id)
+    try {
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      const body: Record<string, unknown> = { tool_input_patch: patch }
+      if (send) body.status = "approved"
+      else body.save_only = "1"
+      const res = await fetch(`/pending_approvals/${approval.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, Accept: "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      // body_text edits drop body_html server-side — mirror that locally
+      // so the card preview shows the edited text, not the stale html.
+      const localPatch = { ...patch, ...("body_text" in patch ? { body_html: null } : {}) }
+      setConvApprovals((prev) =>
+        prev.map((a) =>
+          a.id === approval.id
+            ? { ...a, status: send ? "approved" : a.status, tool_input: { ...a.tool_input, ...localPatch } }
+            : a,
+        ),
+      )
+      if (send) {
+        const convId = selectedConvId
+        if (convId != null) {
+          setPendingByConv((prev) => ({ ...prev, [convId]: Math.max(0, (prev[convId] || 1) - 1) }))
+          setTimeout(() => refreshConversation(convId), 2000)
+        }
+        router.reload({ only: ["rail", "pending_approvals_by_conversation"] })
+      }
+      toast.success(send ? "Saved & sending" : "Draft saved")
+      setApprovalBusy(null)
+      return true
+    } catch {
+      toast.error("Couldn't save the draft — try again")
+      setApprovalBusy(null)
+      return false
+    }
+  }
+
   async function decideApproval(approval: InboxApproval, status: "approved" | "rejected", decision?: string) {
     setApprovalBusy(approval.id)
     try {
@@ -1163,7 +1209,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                                 {msg.content}
                               </div>
                               {msgApprovals.map((a) => (
-                                <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
+                                <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} onSaveEdits={saveApprovalEdits} />
                               ))}
                             </Fragment>
                           )
@@ -1211,7 +1257,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                             )}
                           </div>
                           {msgApprovals.map((a) => (
-                            <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
+                            <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} onSaveEdits={saveApprovalEdits} />
                           ))}
                           </Fragment>
                         )
@@ -1224,7 +1270,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                       {convApprovals
                         .filter((a) => a.status === "pending" && !convMessages.some((m) => String(m.id) === a.message_id))
                         .map((a) => (
-                          <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
+                          <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} onSaveEdits={saveApprovalEdits} />
                         ))}
                       {convMessages.length === 0 && convApprovals.every((a) => a.status !== "pending") && <div className="text-center text-xs text-muted-foreground py-8">No messages</div>}
                     </div>
@@ -2768,15 +2814,46 @@ function InboxApprovalCard({
   agentName,
   busy,
   onDecide,
+  onSaveEdits,
 }: {
   approval: InboxApproval
   agentName: string
   busy: boolean
   onDecide: (approval: InboxApproval, status: "approved" | "rejected", decision?: string) => void
+  onSaveEdits: (approval: InboxApproval, patch: Record<string, unknown>, send: boolean) => Promise<boolean>
 }) {
   const isEmail = approval.tool_name === "send_email"
   const email = isEmail ? (approval.tool_input || {}) : null
   const actionLabel = (approval.payload_type || approval.tool_name).replace(/_/g, " ")
+  // Editing only applies to plain send_email tool approvals — token-based
+  // action approvals execute engine-side from the engine's own payload,
+  // so a tool_input edit here would be silently ignored at send time.
+  const editable = isEmail && !approval.payload_type
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState({ to: "", cc: "", subject: "", body: "" })
+
+  function startEditing() {
+    const input = approval.tool_input || {}
+    const join = (v: unknown) => (Array.isArray(v) ? v.join(", ") : String(v || ""))
+    setDraft({
+      to: join(input.to),
+      cc: join(input.cc),
+      subject: String(input.subject || ""),
+      body: String(input.body_text || input.body_html || ""),
+    })
+    setEditing(true)
+  }
+
+  async function save(send: boolean) {
+    const splitAddrs = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean)
+    const ok = await onSaveEdits(approval, {
+      to: splitAddrs(draft.to),
+      cc: splitAddrs(draft.cc),
+      subject: draft.subject,
+      body_text: draft.body,
+    }, send)
+    if (ok) setEditing(false)
+  }
 
   if (approval.status !== "pending") {
     const approved = approval.status === "approved"
@@ -2818,7 +2895,33 @@ function InboxApprovalCard({
         <span className="text-[10px] text-muted-foreground shrink-0">{formatSmartDate(approval.created_at)}</span>
       </div>
 
-      {isEmail && email ? (
+      {isEmail && email && editing ? (
+        // Edit mode — the draft becomes a mini composer. Save keeps it
+        // pending with the new content; Save & send approves it so the
+        // edited version is what actually goes out.
+        <div className="space-y-1.5">
+          {([
+            ["To", "to"],
+            ["CC", "cc"],
+            ["Subject", "subject"],
+          ] as const).map(([label, field]) => (
+            <div key={field} className="flex items-center gap-2">
+              <span className="w-12 text-xs text-muted-foreground shrink-0">{label}</span>
+              <Input
+                value={draft[field]}
+                onChange={(e) => setDraft((d) => ({ ...d, [field]: e.target.value }))}
+                className="h-7 text-xs"
+                placeholder={field === "subject" ? "Subject" : "a@x.com, b@y.com"}
+              />
+            </div>
+          ))}
+          <textarea
+            value={draft.body}
+            onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
+            className="w-full min-h-[160px] rounded-md border bg-background p-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+          />
+        </div>
+      ) : isEmail && email ? (
         <>
           <div className="space-y-0.5 text-xs mb-2">
             <div className="flex gap-2">
@@ -2855,7 +2958,21 @@ function InboxApprovalCard({
       )}
 
       <div className="mt-2.5 flex gap-1.5 border-t border-amber-500/20 pt-2.5">
-        {approval.options && approval.options.length > 0 ? (
+        {editing ? (
+          <>
+            <Button size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => save(true)}>
+              <Check className="size-3 mr-1" />
+              {busy ? "Sending…" : "Save & send"}
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => save(false)}>
+              <Save className="size-3 mr-1" />
+              Save
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </>
+        ) : approval.options && approval.options.length > 0 ? (
           approval.options.map((opt) => {
             const isReject = opt.value === "reject" || opt.value === "rejected" || opt.value === "cancel"
             return (
@@ -2877,6 +2994,12 @@ function InboxApprovalCard({
               <Check className="size-3 mr-1" />
               {busy ? "Sending…" : isEmail ? "Approve & send" : "Approve"}
             </Button>
+            {editable && (
+              <Button variant="outline" size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={startEditing}>
+                <PenLine className="size-3 mr-1" />
+                Edit
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "rejected")}>
               <XIcon className="size-3 mr-1" />
               Reject

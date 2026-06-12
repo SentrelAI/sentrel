@@ -10,6 +10,27 @@ class PendingApprovalsController < ApplicationController
 
   def update
     approval = current_tenant.pending_approvals.find(params[:id])
+
+    # Inline edits from the inbox draft card — whitelisted email fields,
+    # merged BEFORE any decision so "Save & send" sends exactly what the
+    # user sees. Editing the body as plain text drops any stale body_html;
+    # otherwise the html variant would win at send time and silently
+    # discard the edit.
+    if params[:tool_input_patch].present?
+      patch = params[:tool_input_patch].permit(:subject, :body_text, to: [], cc: []).to_h
+      patch["body_html"] = nil if patch.key?("body_text")
+      approval.update!(tool_input: approval.tool_input.merge(patch)) if patch.any?
+    end
+
+    # Save-only: persist the edited draft and stop — it stays pending.
+    if params[:save_only].present?
+      respond_to do |format|
+        format.json { render json: { ok: true, tool_input: approval.tool_input } }
+        format.html { redirect_back fallback_location: pending_approvals_path }
+      end
+      return
+    end
+
     decision_value = params[:decision].presence || params[:status]
     approval.update!(
       status: decision_value == "approve" || decision_value == "approved" ? "approved" : "rejected",
