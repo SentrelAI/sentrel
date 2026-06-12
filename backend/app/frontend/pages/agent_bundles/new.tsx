@@ -1,7 +1,7 @@
 import { Head, router } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Trash2, Wrench,
+  AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Target, Terminal, Trash2, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -72,6 +72,10 @@ interface ExistingAgent {
 
 interface Props {
   source: string
+  // Set when the bundle arrived via `npx agentmanifest deploy` — the CLI
+  // uploaded it to a short-lived server-side cache and opened this page
+  // with ?upload=<token>; deploy posts the token instead of a GitHub URL.
+  upload: string | null
   preview: Preview | null
   error: string | null
   connected_services: string[]
@@ -107,7 +111,7 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id }: Props) {
+export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id }: Props) {
   const [url, setUrl] = useState(source)
   // Deploy target: create a fresh agent, or redeploy the bundle onto an
   // existing one (spec-owned fields update in place; the agent keeps its
@@ -302,7 +306,7 @@ export default function DeployAgent({ source, preview, error, connected_services
     setDeployError(null)
     setDeploying(true)
     router.post("/agent_bundles", {
-      github_url: source,
+      ...(upload ? { upload_id: upload } : { github_url: source }),
       // agent_id flips the server to redeploy mode — the bundle updates
       // this agent in place instead of creating a new one. Name/slug are
       // ignored there (redeploy never renames).
@@ -353,6 +357,17 @@ export default function DeployAgent({ source, preview, error, connected_services
         {/* Source */}
         <section>
           <Overline className="mb-3">Source</Overline>
+          {upload ? (
+            <div className="rounded-lg border bg-card p-4 flex items-start gap-2.5">
+              <Terminal className="size-4 shrink-0 mt-0.5 text-muted-foreground" />
+              <div className="space-y-1">
+                <p className="text-sm">Uploaded from your machine via <code className="font-mono text-xs">agentmanifest deploy</code>.</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Uploads expire after 30 minutes — if Deploy complains the upload is gone, run the command again.
+                </p>
+              </div>
+            </div>
+          ) : (
           <div className="rounded-lg border bg-card p-4 space-y-2">
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -370,9 +385,10 @@ export default function DeployAgent({ source, preview, error, connected_services
               </Button>
             </div>
             <p className="text-[10px] text-muted-foreground">
-              Public repos only. Share this page as <code className="font-mono">/deploy-agent?source=&lt;repo-url&gt;</code> — anyone in a workspace can one-click install your agent.
+              Public repos only. Share this page as <code className="font-mono">/deploy-agent?source=&lt;repo-url&gt;</code> — anyone in a workspace can one-click install your agent. Local folder? <code className="font-mono">npx agentmanifest deploy</code> uploads it straight here.
             </p>
           </div>
+          )}
         </section>
 
         {error && (

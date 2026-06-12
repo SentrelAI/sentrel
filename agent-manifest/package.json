@@ -1,6 +1,6 @@
 {
   "name": "@manifestagent/agentmanifest",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agent Bundle spec (agent-bundle/v1) — generator, schema, validator, and examples. The Dockerfile of AI agents.",
   "type": "module",
   "bin": {

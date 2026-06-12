@@ -1,8 +1,15 @@
 # Deploy an agent-bundle/v1 (the open agent-manifest folder format) as a
-# live agent. Two sources:
+# live agent. Three sources:
 #
 #   POST /agent_bundles { github_url: "https://github.com/org/repo[/tree/ref[/subdir]]" }
-#   POST /agent_bundles { bundle: <uploaded .tar.gz> }   ← what `npx agentmanifest deploy` sends
+#   POST /agent_bundles { bundle: <uploaded .tar.gz> }
+#   POST /agent_bundles { upload_id: <token> }   ← wizard deploy of a CLI upload
+#
+# `npx agentmanifest deploy` is a two-step handshake: the CLI POSTs the
+# packed folder to /agent_bundles/upload (unauthenticated — the CLI has
+# no session), we validate + cache it and hand back a wizard URL
+# (/deploy-agent?upload=<token>); the browser session then previews and
+# deploys it like any other bundle.
 #
 # Either source plus agent_id REDEPLOYS: the updated bundle is applied
 # to that existing agent (AgentBundles::Updater) instead of creating a
@@ -14,7 +21,10 @@
 # new agent's page with a notice listing what's left to connect
 # (integrations, secrets, pending channels).
 class AgentBundlesController < ApplicationController
-  before_action :authenticate_user!
+  before_action :authenticate_user!, except: :upload
+  skip_before_action :verify_authenticity_token, only: :upload
+
+  UPLOAD_TTL = 30.minutes
 
   # GET /deploy-agent?source=<github-url>
   # The shareable "Deploy to double.md" wizard. With ?source= it fetches
@@ -33,10 +43,24 @@ class AgentBundlesController < ApplicationController
     end
 
     source = params[:source].to_s.strip
+    upload_id = params[:upload].to_s.strip
     preview = nil
     error = nil
 
-    if source.present?
+    if upload_id.present?
+      # CLI upload handshake — the bundle was validated and cached by
+      # #upload; expiry just means re-running `agentmanifest deploy`.
+      files = Rails.cache.read(upload_cache_key(upload_id))
+      if files
+        begin
+          preview = preview_payload(AgentBundles::Manifest.parse!(files))
+        rescue AgentBundles::InvalidBundle => e
+          error = e.message
+        end
+      else
+        error = "Upload expired or not found — run `npx agentmanifest deploy` again."
+      end
+    elsif source.present?
       begin
         files = AgentBundles::Fetcher.from_github(source)
         manifest = AgentBundles::Manifest.parse!(files)
@@ -48,6 +72,7 @@ class AgentBundlesController < ApplicationController
 
     render inertia: "agent_bundles/new", props: {
       source: source,
+      upload: upload_id.presence,
       preview: preview,
       error: error,
       # Existing agents so the wizard can offer "update an existing agent
@@ -70,10 +95,40 @@ class AgentBundlesController < ApplicationController
     }
   end
 
+  # POST /agent_bundles/upload — the CLI half of `agentmanifest deploy`.
+  # Accepts a multipart .tar.gz of the bundle folder, validates it against
+  # the spec, and caches the file map under a random token for UPLOAD_TTL.
+  # Unauthenticated by design: nothing org-scoped happens here, and the
+  # token is only useful to someone who can sign in and click Deploy.
+  def upload
+    io = params[:bundle]
+    return render json: { error: "missing multipart `bundle` file (.tar.gz)" }, status: :unprocessable_entity unless io.respond_to?(:read)
+    if io.respond_to?(:size) && io.size > AgentBundles::Fetcher::MAX_BYTES
+      return render json: { error: "bundle too large (>#{AgentBundles::Fetcher::MAX_BYTES / 1024 / 1024}MB compressed)" }, status: :unprocessable_entity
+    end
+
+    files = AgentBundles::Fetcher.from_tarball(io)
+    manifest = AgentBundles::Manifest.parse!(files) # reject invalid bundles before caching
+
+    token = SecureRandom.urlsafe_base64(24)
+    Rails.cache.write(upload_cache_key(token), files, expires_in: UPLOAD_TTL)
+    render json: {
+      id: token,
+      name: manifest.name,
+      url: deploy_agent_url(upload: token),
+      expires_in: UPLOAD_TTL.to_i,
+    }, status: :created
+  rescue AgentBundles::FetchError, AgentBundles::InvalidBundle => e
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
   def create
     files =
       if params[:github_url].present?
         AgentBundles::Fetcher.from_github(params[:github_url])
+      elsif params[:upload_id].present?
+        Rails.cache.read(upload_cache_key(params[:upload_id])) ||
+          raise(AgentBundles::FetchError, "upload expired — run `npx agentmanifest deploy` again")
       elsif params[:bundle].respond_to?(:read)
         AgentBundles::Fetcher.from_tarball(params[:bundle])
       else
@@ -135,7 +190,7 @@ class AgentBundlesController < ApplicationController
       format.json { render json: { error: "agent not found" }, status: :not_found }
     end
   rescue AgentBundles::FetchError, AgentBundles::InvalidBundle, ActiveRecord::RecordInvalid => e
-    Rails.logger.warn "[AgentBundles#create] deploy failed: #{e.class}: #{e.message} (source=#{params[:github_url].presence || 'tarball'}) #{e.backtrace&.first}"
+    Rails.logger.warn "[AgentBundles#create] deploy failed: #{e.class}: #{e.message} (source=#{params[:github_url].presence || params[:upload_id].presence&.then { |id| "upload:#{id}" } || 'tarball'}) #{e.backtrace&.first}"
     respond_to do |format|
       format.html { redirect_back fallback_location: new_agent_path, alert: "Bundle deploy failed: #{e.message}" }
       format.json { render json: { error: e.message }, status: :unprocessable_entity }
@@ -151,6 +206,10 @@ class AgentBundlesController < ApplicationController
   end
 
   private
+
+  def upload_cache_key(token)
+    "agent_bundles:upload:#{token.to_s.gsub(/[^A-Za-z0-9_-]/, '')}"
+  end
 
   # Apply an updated bundle to an existing agent (the wizard's "update
   # existing agent" mode, or a JSON POST with agent_id). Spec-owned state

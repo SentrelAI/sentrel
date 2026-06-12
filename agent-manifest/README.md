@@ -38,6 +38,25 @@ Checks the manifest against the [JSON schema](schema/agent-bundle.v1.schema.json
 verifies every referenced file exists, and scans for secret *values*
 (bundles may only declare secret names under `secrets[]`).
 
+## Deploy a bundle
+
+```sh
+npx @manifestagent/agentmanifest deploy [bundle-dir] [--server <url>] [--no-open]
+```
+
+Validates the bundle (default: the current folder), packs it as a
+`.tar.gz`, uploads it to [double.md](https://www.double.md), and opens
+the deploy wizard in your browser. The wizard previews everything the
+bundle installs — persona, skills, schedules, integrations, deploy-time
+inputs — and the deploy itself happens there with your signed-in
+session, so the CLI never asks for credentials. Invalid bundles are
+rejected before anything is uploaded.
+
+Uploads expire after 30 minutes; just run the command again.
+`--server` (or `AGENTMANIFEST_SERVER`) targets a self-hosted or local
+instance; `--no-open` prints the wizard URL instead of opening a
+browser (SSH sessions, CI).
+
 ## Examples
 
 - [`examples/sdr`](examples/sdr) — outbound SDR with Apollo, Instantly, and MCP servers

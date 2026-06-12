@@ -14,8 +14,6 @@ require "stringio"
 # repos), capped at 10MB compressed. Private repos are out of scope for
 # v1 — the CLI path covers them since the user tars locally.
 module AgentBundles
-  class FetchError < StandardError; end
-
   class Fetcher
     MAX_BYTES = 10 * 1024 * 1024
     GITHUB_URL = %r{\Ahttps://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?(?:/tree/([^/]+)(?:/(.*))?)?/?\z}

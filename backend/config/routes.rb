@@ -113,6 +113,13 @@ Rails.application.routes.draw do
     post "forge/dedup",            to: "forge#dedup"
   end
 
+  # `npx agentmanifest deploy` posts the packed folder here (no auth — the
+  # CLI has no session, so this must live outside `authenticate :user`).
+  # The bundle is validated, cached briefly, and the response URL opens the
+  # wizard (/deploy-agent?upload=<id>) where the real, authenticated deploy
+  # happens.
+  post "agent_bundles/upload", to: "agent_bundles#upload", as: :upload_agent_bundles
+
   # Authenticated routes
   authenticate :user do
     # Stop an in-flight admin masquerade. Lives outside /admin because

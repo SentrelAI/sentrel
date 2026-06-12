@@ -13,8 +13,6 @@ require "yaml"
 # requireds, referenced-file existence, and the secret-value scan
 # (bundles declare secret NAMES under secrets[], never values).
 module AgentBundles
-  class InvalidBundle < StandardError; end
-
   class Manifest
     SPEC = "agent-bundle/v1".freeze
     SECRET_KEY = /(token|secret|password|api[-_]?key|private[-_]?key)/i
