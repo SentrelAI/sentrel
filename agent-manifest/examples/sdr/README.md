@@ -45,6 +45,12 @@ sdr/
 node bin/validate.mjs examples/sdr
 ```
 
+Deploy it via the double.md wizard:
+
+```sh
+npx @manifestagent/agentmanifest deploy examples/sdr
+```
+
 Before deploying for real: replace the bracketed sections of
 `knowledge/pitch-deck.md` with your actual deck, and point the MCP
 transport URLs at your real LinkedIn/Perplexity MCP servers.

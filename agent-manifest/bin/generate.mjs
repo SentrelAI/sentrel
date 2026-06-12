@@ -741,6 +741,13 @@ Validate after editing:
 npx @manifestagent/agentmanifest validate .
 \`\`\`
 
+Deploy when ready — validates, uploads, and opens the
+[double.md](https://www.double.md) deploy wizard in your browser:
+
+\`\`\`sh
+npx @manifestagent/agentmanifest deploy .
+\`\`\`
+
 Search for \`TODO\` — the persona files are stubs until you fill them in.
 `
 );
