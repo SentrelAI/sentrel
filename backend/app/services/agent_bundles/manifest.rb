@@ -73,6 +73,9 @@ module AgentBundles
     def secret_names    = Array(data["secrets"]).filter_map { |s| s.is_a?(Hash) ? s["name"] : s }.map(&:to_s)
     def integrations    = Array(data["integrations"]).select { |i| i.is_a?(Hash) }
     def schedules       = Array(data["schedules"]).select { |s| s.is_a?(Hash) && s["name"].present? && s["cron"].present? && s["instruction"].present? }
+    # Deploy-time parameters ({{key}} substitution targets) — e.g. the
+    # repo list a bug-fixer may work in. Rendered as wizard form fields.
+    def inputs          = Array(data["inputs"]).select { |i| i.is_a?(Hash) && i["key"].present? && i["label"].present? }
 
     def persona_md(key)
       rel = data.dig("persona", key) || default_persona_path(key)

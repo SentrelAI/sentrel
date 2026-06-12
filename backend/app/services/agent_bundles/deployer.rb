@@ -28,7 +28,7 @@ module AgentBundles
     def initialize(manifest:, user:, organization:, name: nil, slug: nil,
                    role: nil, model: nil, goal: nil, persona: nil,
                    schedules: nil, platform_skill_slugs: nil,
-                   integration_choices: nil)
+                   integration_choices: nil, inputs: nil)
       @m = manifest
       @user = user
       @org = organization
@@ -47,6 +47,9 @@ module AgentBundles
       # For any_of integration groups: the service the user picked per
       # group in the wizard. Drives the connect-next notices.
       @integration_choices = Array(integration_choices).map(&:to_s).reject(&:blank?).uniq
+      # Deploy-time input values (bundle `inputs:` declarations) — extra
+      # {{key}} substitution targets, e.g. github_repos for a bug-fixer.
+      @inputs = inputs.is_a?(Hash) ? inputs.transform_keys(&:to_s).transform_values(&:to_s) : {}
       @notices = []
     end
 
@@ -107,14 +110,20 @@ module AgentBundles
     # tokens are LEFT IN PLACE — visible in the editor beats silently
     # replaced with an empty string.
     def substitution_context(agent_name)
-      {
-        "agent_name"     => agent_name,
-        "company_name"   => @org.name,
-        "user_name"      => @user.try(:name).presence || @user.try(:email),
-        "user_email"     => @user.try(:email).presence,
-        "role"           => effective_role,
-        "company_domain" => @org.try(:email_domain).presence,
-      }.compact
+      # Bundle input defaults < wizard-provided values < built-ins. The
+      # built-ins go last so a bundle can't shadow agent_name/user_email
+      # by declaring an input with the same key.
+      defaults = @m.inputs.each_with_object({}) { |i, h| h[i["key"].to_s] = i["default"].to_s if i["default"].present? }
+      defaults
+        .merge(@inputs.reject { |_, v| v.blank? })
+        .merge({
+          "agent_name"     => agent_name,
+          "company_name"   => @org.name,
+          "user_name"      => @user.try(:name).presence || @user.try(:email),
+          "user_email"     => @user.try(:email).presence,
+          "role"           => effective_role,
+          "company_domain" => @org.try(:email_domain).presence,
+        }.compact)
     end
 
     def substitute(text, ctx)

@@ -47,6 +47,9 @@ exact line and the fix is mechanical:
 
 ## Repos
 
-Work only in repositories the GitHub connection can already access.
-If a stack trace points at a repo you can't read, escalate — never
-guess at code you cannot see.
+Your repositories: {{github_repos}}
+
+Work ONLY in this list. A stack trace pointing at any other repository
+is escalate-only, even when the GitHub connection has access. If a
+listed repo turns out to be unreadable, escalate — never guess at code
+you cannot see.

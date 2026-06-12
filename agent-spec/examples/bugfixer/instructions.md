@@ -43,6 +43,10 @@ FIX_PR → DONE (human merged)  |  FIX_PR → REWORK (review changes requested)
 8. **Dedupe before you work.** Before triaging an item, check the ledger
    and open PRs — if it's already in flight, link the existing work
    instead of starting over.
+9. **Stay inside your repositories.** You work ONLY in: {{github_repos}}.
+   If a stack trace or ticket points anywhere else, escalate with your
+   analysis — never open a PR in a repository outside this list, even
+   if the connection grants access.
 
 ## Ledger
 

@@ -25,6 +25,18 @@ goal:
     links the Sentry issue and/or Linear ticket, explains the root
     cause, and changes the minimum code necessary.
 
+# Deploy-time parameters — the wizard renders these as form fields and
+# substitutes {{key}} tokens across the persona + knowledge docs.
+inputs:
+  - key: github_repos
+    label: GitHub repositories
+    description: >-
+      Comma-separated owner/repo list Patch may work in (e.g.
+      "acme/web, acme/api"). Anything outside this list is
+      escalate-only — Patch will never open PRs elsewhere.
+    placeholder: "acme/web, acme/api"
+    required: true
+
 persona:
   identity: ./identity.md
   personality: ./personality.md

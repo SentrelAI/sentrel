@@ -85,6 +85,7 @@ class AgentBundlesController < ApplicationController
       schedules: unsafe_array(params[:schedules]),
       platform_skill_slugs: params[:platform_skill_slugs],
       integration_choices: params[:integration_choices],
+      inputs: unsafe_hash(params[:inputs]),
     ).call
 
     agent = result.agent
@@ -163,6 +164,15 @@ class AgentBundlesController < ApplicationController
         identity_md: manifest.persona_md("identity"),
         personality_md: manifest.persona_md("personality"),
         instructions_md: manifest.persona_md("instructions"),
+      },
+      # Deploy-time parameters — the wizard renders one form field per
+      # input; values substitute {{key}} tokens at deploy.
+      inputs: manifest.inputs.map { |i|
+        {
+          key: i["key"], label: i["label"], description: i["description"],
+          placeholder: i["placeholder"], default: i["default"],
+          required: i["required"] == true,
+        }
       },
       skills: manifest.skill_bundles.map { |b|
         {

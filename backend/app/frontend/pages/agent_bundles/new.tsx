@@ -36,6 +36,7 @@ interface Preview {
   knowledge: Array<{ path: string; why: string | null; bytes: number }>
   channels: Array<{ type: string; why: string | null }>
   schedules: Array<{ name: string; cron: string; timezone: string | null; why: string | null; instruction: string | null }>
+  inputs: Array<{ key: string; label: string; description: string | null; placeholder: string | null; default: string | null; required: boolean }>
   integrations: Array<
     | { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null; options?: never }
     | { kind: "choice"; options: string[]; required?: boolean; why: string | null; service?: never }
@@ -120,6 +121,13 @@ export default function DeployAgent({ source, preview, error, connected_services
       instruction: s.instruction || "",
     })),
   )
+  // Deploy-time inputs declared by the bundle ({{key}} substitution
+  // targets, e.g. github_repos). Seeded from each input's default.
+  const bundleInputs = preview?.inputs || []
+  const [inputValues, setInputValues] = useState<Record<string, string>>(
+    Object.fromEntries(bundleInputs.map((i) => [i.key, i.default || ""])),
+  )
+
   // any_of integration groups: the user picks ONE alternative per group
   // (e.g. which calendar to use). Default = the first option that's
   // already connected in the org, else the first option.
@@ -265,6 +273,9 @@ export default function DeployAgent({ source, preview, error, connected_services
       .filter((s): s is string => !!s && !connected.has(normSvc(s))),
   ]
 
+  // Required deploy-time inputs that are still empty also gate Deploy.
+  const missingInputs = bundleInputs.filter((i) => i.required && !(inputValues[i.key] || "").trim()).map((i) => i.label)
+
   function deploy() {
     setDeployError(null)
     setDeploying(true)
@@ -289,6 +300,7 @@ export default function DeployAgent({ source, preview, error, connected_services
       schedules: schedules.filter((s) => s.name.trim() && s.cron.trim() && s.instruction.trim()),
       platform_skill_slugs: [...pickedPlatformSkills],
       integration_choices: integrationChoices,
+      inputs: inputValues,
       save_as_template: saveAsTemplate ? "1" : "0",
     }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
@@ -608,6 +620,37 @@ export default function DeployAgent({ source, preview, error, connected_services
               </div>
             </section>
 
+            {/* Setup inputs — bundle-declared deploy parameters. Each value
+                substitutes {{key}} tokens across persona/knowledge/schedules
+                at deploy (e.g. the repo list a bug-fixer may work in). */}
+            {bundleInputs.length > 0 && (
+              <section>
+                <Overline className="mb-3">Setup</Overline>
+                <div className="rounded-lg border bg-card p-4 space-y-4">
+                  {bundleInputs.map((input) => (
+                    <div key={input.key} className="space-y-1">
+                      <Label className="text-xs flex items-center gap-1.5">
+                        {input.label}
+                        {input.required && (
+                          <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required</Badge>
+                        )}
+                        <code className="text-[10px] text-muted-foreground font-mono">{"{{"}{input.key}{"}}"}</code>
+                      </Label>
+                      <Input
+                        value={inputValues[input.key] || ""}
+                        onChange={(e) => setInputValues((prev) => ({ ...prev, [input.key]: e.target.value }))}
+                        placeholder={input.placeholder || ""}
+                        className="h-8 text-sm"
+                      />
+                      {input.description && (
+                        <p className="text-[11px] text-muted-foreground">{input.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* Connections — actionable right here: OAuth popups for Composio
                 integrations, inline paste-and-save for secrets. Everything is
                 org-level, so connecting before the agent exists is fine. */}
@@ -764,15 +807,29 @@ export default function DeployAgent({ source, preview, error, connected_services
                   </span>
                 </div>
               )}
+              {missingInputs.length > 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                  <span>
+                    Fill in <span className="font-semibold">{missingInputs.join(", ")}</span> in Setup above — this bundle needs {missingInputs.length > 1 ? "them" : "it"} to work.
+                  </span>
+                </div>
+              )}
               <div className="flex justify-end">
                 <Button
                   type="button"
                   onClick={deploy}
-                  disabled={deploying || missingRequired.length > 0}
-                  title={missingRequired.length > 0 ? `Connect ${missingRequired.join(", ")} first` : undefined}
+                  disabled={deploying || missingRequired.length > 0 || missingInputs.length > 0}
+                  title={missingRequired.length > 0 ? `Connect ${missingRequired.join(", ")} first` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
                 >
                   <Rocket className="size-4 mr-1.5" />
-                  {deploying ? "Deploying…" : missingRequired.length > 0 ? `Connect ${missingRequired[0]} to deploy` : `Deploy ${agentName.trim() || preview.name}`}
+                  {deploying
+                    ? "Deploying…"
+                    : missingRequired.length > 0
+                      ? `Connect ${missingRequired[0]} to deploy`
+                      : missingInputs.length > 0
+                        ? `Fill in ${missingInputs[0]} to deploy`
+                        : `Deploy ${agentName.trim() || preview.name}`}
                 </Button>
               </div>
             </section>

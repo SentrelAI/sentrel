@@ -30,6 +30,24 @@
       }
     },
 
+    "inputs": {
+      "type": "array",
+      "description": "Deploy-time parameters. Deploy UIs render each as a form field; the value substitutes {{key}} tokens across persona, knowledge, schedules, and goal. required inputs block deploy until filled.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "label": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "placeholder": { "type": "string" },
+          "default": { "type": "string" },
+          "required": { "type": "boolean" }
+        }
+      }
+    },
+
     "persona": {
       "type": "object",
       "additionalProperties": false,
