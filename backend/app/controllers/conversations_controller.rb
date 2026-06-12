@@ -28,10 +28,13 @@ class ConversationsController < ApplicationController
     # Approvals raised by messages in this thread (engine stamps message_id
     # on every PendingApproval it inserts) — lets the inbox detail pane
     # render approve/reject inline instead of bouncing to /pending_approvals.
+    # message_id ships as the message's PREFIXED id (msg_…) because that's
+    # what the messages payload uses — raw DB ids would never match.
+    messages_by_id = messages.index_by(&:id)
     approvals = @agent.pending_approvals
                       .where(message_id: messages.map(&:id))
                       .order(created_at: :asc)
-                      .map { |a| serialize_approval(a) }
+                      .map { |a| serialize_approval(a, messages_by_id[a.message_id]&.prefix_id) }
 
     respond_to do |format|
       format.json do
@@ -104,11 +107,11 @@ class ConversationsController < ApplicationController
     )
   end
 
-  def serialize_approval(a)
+  def serialize_approval(a, message_prefix_id)
     a.as_json(only: [
-      :id, :message_id, :tool_name, :tool_input, :context, :status,
+      :id, :tool_name, :tool_input, :context, :status,
       :summary, :payload_type, :options, :risk_tier, :created_at
-    ])
+    ]).merge("message_id" => message_prefix_id)
   end
 
   def set_agent

@@ -118,7 +118,8 @@ interface MessageItem {
 // decision inline right where the blocked action lives.
 interface InboxApproval {
   id: number
-  message_id: number | null
+  // Prefixed message id (msg_…) — same form as MessageItem.id serializes to.
+  message_id: string | null
   tool_name: string
   tool_input: Record<string, unknown>
   context: string | null
@@ -1127,7 +1128,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                         const isThought = isEmailThread && msg.channel !== "email"
                         // Approvals raised BY this message render right under
                         // it — the decision lives where the blocked action is.
-                        const msgApprovals = convApprovals.filter((a) => a.message_id === msg.id)
+                        const msgApprovals = convApprovals.filter((a) => a.message_id === String(msg.id))
                         if (isThought) {
                           return (
                             <Fragment key={msg.id}>
@@ -1193,15 +1194,17 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                           </Fragment>
                         )
                       })}
-                      {/* Approvals whose triggering message isn't in this
-                          thread render at the bottom so nothing pending is
-                          ever invisible. */}
+                      {/* PENDING approvals whose triggering message isn't in
+                          this thread still render at the bottom so nothing
+                          actionable is ever invisible. Decided orphans are
+                          history, not thread content — the approvals page
+                          keeps the audit trail. */}
                       {convApprovals
-                        .filter((a) => !convMessages.some((m) => m.id === a.message_id))
+                        .filter((a) => a.status === "pending" && !convMessages.some((m) => String(m.id) === a.message_id))
                         .map((a) => (
                           <InboxApprovalCard key={a.id} approval={a} agentName={agent.name} busy={approvalBusy === a.id} onDecide={decideApproval} />
                         ))}
-                      {convMessages.length === 0 && convApprovals.length === 0 && <div className="text-center text-xs text-muted-foreground py-8">No messages</div>}
+                      {convMessages.length === 0 && convApprovals.every((a) => a.status !== "pending") && <div className="text-center text-xs text-muted-foreground py-8">No messages</div>}
                     </div>
                   </>
                 )
@@ -2755,6 +2758,10 @@ function InboxApprovalCard({
 
   if (approval.status !== "pending") {
     const approved = approval.status === "approved"
+    // An approved email's evidence is the sent message itself — a chip
+    // under it is just noise. Rejections stay visible: they explain why
+    // no email followed.
+    if (approved && isEmail) return null
     return (
       <div className="ml-3 flex items-center gap-2 border-l-2 border-border/60 pl-3 py-1 text-[11px] text-muted-foreground">
         <ShieldCheck className={`size-3 ${approved ? "text-emerald-500" : "text-red-400"}`} />
@@ -2766,13 +2773,22 @@ function InboxApprovalCard({
     )
   }
 
+  // Pending — render like a message card in the thread (it's the email the
+  // agent WANTS to send), amber-tinted with a DRAFT chip, full preview, and
+  // the decision buttons. Approving sends it; the card then flips to the
+  // quiet decided row above.
   return (
-    <div className="rounded-lg border border-amber-500/40 bg-amber-500/[0.05] p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-2 mb-1.5">
+    <div className="rounded-lg border border-amber-500/50 bg-amber-500/[0.05] p-3 shadow-sm">
+      <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
-          <ShieldCheck className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-          <span className="font-medium text-xs truncate">{agentName} needs approval</span>
-          <Badge variant="secondary" className="font-mono text-[10px] capitalize shrink-0">{actionLabel}</Badge>
+          <ArrowUpRight className="size-3 text-amber-500 shrink-0" />
+          <span className="font-medium text-xs truncate">{agentName}</span>
+          <span className="rounded-sm border border-amber-500/40 bg-amber-500/10 px-1 py-px text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400 shrink-0">
+            Draft — needs approval
+          </span>
+          {!isEmail && (
+            <Badge variant="secondary" className="font-mono text-[10px] capitalize shrink-0">{actionLabel}</Badge>
+          )}
           {approval.risk_tier === "high" && (
             <Badge variant="secondary" className="font-mono text-[10px] bg-red-500/10 text-red-400 border-red-400/20 shrink-0">high risk</Badge>
           )}
@@ -2780,32 +2796,33 @@ function InboxApprovalCard({
         <span className="text-[10px] text-muted-foreground shrink-0">{formatSmartDate(approval.created_at)}</span>
       </div>
 
-      {approval.summary && <p className="text-sm font-medium mb-1.5">{approval.summary}</p>}
-
       {isEmail && email ? (
-        <div className="space-y-1 text-xs mb-2">
-          <div className="flex gap-2">
-            <span className="w-8 text-muted-foreground shrink-0">To</span>
-            <span className="font-medium">{Array.isArray(email.to) ? (email.to as string[]).join(", ") : String(email.to || "—")}</span>
+        <>
+          <div className="space-y-0.5 text-xs mb-2">
+            <div className="flex gap-2">
+              <span className="w-9 text-muted-foreground shrink-0">To</span>
+              <span className="font-medium">{Array.isArray(email.to) ? (email.to as string[]).join(", ") : String(email.to || "—")}</span>
+            </div>
+            {Array.isArray(email.cc) && (email.cc as string[]).length > 0 && (
+              <div className="flex gap-2">
+                <span className="w-9 text-muted-foreground shrink-0">CC</span>
+                <span>{(email.cc as string[]).join(", ")}</span>
+              </div>
+            )}
+            {!!email.subject && (
+              <div className="flex gap-2">
+                <span className="w-9 text-muted-foreground shrink-0">Subject</span>
+                <span className="font-medium">{String(email.subject)}</span>
+              </div>
+            )}
           </div>
-          {Array.isArray(email.cc) && (email.cc as string[]).length > 0 && (
-            <div className="flex gap-2">
-              <span className="w-8 text-muted-foreground shrink-0">CC</span>
-              <span>{(email.cc as string[]).join(", ")}</span>
-            </div>
-          )}
-          {!!email.subject && (
-            <div className="flex gap-2">
-              <span className="w-8 text-muted-foreground shrink-0">Subj</span>
-              <span className="font-medium">{String(email.subject)}</span>
-            </div>
-          )}
-          <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto border-t border-amber-500/20 pt-1.5 mt-1.5">
+          <div className="text-sm whitespace-pre-wrap leading-relaxed border-t border-amber-500/20 pt-2">
             {String(email.body_text || email.body_html || "")}
           </div>
-        </div>
+        </>
       ) : (
         <>
+          {approval.summary && <p className="text-sm font-medium mb-1.5">{approval.summary}</p>}
           {approval.context && <p className="text-xs text-muted-foreground mb-2">{approval.context}</p>}
           {!approval.summary && !approval.context && (
             <pre className="text-[11px] text-muted-foreground bg-muted/60 p-2 rounded overflow-auto max-h-32 font-mono mb-2 whitespace-pre-wrap">
@@ -2815,7 +2832,7 @@ function InboxApprovalCard({
         </>
       )}
 
-      <div className="flex gap-1.5">
+      <div className="mt-2.5 flex gap-1.5 border-t border-amber-500/20 pt-2.5">
         {approval.options && approval.options.length > 0 ? (
           approval.options.map((opt) => {
             const isReject = opt.value === "reject" || opt.value === "rejected" || opt.value === "cancel"
@@ -2836,7 +2853,7 @@ function InboxApprovalCard({
           <>
             <Button size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "approved")}>
               <Check className="size-3 mr-1" />
-              {busy ? "Sending…" : "Approve"}
+              {busy ? "Sending…" : isEmail ? "Approve & send" : "Approve"}
             </Button>
             <Button variant="outline" size="sm" className="h-7 text-xs px-3" disabled={busy} onClick={() => onDecide(approval, "rejected")}>
               <XIcon className="size-3 mr-1" />
