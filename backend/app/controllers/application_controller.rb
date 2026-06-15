@@ -48,7 +48,9 @@ class ApplicationController < ActionController::Base
   end
 
   def after_sign_in_path_for(resource)
-    dashboard_path
+    # Honor a stored return location (e.g. a shared /deploy-agent link the
+    # visitor hit while logged out) before falling back to the dashboard.
+    stored_location_for(resource) || dashboard_path
   end
 
   private
@@ -169,7 +171,7 @@ class ApplicationController < ActionController::Base
   def redirect_to_onboarding
     return if devise_controller?
     return if self.is_a?(OnboardingController)
-    return if request.path.start_with?("/onboarding", "/api", "/webhooks")
+    return if request.path.start_with?("/onboarding", "/api", "/webhooks", "/deploy-agent", "/hooks")
     return if current_tenant&.onboarding_completed_at.present?
 
     redirect_to onboarding_path

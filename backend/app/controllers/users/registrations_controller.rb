@@ -37,4 +37,11 @@ class Users::RegistrationsController < Devise::RegistrationsController
   def sign_up_params
     params.require(:user).permit(:name, :email, :password, :password_confirmation, :organization_name)
   end
+
+  # A fresh signup from a shared /deploy-agent link returns to that link
+  # (the deploy wizard is whitelisted from the onboarding gate, so they
+  # can deploy immediately) instead of the default post-signup landing.
+  def after_sign_up_path_for(resource)
+    stored_location_for(resource) || super
+  end
 end

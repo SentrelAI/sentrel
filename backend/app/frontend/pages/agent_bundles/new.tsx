@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { GoogleSignInButton } from "@/components/google-sign-in-button"
-import { userSessionPath } from "@/routes"
+import { userSessionPath, userRegistrationPath } from "@/routes"
 import { MarkdownEditor } from "@/components/markdown-editor"
 import { slugify } from "@/lib/random-names"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
@@ -356,18 +356,22 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // the full template either way.
   const pageBody = (
     <>
-      <Head title="Deploy agent bundle" />
-      <PageHeader
-        eyebrow="Deploy"
-        title={preview
-          ? (updating ? `Redeploy ${targetAgent?.name || preview.name}` : `Deploy ${agentName.trim() || preview.name}`)
-          : "Deploy an agent bundle"}
-        description={preview
-          ? (updating
-            ? "The bundle's updated persona, goal, skills, schedules and knowledge replace what this agent was deployed with — its name, memory and your own additions stay."
-            : "Everything below comes from the bundle and is editable — rename, adjust the goal, change the model, rewrite the persona. Deploy when it looks right.")
-          : "Paste a GitHub repo containing an agent-bundle/v1 (agent.yaml at its root) to preview and deploy it."}
-      />
+      <Head title={preview ? `Deploy ${preview.name}` : "Deploy agent bundle"} />
+      {/* Anonymous visitors get the hero band instead — skip the in-body
+          header to avoid duplicating the title. */}
+      {authenticated && (
+        <PageHeader
+          eyebrow="Deploy"
+          title={preview
+            ? (updating ? `Redeploy ${targetAgent?.name || preview.name}` : `Deploy ${agentName.trim() || preview.name}`)
+            : "Deploy an agent bundle"}
+          description={preview
+            ? (updating
+              ? "The bundle's updated persona, goal, skills, schedules and knowledge replace what this agent was deployed with — its name, memory and your own additions stay."
+              : "Everything below comes from the bundle and is editable — rename, adjust the goal, change the model, rewrite the persona. Deploy when it looks right.")
+            : "Paste a GitHub repo containing an agent-bundle/v1 (agent.yaml at its root) to preview and deploy it."}
+        />
+      )}
 
       <div className="max-w-2xl space-y-6">
         {/* Source */}
@@ -988,11 +992,40 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/80 px-5 py-3 backdrop-blur">
-          <a href="/" className="text-sm font-semibold tracking-tight">double<span className="text-muted-foreground">.md</span></a>
-          <Button size="sm" className="h-8" onClick={() => setAuthOpen(true)}>Sign in</Button>
+      <div className="min-h-screen bg-gradient-to-b from-muted/30 to-background">
+        <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
+          <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+            <a href="/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+              <span className="grid size-6 place-items-center rounded-md bg-foreground text-background text-[11px] font-bold">d</span>
+              double<span className="text-muted-foreground font-normal">.md</span>
+            </a>
+            <Button size="sm" className="h-8" onClick={() => setAuthOpen(true)}>Sign in</Button>
+          </div>
         </header>
+
+        {/* Hero band — frames the shared template so a cold link feels
+            like a product page, not a half-loaded app. */}
+        {preview && (
+          <div className="border-b border-border/60 bg-background/40">
+            <div className="mx-auto max-w-3xl px-4 py-7">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--color-indigo)]">
+                <Rocket className="size-3.5" /> Agent template
+              </div>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight">{preview.name}</h1>
+              {preview.role && <p className="mt-0.5 text-sm text-muted-foreground">{preview.role}</p>}
+              {preview.description && (
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{preview.description}</p>
+              )}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button size="sm" className="h-9" onClick={() => setAuthOpen(true)}>
+                  <Rocket className="size-3.5 mr-1.5" /> Sign in to deploy
+                </Button>
+                <span className="text-xs text-muted-foreground">Free · takes about a minute</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <main className="mx-auto max-w-3xl px-4 py-8">{pageBody}</main>
         <AuthOverlay open={authOpen} onClose={() => setAuthOpen(false)} bundleName={preview?.name || null} />
       </div>
@@ -1006,72 +1039,129 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   )
 }
 
-// Sign-in overlay for anonymous deploy links — the template stays visible
-// behind it, and Devise's stored location brings the user back to this
-// exact URL (source/upload params intact) after authenticating.
+// Auth overlay for anonymous deploy links — sign in OR create an account
+// inline, without leaving the template. Devise's stored location (set in
+// AgentBundlesController#new) brings the user right back to this exact URL
+// after either flow, and the deploy wizard is whitelisted from the
+// onboarding gate so a fresh signup can deploy immediately.
 function AuthOverlay({ open, onClose, bundleName }: { open: boolean; onClose: () => void; bundleName: string | null }) {
-  const { data, setData, post, processing } = useForm({ user: { email: "", password: "" } })
+  const [mode, setMode] = useState<"signin" | "signup">("signin")
 
-  function submit(e: React.FormEvent) {
+  const signin = useForm({ user: { email: "", password: "" } })
+  const signup = useForm({ user: { name: "", email: "", password: "", password_confirmation: "", organization_name: "" } })
+
+  function submitSignin(e: React.FormEvent) {
     e.preventDefault()
-    post(userSessionPath())
+    signin.post(userSessionPath())
   }
+  function submitSignup(e: React.FormEvent) {
+    e.preventDefault()
+    signup.post(userRegistrationPath())
+  }
+
+  const processing = mode === "signin" ? signin.processing : signup.processing
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="text-base">
-            {bundleName ? `Sign in to deploy ${bundleName}` : "Sign in to deploy"}
+      <DialogContent className="gap-0 p-0 sm:max-w-[26rem] overflow-hidden">
+        <DialogHeader className="space-y-1.5 px-6 pt-6 pb-4">
+          <DialogTitle className="text-lg">
+            {mode === "signin"
+              ? (bundleName ? `Sign in to deploy ${bundleName}` : "Sign in to deploy")
+              : (bundleName ? `Create an account to deploy ${bundleName}` : "Create your account")}
           </DialogTitle>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            You'll land right back on this template — nothing's lost. Close this to keep reading first.
+          </p>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground -mt-1">
-          The template stays right here — you'll come back to this exact page after signing in. Close this to keep reading.
-        </p>
 
-        <GoogleSignInButton label="Continue with Google" />
-        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70">
-          <div className="h-px flex-1 bg-border" />
-          <span>or</span>
-          <div className="h-px flex-1 bg-border" />
+        <div className="space-y-4 px-6 pb-6">
+          <GoogleSignInButton label={mode === "signin" ? "Continue with Google" : "Sign up with Google"} />
+
+          <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/60">
+            <div className="h-px flex-1 bg-border" />
+            <span>or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          {mode === "signin" ? (
+            <form onSubmit={submitSignin} className="space-y-3">
+              <AuthField label="Email" id="ov-si-email" type="email" placeholder="you@company.com" autoFocus
+                value={signin.data.user.email}
+                onChange={(v) => signin.setData("user", { ...signin.data.user, email: v })}
+                error={signin.errors["user.email"] as string | undefined} />
+              <AuthField label="Password" id="ov-si-password" type="password" placeholder="••••••••"
+                value={signin.data.user.password}
+                onChange={(v) => signin.setData("user", { ...signin.data.user, password: v })}
+                error={signin.errors["user.password"] as string | undefined} />
+              <Button type="submit" className="h-9 w-full" disabled={processing}>
+                {processing ? "Signing in…" : "Sign in & continue"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={submitSignup} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <AuthField label="Your name" id="ov-su-name" placeholder="Ada Lovelace" autoFocus
+                  value={signup.data.user.name}
+                  onChange={(v) => signup.setData("user", { ...signup.data.user, name: v })} />
+                <AuthField label="Workspace" id="ov-su-org" placeholder="Acme"
+                  value={signup.data.user.organization_name}
+                  onChange={(v) => signup.setData("user", { ...signup.data.user, organization_name: v })} />
+              </div>
+              <AuthField label="Work email" id="ov-su-email" type="email" placeholder="you@company.com"
+                value={signup.data.user.email}
+                onChange={(v) => signup.setData("user", { ...signup.data.user, email: v })}
+                error={signup.errors["user.email"] as string | undefined} />
+              <div className="grid grid-cols-2 gap-3">
+                <AuthField label="Password" id="ov-su-pw" type="password" placeholder="8+ characters"
+                  value={signup.data.user.password}
+                  onChange={(v) => signup.setData("user", { ...signup.data.user, password: v })}
+                  error={signup.errors["user.password"] as string | undefined} />
+                <AuthField label="Confirm" id="ov-su-pwc" type="password" placeholder="repeat"
+                  value={signup.data.user.password_confirmation}
+                  onChange={(v) => signup.setData("user", { ...signup.data.user, password_confirmation: v })} />
+              </div>
+              <Button type="submit" className="h-9 w-full" disabled={processing}>
+                {processing ? "Creating…" : "Create account & continue"}
+              </Button>
+            </form>
+          )}
         </div>
 
-        <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="hook-auth-email" className="text-xs">Email</Label>
-            <Input
-              id="hook-auth-email"
-              type="email"
-              placeholder="you@company.com"
-              value={data.user.email}
-              onChange={(e) => setData("user", { ...data.user, email: e.target.value })}
-              required
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="hook-auth-password" className="text-xs">Password</Label>
-            <Input
-              id="hook-auth-password"
-              type="password"
-              placeholder="••••••••"
-              value={data.user.password}
-              onChange={(e) => setData("user", { ...data.user, password: e.target.value })}
-              required
-              className="h-9"
-            />
-          </div>
-          <Button type="submit" className="h-9 w-full" disabled={processing}>
-            {processing ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-
-        <p className="text-center text-xs text-muted-foreground">
-          No account?{" "}
-          <a href="/users/sign_up" className="font-medium text-foreground hover:underline">Create one</a>
-          {" — "}it comes back here too.
-        </p>
+        <div className="border-t border-border bg-muted/30 px-6 py-3 text-center text-xs text-muted-foreground">
+          {mode === "signin" ? (
+            <>New to double.md?{" "}
+              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signup")}>Create an account</button>
+            </>
+          ) : (
+            <>Already have one?{" "}
+              <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signin")}>Sign in</button>
+            </>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function AuthField({ label, id, type = "text", placeholder, value, onChange, error, autoFocus }: {
+  label: string; id: string; type?: string; placeholder?: string; value: string;
+  onChange: (v: string) => void; error?: string; autoFocus?: boolean
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs">{label}</Label>
+      <Input
+        id={id}
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        className={`h-9 ${error ? "border-destructive" : ""}`}
+      />
+      {error && <p className="text-[11px] text-destructive">{error}</p>}
+    </div>
   )
 }
