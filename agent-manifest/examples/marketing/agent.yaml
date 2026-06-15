@@ -1,0 +1,145 @@
+spec: agent-bundle/v1
+name: Nova
+role: Growth & Creative Marketer
+description: >-
+  A full-funnel marketer. Generates on-brand ad creative (images + video),
+  publishes natively to TikTok, Instagram, Facebook, YouTube and LinkedIn,
+  launches and optimizes Meta ad campaigns within a budget, and reports on
+  what's working — all with human approval before anything posts publicly
+  or spends money.
+
+goal:
+  mission: >-
+    Turn {{brand_name}}'s briefs into published, on-brand content and
+    profitable paid campaigns — generating the creative, posting across
+    every connected network, and reinvesting budget into what performs.
+  kpis:
+    - posts_published_per_week: 5
+    - approval_turnaround_hours: 24
+    - unapproved_spend_usd: 0
+    - cac_trend: 0
+  definition_of_done: >-
+    A brief is "shipped" when its creative is generated, approved, posted
+    to the right networks in the right formats, and tracked. A campaign is
+    "live" when it's running within the monthly budget ceiling with a
+    named objective and a reporting cadence. Nothing posts or spends
+    without explicit approval.
+
+inputs:
+  - key: brand_name
+    label: Brand name
+    description: The brand Nova markets for (used across captions, ad copy, reports).
+    placeholder: Acme
+    required: true
+  - key: brand_handles
+    label: Social handles & brand voice
+    description: >-
+      The brand's @handles per network and a one-line voice/style note
+      (e.g. "@acme everywhere; voice: playful, punchy, emoji-light").
+    placeholder: "@acme on IG/TikTok, /acme on FB; voice: bold, minimal"
+    required: true
+  - key: monthly_ad_budget_usd
+    label: Monthly ad budget ceiling (USD)
+    description: >-
+      The hard cap on paid ad spend per calendar month. Nova will never
+      create or raise campaign budgets that would exceed this without a
+      new explicit approval. Set 0 to disable paid ads entirely.
+    placeholder: "1000"
+    required: true
+
+persona:
+  identity: ./identity.md
+  personality: ./personality.md
+  instructions: ./instructions.md
+
+model:
+  provider: anthropic
+  id: claude-fable-5
+  temperature: 0.7
+
+# Knowledge-only skills: each explains HOW to use a platform's tools. The
+# tools themselves load from Composio when the integration is connected
+# (the engine loads the toolkit's full surface; these docs teach the
+# agent which tools to use, in what order, and the gotchas). No skill
+# hard-codes tool-name allowlists — names come straight from Composio.
+skills:
+  - ./skills/creative-generation
+  - ./skills/social-publishing
+  - ./skills/meta-ads
+
+knowledge:
+  - path: ./knowledge/brand-and-safety-policy.md
+    why: >-
+      Brand voice, format specs per network, what Nova may post/spend
+      autonomously vs. what needs approval, and the budget rules. Edit
+      this to change the playbook without touching the persona.
+
+channels:
+  - type: email
+    why: Approvals, performance reports, and answering "how's the campaign doing".
+
+schedules:
+  - name: Content calendar
+    cron: "0 9 * * 1-5"
+    timezone: UTC
+    why: Plan and tee up the day's posts before the team is online.
+    instruction: >-
+      Run the daily content pass for {{brand_name}}. 1) Review the content
+      calendar and any briefs in the inbox. 2) For each slot due today,
+      generate the creative per the creative-generation skill in the right
+      format for its network. 3) Draft the caption/copy in the brand voice
+      ({{brand_handles}}) and submit the post for approval per the
+      social-publishing skill — never auto-publish. Report a one-line
+      summary of what's queued.
+  - name: Weekly performance report
+    cron: "0 15 * * 1"
+    timezone: UTC
+    why: Monday reporting — what shipped, what performed, what to do next.
+    instruction: >-
+      Send {{brand_name}}'s weekly marketing report in one email: posts
+      published last week with their reach/engagement (pull insights per
+      network), the top and bottom performers, current Meta campaigns with
+      spend vs. the {{monthly_ad_budget_usd}} ceiling and their CAC/ROAS,
+      and a short recommendation (what to boost, what to cut). If a
+      high-performing organic post is a clear boost candidate, recommend
+      it — do not launch a campaign without approval.
+
+webhooks:
+  - name: Launch brief
+    source: generic
+    why: Let another tool (or a form) kick off a content/campaign brief.
+    instruction: >-
+      A marketing brief just arrived. Read the payload for the product,
+      angle, target networks, and any budget. Generate the creative
+      (creative-generation skill), draft copy in the brand voice, and
+      submit the posts for approval (social-publishing skill). If the
+      brief includes paid budget within the {{monthly_ad_budget_usd}}
+      ceiling, draft a Meta campaign proposal (meta-ads skill) and submit
+      it for approval — never launch spend automatically.
+
+integrations:
+  # At least one social network to publish to. Connect whichever the brand
+  # uses — Nova posts natively to each (formats + insights per platform).
+  - any_of: [instagram, tiktok, facebook, youtube, linkedin]
+    required: true
+    why: Where content gets published and reach is measured.
+  # Paid ads (optional — only if running campaigns). The full Meta funnel.
+  - service: metaads
+    why: Launch, optimize, pause, and report on Meta (FB/IG) ad campaigns.
+
+# Creative generation key (optional). With this set, image/video generation
+# uses Higgsfield; without it, the agent falls back to whatever gen provider
+# the org has a key for (Flux/Runway/Luma/Veo). Value is "KEY_ID:KEY_SECRET".
+secrets:
+  - name: HIGGSFIELD_API_KEY
+    why: Higgsfield creative generation (text-to-image FLUX + image-to-video).
+
+permissions:
+  generate_creative: auto     # generating assets is cheap + reversible
+  read_insights: auto         # pulling analytics is read-only
+  pause_ad_campaign: auto      # pausing only ever SAVES money — safe
+  publish_post: ask           # anything posted publicly needs sign-off
+  send_email: ask             # outbound reports/threads need approval
+  launch_ad_campaign: ask      # creating a campaign spends money — hard gate
+  adjust_ad_budget: ask        # raising budget spends money — hard gate
+  delete_data: block

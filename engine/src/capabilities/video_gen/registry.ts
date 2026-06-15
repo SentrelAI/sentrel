@@ -3,6 +3,7 @@
 // has many model options, Runway is highest quality at the highest
 // price, Veo is best fidelity when you have Google Cloud quota.)
 
+import { HiggsfieldVideoProvider } from "./higgsfield.js";
 import { LumaProvider } from "./luma.js";
 import { FalVideoProvider } from "./fal.js";
 import { RunwayProvider } from "./runway.js";
@@ -11,12 +12,16 @@ import { resolveCapabilities } from "../../capabilities.js";
 import type { Agent } from "../../types.js";
 
 type VideoGenProvider =
+  | typeof HiggsfieldVideoProvider
   | typeof LumaProvider
   | typeof FalVideoProvider
   | typeof RunwayProvider
   | typeof GoogleAiVideoProvider;
 
+// Higgsfield first (cinematic ad motion); falls through to Luma → fal →
+// Runway → Veo when no Higgsfield key is configured.
 const REGISTRY: ReadonlyArray<VideoGenProvider> = [
+  HiggsfieldVideoProvider,
   LumaProvider,
   FalVideoProvider,
   RunwayProvider,

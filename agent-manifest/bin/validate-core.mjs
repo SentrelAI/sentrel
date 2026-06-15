@@ -15,11 +15,14 @@ const schemaPath = join(here, "..", "schema", "agent-bundle.v1.schema.json");
 
 // Platform-provided tokens — always available for {{substitution}} without
 // being declared as an input. Keep in sync with double.md's substitution layer.
+// Must mirror AgentBundles::Deployer#substitution_context exactly.
 const BUILTIN_TOKENS = new Set([
-  "user_name",
-  "company_name",
   "agent_name",
+  "company_name",
   "company_domain",
+  "user_name",
+  "user_email",
+  "role",
 ]);
 
 // Build a JSON Schema for one input's value from its declared type + rules,

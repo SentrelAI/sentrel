@@ -281,10 +281,18 @@ export async function getComposioMcpServer(
         try {
           // Composio v3 rejects requests with BOTH `tools` and `toolkits`.
           // If we have curated tool names → use `tools` only (precise).
-          // If no curated list → use `toolkits` (load all tools for that app).
+          // If no curated list → use `toolkits` (load ALL tools for that
+          // app). The cap is high enough to cover whole mid-size toolkits
+          // (Facebook ~41, Instagram ~16) so connecting an app gives the
+          // agent its full surface — the skill's SKILL.md teaches which
+          // tools to use. Curation (curated.ts) is now reserved for the
+          // mega-toolkits (GitHub 823, Sentry 176) where loading all is
+          // impossible; everything else loads in full. Tool names always
+          // come straight from Composio here, so they can't be mistyped.
+          const TOOLKIT_TOOL_CAP = 48;
           const params: any = curated.length > 0
-            ? { tools: curated, limit: 20 }
-            : { toolkits: [toolkit], limit: 20 };
+            ? { tools: curated, limit: Math.max(curated.length, 20) }
+            : { toolkits: [toolkit], limit: TOOLKIT_TOOL_CAP };
           const raw = await (client as any).tools.get(tkOwner, params);
           const arr = Array.isArray(raw) ? raw : Object.values(raw || {});
 

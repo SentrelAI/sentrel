@@ -7,6 +7,7 @@
 //     → OpenAI (~$0.04/img on gpt-image-1, standard quality)
 //     → Google AI (~$0.04/img on imagen-3)
 
+import { HiggsfieldImageProvider } from "./higgsfield.js";
 import { ReplicateProvider } from "./replicate.js";
 import { FalProvider } from "./fal.js";
 import { OpenAiImageProvider } from "./openai.js";
@@ -15,12 +16,17 @@ import { resolveCapabilities } from "../../capabilities.js";
 import type { Agent } from "../../types.js";
 
 type ImageGenProvider =
+  | typeof HiggsfieldImageProvider
   | typeof ReplicateProvider
   | typeof FalProvider
   | typeof OpenAiImageProvider
   | typeof GoogleAiImageProvider;
 
+// Higgsfield first: when its key is set, marketing-grade FLUX creative is
+// preferred. With no Higgsfield key, "auto" falls through to the
+// cost-cheapest available vendor (Replicate flux-schnell → fal → …).
 const REGISTRY: ReadonlyArray<ImageGenProvider> = [
+  HiggsfieldImageProvider,
   ReplicateProvider,
   FalProvider,
   OpenAiImageProvider,
