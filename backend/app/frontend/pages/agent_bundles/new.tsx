@@ -1063,7 +1063,7 @@ function AuthOverlay({ open, onClose, bundleName }: { open: boolean; onClose: ()
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="gap-0 p-0 sm:max-w-[26rem] overflow-hidden">
+      <DialogContent className="gap-0 p-0 overflow-hidden" style={{ width: "calc(100% - 2rem)", maxWidth: "27rem" }}>
         <DialogHeader className="space-y-1.5 px-6 pt-6 pb-4">
           <DialogTitle className="text-lg">
             {mode === "signin"
