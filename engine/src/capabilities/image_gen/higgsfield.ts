@@ -1,18 +1,16 @@
-// Higgsfield text-to-image (FLUX family). Async submit-and-poll API that
-// returns hosted URLs; we download into the workspace like every other
-// provider so the result is a local filePath the agent can share/post.
+// Higgsfield "Soul" text-to-image. Contract VERIFIED against the live API
+// (2026-06): submit + poll paths, headers, body shape and the
+// width_and_height enum were all confirmed with a real key.
 //
-// API shape per the official SDK (higgsfield-ai/higgsfield-js):
-//   auth   : Authorization: Key <KEY_ID>:<KEY_SECRET>
-//   base   : https://platform.higgsfield.ai   (override HIGGSFIELD_BASE_URL)
-//   submit : POST <base>/v1/text2image  { model, input: { prompt, aspect_ratio } }
-//   poll   : GET  <base>/requests/{id}/status  → { status, images: [{ url }] }
-//   status : queued | in_progress | completed | failed | nsfw
+//   auth   : two headers — "hf-api-key": <KEY_ID>, "hf-secret": <KEY_SECRET>
+//   submit : POST https://platform.higgsfield.ai/v1/text2image/soul
+//              { "params": { "prompt": "...", "width_and_height": "<enum>" } }
+//   poll   : GET  /v1/job-sets/{id}  → status QUEUED|IN_PROGRESS|COMPLETED|
+//              NSFW|FAILED|CANCELED (UPPERCASE); image at images[0].url /
+//              jobs[].results.raw.url
 //
-// The submit path / body keys are not yet verified against a live key —
-// they're env-overridable (HIGGSFIELD_BASE_URL, HIGGSFIELD_T2I_PATH,
-// HIGGSFIELD_T2I_MODEL) so a one-line config fixes any drift without a
-// redeploy. Same "needs a live key to confirm" posture as runway.ts.
+// width_and_height is a fixed pixel-size enum, NOT a ratio. Mapped from the
+// caller's aspect_ratio below.
 
 import { config } from "../../config.js";
 import { fetchSecret } from "../../tools/secrets.js";
@@ -21,18 +19,49 @@ import { downloadAll } from "./replicate.js";
 import type { GenerateImageInput, GenerateImageOutput } from "./types.js";
 
 const BASE = process.env.HIGGSFIELD_BASE_URL || "https://platform.higgsfield.ai";
-const SUBMIT_PATH = process.env.HIGGSFIELD_T2I_PATH || "/v1/text2image";
-const DEFAULT_MODEL = process.env.HIGGSFIELD_T2I_MODEL || "flux-pro/kontext/max";
 
-// Credential may be stored as the full "KEY_ID:KEY_SECRET" string (value)
-// or split into fields { key_id, key_secret }.
-async function getAuth(agentId: number): Promise<string | null> {
+// Verified valid enum values; map common ratios to the closest supported size.
+function widthAndHeight(ar?: string): string {
+  switch (ar) {
+    case "9:16": return "1152x2048";
+    case "16:9": return "2048x1152";
+    case "4:5":
+    case "3:4":  return "1536x2048";
+    case "1:1":
+    default:     return "1536x1536";
+  }
+}
+
+// Credential value is "KEY_ID:KEY_SECRET" (or split fields key_id/key_secret).
+async function getAuth(agentId: number): Promise<{ id: string; secret: string } | null> {
   const cred = await fetchSecret({ agentId, provider: "higgsfield", kind: "generic" });
   if (!cred) return null;
-  const id = cred.fields?.key_id;
-  const secret = cred.fields?.key_secret;
-  if (id && secret) return `${id}:${secret}`;
-  return cred.fields?.api_key || cred.value || null;
+  if (cred.fields?.key_id && cred.fields?.key_secret) {
+    return { id: cred.fields.key_id, secret: cred.fields.key_secret };
+  }
+  const raw = cred.fields?.api_key || cred.value || "";
+  const idx = raw.indexOf(":");
+  if (idx <= 0) return null;
+  return { id: raw.slice(0, idx), secret: raw.slice(idx + 1) };
+}
+
+// Pull every image URL out of a job-set poll response, tolerating the few
+// shapes the API/SDK use (top-level images, or per-job results).
+function imageUrls(data: any): string[] {
+  const out: string[] = [];
+  const push = (u: unknown) => { if (typeof u === "string" && u) out.push(u); };
+  push(data?.images?.[0]?.url);
+  for (const j of (data?.jobs || [])) {
+    push(j?.results?.raw?.url);
+    push(j?.results?.min?.url);
+    push(j?.image?.url);
+    for (const im of (j?.images || [])) push(im?.url);
+  }
+  return [...new Set(out)];
+}
+
+function jobSetStatus(data: any): string {
+  return String(data?.status || data?.jobs?.[0]?.status || "").toUpperCase();
 }
 
 export const HiggsfieldImageProvider = {
@@ -45,42 +74,33 @@ export const HiggsfieldImageProvider = {
   async generate(input: GenerateImageInput, agentId: number): Promise<GenerateImageOutput> {
     const auth = await getAuth(agentId);
     if (!auth) throw new Error("higgsfield: no credential resolved");
+    const headers = { "hf-api-key": auth.id, "hf-secret": auth.secret, "Content-Type": "application/json" };
 
-    const headers = { Authorization: `Key ${auth}`, "Content-Type": "application/json" };
-    const res = await fetch(`${BASE}${SUBMIT_PATH}`, {
+    const res = await fetch(`${BASE}/v1/text2image/soul`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        model: input.model || DEFAULT_MODEL,
-        input: {
-          prompt: input.prompt,
-          aspect_ratio: input.aspect_ratio || "1:1",
-        },
-      }),
+      body: JSON.stringify({ params: { prompt: input.prompt, width_and_height: widthAndHeight(input.aspect_ratio) } }),
     });
     if (!res.ok) throw new Error(`higgsfield submit failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
-    const submit = await res.json() as { id?: string; request_id?: string; status?: string; images?: Array<{ url: string }> };
+    const submit = await res.json() as { id?: string; job_set_id?: string };
+    const jobSetId = submit.id || submit.job_set_id;
+    if (!jobSetId) throw new Error(`higgsfield: no job-set id in submit response: ${JSON.stringify(submit).slice(0, 200)}`);
 
-    // Some endpoints return the result inline when fast; otherwise poll.
-    let result: { status: string; images?: Array<{ url: string }> } = {
-      status: submit.status || "queued",
-      images: submit.images,
-    };
-    const requestId = submit.request_id || submit.id;
-    for (let i = 0; i < 90 && result.status !== "completed" && result.status !== "failed" && result.status !== "nsfw"; i++) {
-      if (!requestId) break;
+    let urls: string[] = [];
+    for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 2000));
-      const poll = await fetch(`${BASE}/requests/${requestId}/status`, { headers });
-      if (!poll.ok) break;
-      result = await poll.json() as typeof result;
+      const poll = await fetch(`${BASE}/v1/job-sets/${jobSetId}`, { headers });
+      if (!poll.ok) continue;
+      const data = await poll.json();
+      const status = jobSetStatus(data);
+      urls = imageUrls(data);
+      if (urls.length > 0) break;
+      if (status === "FAILED" || status === "CANCELED") throw new Error(`higgsfield job ${status}`);
+      if (status === "NSFW") throw new Error("higgsfield: generation flagged nsfw");
     }
+    if (urls.length === 0) throw new Error("higgsfield: timed out / no image url");
 
-    if (result.status === "nsfw") throw new Error("higgsfield: generation flagged nsfw");
-    if (result.status !== "completed") throw new Error(`higgsfield image ${result.status}`);
-    const urls = (result.images || []).map((im) => im.url).filter(Boolean);
-    if (urls.length === 0) throw new Error("higgsfield returned no images");
-
-    logger.info(`higgsfield generated ${urls.length} image(s) on ${input.model || DEFAULT_MODEL}`);
-    return downloadAll(urls, input.model || DEFAULT_MODEL);
+    logger.info(`higgsfield(soul) generated ${urls.length} image(s)`);
+    return downloadAll(urls, "higgsfield-soul");
   },
 };
