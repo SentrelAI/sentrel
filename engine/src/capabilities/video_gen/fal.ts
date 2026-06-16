@@ -6,7 +6,13 @@ import { config } from "../../config.js";
 import { fetchSecret } from "../../tools/secrets.js";
 import type { GenerateVideoInput, GenerateVideoOutput } from "./types.js";
 
-const DEFAULT_MODEL = "fal-ai/wan-25-preview/text-to-video/fast";
+// fal model slugs (override per-call via input.model, or globally via
+// FAL_VIDEO_T2V_MODEL / FAL_VIDEO_I2V_MODEL). Defaults are current Kling
+// slugs; the previous "wan-25-preview" default 404'd. Image-to-video and
+// text-to-video are DIFFERENT endpoints — picked by whether a source
+// image was provided.
+const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2/master/text-to-video";
+const DEFAULT_I2V = process.env.FAL_VIDEO_I2V_MODEL || "fal-ai/kling-video/v2/master/image-to-video";
 
 async function getKey(agentId: number): Promise<string | null> {
   const cred = await fetchSecret({ agentId, provider: "fal", kind: "generic" });
@@ -24,16 +30,23 @@ export const FalVideoProvider = {
   async generate(input: GenerateVideoInput, agentId: number): Promise<GenerateVideoOutput> {
     const key = await getKey(agentId);
     if (!key) throw new Error("fal video: no credential resolved");
-    const model = input.model || DEFAULT_MODEL;
+
+    // image-to-video needs a PUBLIC image URL (share_file produces one);
+    // a local workspace path can't be fetched by fal.
+    const imageUrl = input.image && /^https?:\/\//.test(input.image) ? input.image : null;
+    const model = input.model || (imageUrl ? DEFAULT_I2V : DEFAULT_T2V);
+
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      aspect_ratio: input.aspect_ratio || "16:9",
+    };
+    if (input.duration) body.duration = String(input.duration);
+    if (imageUrl) body.image_url = imageUrl; // required by image-to-video models
 
     const res = await fetch(`https://fal.run/${model}`, {
       method: "POST",
       headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: input.prompt,
-        aspect_ratio: input.aspect_ratio || "16:9",
-        duration: input.duration,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`fal video failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
     const data = await res.json() as { video?: { url?: string } };
