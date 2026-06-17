@@ -71,7 +71,14 @@ export const FalVideoProvider = {
     const duration = (input.duration && input.duration >= 10) ? "10" : "5";
 
     const body: Record<string, unknown> = { prompt: input.prompt, duration };
-    if (imageData) body.image_url = imageData;
+    if (imageData) {
+      // image-to-video: Kling derives the ratio from the source image.
+      body.image_url = imageData;
+    } else {
+      // text-to-video: pass the requested ratio so Kling renders native
+      // 9:16 (etc.) instead of its 16:9 default — no still, no bands.
+      body.aspect_ratio = input.aspect_ratio || "9:16";
+    }
 
     const submitRes = await fetch(`${QUEUE}/${model}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!submitRes.ok) throw new Error(`fal kling submit failed: ${submitRes.status} ${(await submitRes.text()).slice(0, 200)}`);
