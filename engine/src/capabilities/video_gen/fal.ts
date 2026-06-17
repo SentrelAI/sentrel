@@ -29,6 +29,27 @@ async function getKey(agentId: number): Promise<string | null> {
   return cred.fields?.api_key || cred.value;
 }
 
+// fal's external fetcher can't pull our /api/blobs URLs (Cloudflare + no
+// content-length) — every Kling i2v job failed with "Failed to download
+// the file". So we INLINE the source image as a base64 data URI instead
+// of handing fal a URL. Handles a local workspace path (read) or any
+// http(s) URL the engine can reach (fetch), incl. our own blob URLs.
+async function toDataUri(image: string): Promise<string | null> {
+  if (image.startsWith("data:")) return image;
+  let bytes: Buffer;
+  if (/^https?:\/\//.test(image)) {
+    const r = await fetch(image);
+    if (!r.ok) return null;
+    bytes = Buffer.from(await r.arrayBuffer());
+  } else {
+    try { bytes = await fs.readFile(image); } catch { return null; }
+  }
+  const lower = image.toLowerCase();
+  const ct = lower.includes(".jpg") || lower.includes(".jpeg") ? "image/jpeg"
+    : lower.includes(".webp") ? "image/webp" : "image/png";
+  return `data:${ct};base64,${bytes.toString("base64")}`;
+}
+
 export const FalVideoProvider = {
   name: "fal" as const,
 
@@ -41,14 +62,16 @@ export const FalVideoProvider = {
     if (!key) throw new Error("fal video: no credential resolved");
     const headers = { Authorization: `Key ${key}`, "Content-Type": "application/json" };
 
-    // i2v when a PUBLIC image URL is given (Kling derives the video's aspect
+    // i2v when a source image is given (Kling derives the video's aspect
     // ratio from the source image — pass a 9:16 still for a 9:16 clip).
-    const imageUrl = input.image && /^https?:\/\//.test(input.image) ? input.image : null;
-    const model = input.model || (imageUrl ? DEFAULT_I2V : DEFAULT_T2V);
+    // Inline it as a data URI so fal never has to fetch a URL.
+    const imageData = input.image ? await toDataUri(input.image) : null;
+    if (input.image && !imageData) throw new Error(`fal kling: couldn't read source image ${input.image}`);
+    const model = input.model || (imageData ? DEFAULT_I2V : DEFAULT_T2V);
     const duration = (input.duration && input.duration >= 10) ? "10" : "5";
 
     const body: Record<string, unknown> = { prompt: input.prompt, duration };
-    if (imageUrl) body.image_url = imageUrl;
+    if (imageData) body.image_url = imageData;
 
     const submitRes = await fetch(`${QUEUE}/${model}`, { method: "POST", headers, body: JSON.stringify(body) });
     if (!submitRes.ok) throw new Error(`fal kling submit failed: ${submitRes.status} ${(await submitRes.text()).slice(0, 200)}`);
