@@ -1,9 +1,9 @@
-# Alchemy — System Design
+# Sentrel — System Design
 
 > **AI employees that live inside the tools your team already uses.**
 > An agent platform — not a chatbot wrapper.
 
-This document describes the current design of Alchemy: its architecture, the
+This document describes the current design of Sentrel: its architecture, the
 responsibilities of each component, the data model, and the control/data flows
 that tie them together. It reflects the system as built, with pointers to the
 source that implements each piece.
@@ -33,7 +33,7 @@ Costs, credentials, and failures are all per-agent.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                  alchemy.scribemd.ai  (Rails control plane)         │
+│                  www.sentrel.ai  (Rails control plane)              │
 │                                                                     │
 │  Auth · orgs · agents · policies · approvals · templates · skills   │
 │  Inertia + React UI · SES/Slack/Twilio gateways · audit & traces    │
@@ -157,7 +157,9 @@ IDs are opaque **PrefixedIds** (`agt_…`, `tsk_…`, `cnv_…`, `sch_…`, `apr
 `AgentProvisioner` (`app/services/agent_provisioner.rb`) is the backend router,
 selected by the `AGENT_PROVISIONER` env var:
 
-- **Fly (recommended)** — one Fly App per agent (`alchemy-{env}-agent-{id}`),
+- **Fly (recommended)** — one Fly App per agent (`alchemy-{env}-agent-{id}` —
+  infra identifiers retain the legacy `alchemy-` prefix, including the engine
+  image `ghcr.io/parsedev/alchemy-engine` and the Kamal service `alchemy`),
   a 10 GB `/data` volume, and a Machine (2 CPU / 4 GB) running the engine image.
   Boots in 1–3 s (Firecracker micro-VMs); scales to zero when idle.
 - **Hetzner** — cost-optimized VMs with dedicated IPs (≈60 s boot); credential
@@ -458,7 +460,7 @@ scheduler, bugfixer).
 ## 8. Repo layout
 
 ```
-alchemy/
+sentrel/
 ├── backend/          # Rails 8 + Inertia/React control plane
 │   ├── app/          #   models, controllers, services, jobs, frontend (TSX)
 │   ├── config/       #   deploy.yml (kamal), initializers (prefixed_ids, …)
