@@ -36,16 +36,27 @@ interface Integration {
   is_mine?: boolean
 }
 
+interface McpServerRow {
+  id: number
+  name: string
+  slug: string
+  url: string
+  status: string
+  connected: boolean
+}
+
 interface Props {
   integrations: Integration[]
   supported_services: SupportedService[]
   requested_services?: string[]
+  mcp_servers?: McpServerRow[]
 }
 
 export default function IntegrationsIndex({
   integrations,
   supported_services = [],
   requested_services = [],
+  mcp_servers = [],
 }: Props) {
   const requestedSet = new Set(requested_services)
 
@@ -86,6 +97,14 @@ export default function IntegrationsIndex({
       preserveScroll: true,
       onFinish: () => setDisconnectingId(null),
     })
+  }
+
+  // Direct MCP servers connect via a full-page OAuth redirect (Meta → back),
+  // so Connect is a plain link; disconnect clears the stored tokens.
+  async function disconnectMcp(id: number) {
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    await fetch(`/mcp_servers/${id}`, { method: "DELETE", headers: { "X-CSRF-Token": csrf } })
+    router.reload()
   }
 
   async function requestIntegration(slug: string) {
@@ -189,6 +208,45 @@ export default function IntegrationsIndex({
           ? "Connections shared across the workspace. Your teammates' agents can use these too."
           : "Personal connections. Only your chats and your agents see these — your teammates can't."}
       </p>
+
+      {/* Direct connections — OAuth straight to the provider's MCP server
+          (Meta Ads, etc.), no Composio broker. Connect is a full-page OAuth
+          redirect; the callback brings the user back here connected. */}
+      {scopeView === "org" && mcp_servers.length > 0 && (
+        <div className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between border-b border-border pb-2">
+            <h2 className="text-base font-semibold text-foreground">Direct connections</h2>
+            <span className="text-xs text-muted-foreground">connected straight to the provider — no broker</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {mcp_servers.map((s) => (
+              <div key={s.id} className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-foreground">{s.name}</p>
+                  <p className={`truncate text-xs ${s.connected ? "text-[var(--color-indigo)]" : "text-muted-foreground"}`}>
+                    {s.connected ? "Connected" : "Not connected"}
+                  </p>
+                </div>
+                {s.connected ? (
+                  <button
+                    onClick={() => disconnectMcp(s.id)}
+                    className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <a
+                    href={`/mcp_servers/${s.id}/connect`}
+                    className="shrink-0 rounded-md bg-[var(--color-indigo)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                  >
+                    Connect
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Active category header — spans the full width above both the
           sidebar and the grid so it reads as "this is what's below this

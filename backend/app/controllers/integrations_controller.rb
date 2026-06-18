@@ -87,7 +87,20 @@ class IntegrationsController < ApplicationController
       oauth_configured: {
         "anthropic" => ENV["WEBHOOK_BASE_URL"].present?,
         "openai"    => ENV["OPENAI_OAUTH_CLIENT_ID"].present?
-      }
+      },
+      # Direct OAuth-connected MCP servers (Meta Ads MCP, etc.) — connected
+      # straight to the provider's MCP endpoint, no Composio broker.
+      mcp_servers: begin
+        if defined?(McpServer) && ActiveRecord::Base.connection.table_exists?("mcp_servers")
+          McpServer.where(organization_id: current_tenant.id).order(:name).map do |s|
+            { id: s.id, name: s.name, slug: s.slug, url: s.url, status: s.status, connected: s.connected? }
+          end
+        else
+          []
+        end
+      rescue StandardError
+        []
+      end
     }
   end
 
