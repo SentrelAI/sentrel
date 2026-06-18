@@ -52,6 +52,8 @@ Rails.application.routes.draw do
     # ACL: Credential.find_for resolves per-agent grant first, falls back to
     # org default. Every fetch writes an audit log row.
     get "secrets", to: "secrets#show"
+    # Engine asks for the agent's connected external MCP servers + fresh tokens.
+    get "mcp_servers", to: "mcp_servers#index"
     # Skill self-authoring — agents create + install skills via the engine's
     # skills.create / skills.install_on_me MCP tools. Both require the
     # engine secret; org scoping flows from agent_id → agent.organization_id.
@@ -275,6 +277,13 @@ Rails.application.routes.draw do
         # ops so prioritisation is data-driven.
         post ":service_name/request", action: :request_integration, as: :request_integration
       end
+    end
+
+    # OAuth-connected external MCP servers (Meta Ads MCP, etc.). Endpoints are
+    # discovered from the server's well-known metadata, not hardcoded.
+    resources :mcp_servers, only: [ :index, :create, :destroy ] do
+      member     { get :connect }
+      collection { get :callback }
     end
 
     # OAuth flows for AI provider subscriptions (Anthropic Pro/Max/Team,

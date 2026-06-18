@@ -1541,6 +1541,24 @@ async function buildQueryOptions(
     logger.warn("slack-channel registration skipped:", err);
   }
 
+  // External OAuth-connected MCP servers (Meta Ads MCP, etc.). Rails returns
+  // the org's connected servers WITH a fresh Bearer token; attach each as an
+  // HTTP MCP. Provider-agnostic — no per-provider code here, any connected MCP
+  // shows up. Tokens are refreshed Rails-side; the engine only sees current ones.
+  // toolNames feed the allowlist below (the SDK blocks unlisted MCP tools).
+  let externalMcpToolNames: string[] = [];
+  try {
+    const { buildExternalMcpServers } = await import("./integrations/external-mcp.js");
+    const ext = await buildExternalMcpServers(agent.id);
+    for (const [name, cfg] of Object.entries(ext.servers)) {
+      mcpServers[name] = cfg;
+      baseMcpServers[name] = cfg;
+    }
+    externalMcpToolNames = ext.toolNames;
+  } catch (err) {
+    logger.warn("external MCP registration skipped:", err);
+  }
+
   // Integrations capability gates both `integrations` (search) and
   // `composio` (actual execution tools). Disable the capability to
   // produce a pure-knowledge/internal agent with no external tool access.
@@ -1663,6 +1681,9 @@ async function buildQueryOptions(
     disallowedTools: ["CronCreate", "CronDelete", "CronList", "CronUpdate", "ScheduleWakeup"],
     allowedTools: [
       ...builtinTools,
+      // External OAuth-connected MCP servers (Meta Ads, etc.) — discovered via
+      // tools/list at boot, so any connected MCP's tools are auto-allowed.
+      ...externalMcpToolNames,
       // Capability-gated MCP tools — only listed when their server is registered
       ...(caps.recall.enabled && profile.recall ? [
         "mcp__recall__search_messages",
