@@ -155,8 +155,8 @@ jobs:
           AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID
           AWS_REGION=us-east-1
           DEPLOY_ENV=prod
-          WEBHOOK_BASE_URL=https://www.double.md
-          RAILS_INTERNAL_URL=https://www.double.md
+          WEBHOOK_BASE_URL=https://www.sentrel.ai
+          RAILS_INTERNAL_URL=https://www.sentrel.ai
           FLY_API_TOKEN=$FLY_API_TOKEN
           FLY_ORG_SLUG=$FLY_ORG_SLUG
           FLY_REGION=$FLY_REGION
@@ -187,4 +187,4 @@ jobs:
         run: |
           echo "### Deployed" >> $GITHUB_STEP_SUMMARY
           echo "- Image: ghcr.io/parsedev/alchemy:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Host: www.double.md" >> $GITHUB_STEP_SUMMARY
+          echo "- Host: www.sentrel.ai" >> $GITHUB_STEP_SUMMARY

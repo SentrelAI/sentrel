@@ -21,7 +21,7 @@ import { slugify } from "@/lib/random-names"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe"
 
-// The shareable "Deploy to double.md" wizard.
+// The shareable "Deploy to sentrel" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
 // Server fetches + validates the bundle; this page renders it as a fully
 // EDITABLE form — rename, change model, edit the goal, rewrite any persona
@@ -1212,7 +1212,7 @@ function AuthPanel({ bundleName }: { bundleName: string | null }) {
 
       <div className="rounded-b-2xl border-t border-border bg-muted/30 px-5 py-3 text-center text-xs text-muted-foreground">
         {mode === "signin" ? (
-          <>New to double.md?{" "}
+          <>New to sentrel?{" "}
             <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setMode("signup")}>Create an account</button>
           </>
         ) : (

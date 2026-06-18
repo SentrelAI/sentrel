@@ -18,7 +18,7 @@ analyses for anything too risky to auto-fix.
 ## Deploy
 
 ```
-https://double.md/deploy-agent?source=<github-url-to-this-folder>
+https://sentrel.ai/deploy-agent?source=<github-url-to-this-folder>
 ```
 
 GitHub is `required: true` — the wizard blocks deploy until it's

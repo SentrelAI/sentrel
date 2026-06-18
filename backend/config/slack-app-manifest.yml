@@ -1,4 +1,4 @@
-# Slack app manifest for Double.md Agents.
+# Slack app manifest for Sentrel Agents.
 #
 # Paste this at https://api.slack.com/apps → "Create New App" → "From a manifest".
 # Swap <YOUR-HOST> for your production hostname (no trailing slash).
@@ -13,13 +13,13 @@
 # Updating the manifest later: api.slack.com/apps/<APP_ID>/app-manifest
 
 display_information:
-  name: Double.md Agents
+  name: Sentrel Agents
   description: Run AI teammates inside your Slack workspace
   background_color: "#0b0b0f"
 
 features:
   bot_user:
-    display_name: Double.md
+    display_name: Sentrel
     always_online: true
   app_home:
     home_tab_enabled: true
@@ -31,7 +31,7 @@ features:
   slash_commands:
     - command: /alchemy
       url: https://<YOUR-HOST>/webhooks/slack/commands
-      description: Send a message to one of your Double.md agents
+      description: Send a message to one of your Sentrel agents
       usage_hint: "<agent-slug> <message>   (or just <message> for the default agent)"
       should_escape: false
 

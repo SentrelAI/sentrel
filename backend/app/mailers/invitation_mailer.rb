@@ -9,7 +9,7 @@ class InvitationMailer < ApplicationMailer
     )
     mail(
       to: invitation.email,
-      subject: "You're invited to join #{invitation.organization.name} on Double.md",
+      subject: "You're invited to join #{invitation.organization.name} on Sentrel",
     )
   end
 end

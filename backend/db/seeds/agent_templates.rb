@@ -1,7 +1,7 @@
 # Agent role templates. Seeded idempotently — safe to rerun.
 #
 # Identity / personality / instructions copy is adapted from public multi-agent
-# frameworks (ChatDev, MetaGPT, crewAI role prompts) and tuned for Double.md's
+# frameworks (ChatDev, MetaGPT, crewAI role prompts) and tuned for Sentrel's
 # long-running, channel-aware agent model. Tokens like {{agent_name}} and
 # {{company_name}} are substituted at agent-creation time.
 #

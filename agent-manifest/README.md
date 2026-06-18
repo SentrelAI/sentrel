@@ -46,7 +46,7 @@ typo or a missing variable).
 `inputs[]` declares the variables the owner fills in. Each value
 substitutes `{{key}}` tokens across the persona files, knowledge docs,
 schedules, and goal — so one bundle adapts to each owner without editing
-the files. Tokens that double.md always provides (`user_name`,
+the files. Tokens that sentrel always provides (`user_name`,
 `company_name`, `agent_name`, `company_domain`) need no declaration.
 
 ```yaml
@@ -81,7 +81,7 @@ npx @manifestagent/agentmanifest deploy [bundle-dir] [--server <url>] [--no-open
 ```
 
 Validates the bundle (default: the current folder), packs it as a
-`.tar.gz`, uploads it to [double.md](https://www.double.md), and opens
+`.tar.gz`, uploads it to [sentrel](https://www.sentrel.ai), and opens
 the deploy wizard in your browser. The wizard previews everything the
 bundle installs — persona, skills, schedules, integrations, deploy-time
 inputs — and the deploy itself happens there with your signed-in

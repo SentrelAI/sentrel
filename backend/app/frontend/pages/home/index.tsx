@@ -38,10 +38,11 @@ function useCta() {
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
-      <Head title="Double.md — AI employees that live inside your tools" />
+      <Head title="Sentrel — AI employees that live inside your tools" />
       <LandingNav />
 
       <Hero />
+      <TemplateGallery />
       <LogoMarquee />
       <ProductDemo />
       <FeatureGrid />
@@ -54,6 +55,110 @@ export default function LandingPage() {
 
       <LandingFooter />
     </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════════
+   TEMPLATE GALLERY (pre-built teammates)
+   ═════════════════════════════════════════════════════════════ */
+const TEMPLATE_ACCENTS = {
+  indigo: {
+    surface: "var(--indigo-surface)",
+    border: "var(--indigo-border)",
+    text: "var(--color-indigo)",
+  },
+  cyan: {
+    surface: "var(--cyan-surface)",
+    border: "var(--cyan-border)",
+    text: "var(--cyan)",
+  },
+  success: {
+    surface: "color-mix(in oklab, var(--color-success) 12%, transparent)",
+    border: "color-mix(in oklab, var(--color-success) 32%, transparent)",
+    text: "var(--color-success)",
+  },
+} as const
+
+function TemplateGallery() {
+  const cta = useCta()
+  const templates = [
+    { initial: "S", name: "Sarah", role: "Sales SDR", task: "books demos", accent: "indigo" as const },
+    { initial: "C", name: "Casper", role: "Chief of Staff", task: "runs your week", accent: "cyan" as const },
+    { initial: "J", name: "Jamie", role: "Customer support", task: "handles tickets", accent: "success" as const },
+    { initial: "P", name: "Priya", role: "Recruiting coordinator", task: "schedules interviews", accent: "indigo" as const },
+    { initial: "L", name: "Leo", role: "Marketing", task: "ships campaigns", accent: "cyan" as const },
+    { initial: "N", name: "Nina", role: "Executive assistant", task: "guards your calendar", accent: "success" as const },
+  ]
+
+  return (
+    <section className="border-b py-20 md:py-24">
+      <div className="mx-auto w-full max-w-7xl px-6">
+        <div className="mb-12 max-w-3xl">
+          <Overline accent dot>100+ roles</Overline>
+          <h2 className="text-section mt-3 text-foreground">
+            Pre-built teammates,{" "}
+            <span className="serif-italic text-[var(--color-indigo)]">ready in 90 seconds</span>
+          </h2>
+          <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
+            Pick from 100+ proven roles — SDR, exec assistant, support, hiring
+            coordinator. Each one ships with the skills, integrations, and
+            instructions it needs. You give them a name and they start working.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((t) => {
+            const accent = TEMPLATE_ACCENTS[t.accent]
+            return (
+              <div
+                key={t.name}
+                className="group relative flex flex-col overflow-hidden rounded-xl border bg-card p-6 transition-all hover:border-[var(--border-strong)]"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full border font-display text-base font-semibold"
+                    style={{
+                      background: accent.surface,
+                      borderColor: accent.border,
+                      color: accent.text,
+                    }}
+                  >
+                    {t.initial}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-display text-[15px] font-semibold tracking-[-0.01em] text-foreground">
+                      {t.name} <span className="text-muted-foreground">· {t.role}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+                      <StatusDot status="online" />
+                      {t.task}
+                    </div>
+                  </div>
+                </div>
+
+                <Link
+                  href={cta.href}
+                  className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-md border bg-[var(--muted)] px-3.5 py-2 text-[13px] font-medium text-foreground transition-colors hover:border-[var(--color-indigo)] hover:text-[var(--color-indigo)]"
+                >
+                  Hire {t.name} now
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-8">
+          <Link
+            href={cta.href}
+            className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Browse the full library of 100+ roles
+            <ArrowUpRight className="size-3.5" />
+          </Link>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -322,7 +427,7 @@ function OrgGraphCard() {
         >
           <OrgGraphStats />
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">
-            streaming · double.md/v0.9
+            streaming · sentrel.ai/v0.9
           </span>
         </div>
       </div>
@@ -446,7 +551,7 @@ function TerminalPreview() {
             <span className="size-2.5 rounded-full bg-[#ffbd2e]" />
             <span className="size-2.5 rounded-full bg-[#27c93f]" />
             <span className="ml-3 font-mono text-[11px] text-white/60">
-              app.double.md/runs/run_4fc1
+              app.sentrel.ai/runs/run_4fc1
             </span>
           </div>
           <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--cyan-strong)]">
@@ -544,7 +649,7 @@ function TerminalPreview() {
               </div>
               <pre className="overflow-x-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-white/80">
 {`To: priya@acme.co
-Subject: Your interest in Double.md
+Subject: Your interest in Sentrel
 
 Hi Priya — saw you signed up Monday. Acme
 is exactly the kind of team we built for…`}
@@ -585,7 +690,7 @@ is exactly the kind of team we built for…`}
 }
 
 /* ═════════════════════════════════════════════════════════════
-   4 — FEATURE GRID (why Double.md)
+   4 — FEATURE GRID (why Sentrel)
    ═════════════════════════════════════════════════════════════ */
 function FeatureGrid() {
   const features = [
@@ -633,7 +738,7 @@ function FeatureGrid() {
 
       <div className="relative mx-auto w-full max-w-7xl px-6">
         <div className="mb-16 max-w-3xl">
-          <Overline>Why Double.md</Overline>
+          <Overline>Why Sentrel</Overline>
           <h2 className="text-section mt-3 text-foreground">
             The team you'd build{" "}
             <span className="serif-italic text-muted-foreground">yourself</span> —
@@ -655,7 +760,7 @@ function FeatureGrid() {
             {" "}of hiring.
           </h2>
           <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground">
-            Most AI tools give you one chatbot. Double.md gives you a whole team — specialists who know their role, log into your tools, and run on their own. You stay the editor.
+            Most AI tools give you one chatbot. Sentrel gives you a whole team — specialists who know their role, log into your tools, and run on their own. You stay the editor.
           </p>
         </div>
 
@@ -1184,7 +1289,7 @@ function FinalCTA() {
           </Button>
           <Button asChild size="lg" variant="outline" className="h-12 gap-1.5 px-6">
             <a
-              href="https://github.com/your-org/double-md"
+              href="https://github.com/your-org/sentrel"
               target="_blank"
               rel="noopener noreferrer"
             >

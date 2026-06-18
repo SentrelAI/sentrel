@@ -654,7 +654,7 @@ function EmailDomainSection({ organization, emailDomain, onDomainChange, onSave,
 }
 
 // Picker for grabbing a subdomain on one of our managed zones (default
-// double.md). Live availability check while the user types — debounced
+// sentrel). Live availability check while the user types — debounced
 // 350ms — so we don't hammer the server. Default value is the org slug.
 // One Provision button → claim_managed_subdomain → redirect → auto-runs
 // the SES + DNS provisioning on mount.
@@ -929,7 +929,7 @@ function ByoDomainForm({
 }) {
   // Detect apex (e.g. "acme.com") vs subdomain ("agents.acme.com"). PSL-aware
   // parsing would be overkill — a simple "≥ 3 labels, none empty" check
-  // covers the .com / .co.uk / .double.md cases well enough to warn.
+  // covers the .com / .co.uk / .sentrel.ai cases well enough to warn.
   const trimmed = emailDomain.trim().toLowerCase()
   const labels = trimmed.split(".").filter(Boolean)
   const looksLikeApex = trimmed && labels.length === 2 // e.g. acme.com

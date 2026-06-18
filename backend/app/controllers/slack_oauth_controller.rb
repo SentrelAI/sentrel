@@ -120,7 +120,7 @@ class SlackOauthController < ApplicationController
   # DELETE /slack/oauth/disconnect?agent_id=AGT
   # Removes this agent's binding. We don't uninstall the workspace app — other
   # agents in the org may still be using it. Uninstalling requires the
-  # workspace admin to remove "Double.md Agents" from the Slack workspace.
+  # workspace admin to remove "Sentrel Agents" from the Slack workspace.
   def disconnect
     agent = resolve_agent(params[:agent_id])
     return redirect_with_alert("Agent not found") unless agent

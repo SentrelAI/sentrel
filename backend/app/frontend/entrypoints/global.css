@@ -16,7 +16,7 @@
 @plugin "@tailwindcss/typography";
 
 /* ==========================================================
-   Double.md Design Tokens — Genesis-core + cyan signal
+   Sentrel Design Tokens — Genesis-core + cyan signal
    ========================================================== */
 @theme inline {
   /* — shadcn surface tokens (driven by :root and .dark overrides) — */
@@ -69,7 +69,7 @@
   --color-indigo-50: #eef2ff;
   --color-indigo-200: #c7d2fe;
 
-  --color-cyan: #00c8c8;            /* Double.md signature — signal moments only */
+  --color-cyan: #00c8c8;            /* Sentrel signature — signal moments only */
   --color-cyan-strong: #00e0e0;     /* Dark-mode cyan (slightly brighter) */
   --color-cyan-soft: #67e8e8;
   --color-signal: #0089ff;          /* Focus rings, secondary interactive */
@@ -119,7 +119,7 @@
   --muted: #f3f4f8;
   --muted-foreground: #6b6b72;
 
-  --accent: #00c8c8;             /* Double.md cyan — signal */
+  --accent: #00c8c8;             /* Sentrel cyan — signal */
   --accent-foreground: #0a0a0a;
 
   --destructive: #ef4444;
@@ -145,7 +145,7 @@
   --sidebar-border: #e5e7ee;
   --sidebar-ring: #6366f1;
 
-  /* Double.md-specific */
+  /* Sentrel-specific */
   --cyan: #00c8c8;
   --cyan-surface: rgba(0, 200, 200, 0.10);
   --cyan-border: rgba(0, 200, 200, 0.30);

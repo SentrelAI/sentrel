@@ -158,7 +158,7 @@ export function buildSystemPrompt(
   parts.push(
     `# Sharing files\n` +
     `Any time you produce a file the user needs to download (rendered video, CSV report, PDF, image, transcript, source bundle, tarball), **call mcp__share-file__share_file BEFORE mentioning the file in your reply**. The tool returns a public HTTPS URL. Paste that URL in your message — never paste a \`/data/...\` path, a \`localhost:...\` URL, or a \`file://\` link. Those don't work outside your sandbox.\n\n` +
-    `Example: you rendered a video to \`/data/workspace/launch-video/renders/final.mp4\`. Call \`share_file({ path: "launch-video/renders/final.mp4" })\` → it returns \`{ url: "https://www.double.md/api/blobs/<id>" }\`. Reply: "Download: https://www.double.md/api/blobs/<id>".`,
+    `Example: you rendered a video to \`/data/workspace/launch-video/renders/final.mp4\`. Call \`share_file({ path: "launch-video/renders/final.mp4" })\` → it returns \`{ url: "https://www.sentrel.ai/api/blobs/<id>" }\`. Reply: "Download: https://www.sentrel.ai/api/blobs/<id>".`,
   );
 
   if (caps.scheduling.enabled) {

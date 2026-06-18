@@ -303,7 +303,7 @@ class Credential < ApplicationRecord
     def organization_id; nil; end
     def value; @value; end
     def fields; { "value" => @value }; end
-    def name; "Double.md platform default (#{provider})"; end
+    def name; "Sentrel platform default (#{provider})"; end
     def meta; {} ; end
     def source; "platform_default"; end
     def display_suffix

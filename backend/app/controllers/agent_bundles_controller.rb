@@ -31,7 +31,7 @@ class AgentBundlesController < ApplicationController
   UPLOAD_TTL = 30.minutes
 
   # GET /deploy-agent?source=<github-url>
-  # The shareable "Deploy to double.md" wizard. With ?source= it fetches
+  # The shareable "Deploy to sentrel" wizard. With ?source= it fetches
   # the bundle and renders a full preview (persona, skills, knowledge,
   # channels, integrations, secrets) so the user sees exactly what
   # they're installing before clicking Deploy. Without ?source= it's an

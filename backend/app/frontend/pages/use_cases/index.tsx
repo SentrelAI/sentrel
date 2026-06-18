@@ -56,7 +56,7 @@ export default function UseCasesIndex({ categories }: Props) {
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
-      <Head title="Use cases · Double.md" />
+      <Head title="Use cases · Sentrel" />
       <LandingNav />
 
       {/* Hero */}

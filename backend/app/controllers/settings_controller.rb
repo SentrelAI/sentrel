@@ -1,7 +1,7 @@
 class SettingsController < ApplicationController
   before_action :authenticate_user!
 
-  # GET /settings/subdomain_availability?label=acme[&zone=double.md]
+  # GET /settings/subdomain_availability?label=acme[&zone=sentrel.ai]
   # Live availability check for the subdomain picker. Returns whether
   # `<label>.<zone>` is reserved (already used by another org or our own
   # email channel configs). Cheap query — debounced from the UI.

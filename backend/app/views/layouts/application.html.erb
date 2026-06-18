@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title data-inertia><%= content_for(:title) || "Double.md" %></title>
+    <title data-inertia><%= content_for(:title) || "Sentrel" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Double.md">
+    <meta name="application-name" content="Sentrel">
     <meta name="mobile-web-app-capable" content="yes">
-    <%# Lets Slack suggest the Double.md app when users paste www.double.md
+    <%# Lets Slack suggest the Sentrel app when users paste www.sentrel.ai
         links in their workspace. App id pulled from the Slack app dashboard. %>
     <meta name="slack-app-id" content="A0B3Z7TJBGR">
     <%= csrf_meta_tags %>
@@ -14,19 +14,19 @@
 
     <%# Social share preview (Open Graph + Twitter). Inertia pages can override
         any of these by yielding into :head with their own tags. %>
-    <% og_title = "Double.md — Meet your new AI team" %>
+    <% og_title = "Sentrel — Meet your new AI team" %>
     <% og_description = "Hire AI specialists that live inside Slack, Gmail, your CRM, and 250+ other tools. They draft, you approve, the work ships." %>
     <% og_image = "#{request.base_url}/og-image.png" %>
     <meta name="description" content="<%= og_description %>">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="Double.md">
+    <meta property="og:site_name" content="Sentrel">
     <meta property="og:title" content="<%= og_title %>">
     <meta property="og:description" content="<%= og_description %>">
     <meta property="og:url" content="<%= request.original_url %>">
     <meta property="og:image" content="<%= og_image %>">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Double.md — Meet your new AI team">
+    <meta property="og:image:alt" content="Sentrel — Meet your new AI team">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<%= og_title %>">
     <meta name="twitter:description" content="<%= og_description %>">

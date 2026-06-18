@@ -14,7 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schemaPath = join(here, "..", "schema", "agent-bundle.v1.schema.json");
 
 // Platform-provided tokens — always available for {{substitution}} without
-// being declared as an input. Keep in sync with double.md's substitution layer.
+// being declared as an input. Keep in sync with sentrel's substitution layer.
 // Must mirror AgentBundles::Deployer#substitution_context exactly.
 const BUILTIN_TOKENS = new Set([
   "agent_name",

@@ -104,7 +104,7 @@ class Api::SecretsController < ApplicationController
   end
 
   # Which tier resolved this credential — flows into the audit log + the
-  # JSON response so the engine can echo "running on Double.md platform key"
+  # JSON response so the engine can echo "running on Sentrel platform key"
   # / "running on this agent's own key" in tool output.
   def resolve_source(agent, cred)
     return "platform_default" if cred.is_a?(Credential::PlatformDefault)

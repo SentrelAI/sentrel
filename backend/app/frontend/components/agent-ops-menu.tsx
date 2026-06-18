@@ -130,7 +130,7 @@ const OPS: OpSpec[] = [
     title: "Delete this agent permanently",
     icon: Trash2,
     summary:
-      "Deprovisions the agent's machine and deletes the agent and all of its data from Double.md. This cannot be undone.",
+      "Deprovisions the agent's machine and deletes the agent and all of its data from Sentrel. This cannot be undone.",
     details: [
       "Destroys the Fly/Hetzner machine and its persistent volume.",
       "Deletes the agent record along with all conversations, tasks, scheduled work, skills, and audit logs.",

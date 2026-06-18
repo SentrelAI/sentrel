@@ -33,7 +33,7 @@ import { railsInternalUrl } from "../host/rails-url.js";
 import { postProposal } from "./connections.js";
 
 // Where the key came from. Capability MCP tools surface this so we can show
-// "running on Double.md platform key" / "running on this agent's own key" in
+// "running on Sentrel platform key" / "running on this agent's own key" in
 // audit / UI. Rails resolves in order:
 //   agent_owned → agent_grant → org_default → platform_default
 export type CredentialSource =

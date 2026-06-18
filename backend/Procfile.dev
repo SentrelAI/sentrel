@@ -1,4 +1,4 @@
 vite: bin/vite dev
 web: bin/rails s -p 3200
 sidekiq: bundle exec sidekiq
-engine: cd engine && bun run dev
+engine: cd ../engine && bun run dev

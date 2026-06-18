@@ -86,8 +86,8 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Allow the production domain and any subdomains.
-  config.hosts << "double.md"
-  config.hosts << /.*\.double\.md/
+  config.hosts << "sentrel.ai"
+  config.hosts << /.*\.sentrel\.ai/
 
   # Kamal-proxy health checks hit `/up` using the container's internal
   # hostname (e.g. `d721da4f4556:80`), which HostAuthorization would

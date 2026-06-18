@@ -4,7 +4,7 @@ interface AppLogoProps {
 }
 
 /**
- * Double.md logomark — a small indigo-to-cyan gradient diamond that
+ * Sentrel logomark — a small indigo-to-cyan gradient diamond that
  * pairs with the wordmark. When variant="mark" only the square renders.
  */
 function Mark({ px = 18 }: { px?: number }) {
@@ -49,7 +49,7 @@ export default function AppLogo({ size = "default", variant = "full" }: AppLogoP
           fontWeight: 400,
         }}
       >
-        Double<span className="text-[var(--cyan)]">.md</span>
+        Sentrel
       </span>
     </div>
   )

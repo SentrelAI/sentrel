@@ -299,7 +299,7 @@ export default function AgentEdit({
             <textarea
               id="email_signature_md"
               className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono focus-visible:outline-none focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/10"
-              placeholder={`--\n${agent.name}\n${agent.role} @ Double.md`}
+              placeholder={`--\n${agent.name}\n${agent.role} @ Sentrel`}
               value={data.email_signature_md}
               onChange={(e) => setData("email_signature_md", e.target.value)}
             />

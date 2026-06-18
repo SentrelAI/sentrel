@@ -105,8 +105,8 @@ class ApplicationController < ActionController::Base
   end
 
   def redirect_apex_to_www
-    return unless Rails.env.production? && request.host == "double.md"
-    redirect_to "https://www.double.md#{request.fullpath}",
+    return unless Rails.env.production? && request.host == "sentrel.ai"
+    redirect_to "https://www.sentrel.ai#{request.fullpath}",
                 status: :moved_permanently,
                 allow_other_host: true
   end

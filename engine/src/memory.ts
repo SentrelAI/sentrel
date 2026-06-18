@@ -55,6 +55,12 @@ export function ensureWorkspace(): void {
 // ride along the persistent volume. Without this, session resume fails
 // silently after any Machine restart because the jsonl files are gone.
 function ensureClaudeHome(): void {
+  // Only relocate the SDK's $HOME/.claude onto the persistent volume in the
+  // production container, where dataDir is the absolute /data mount. In local
+  // dev (dataDir is a relative path like ./workspace) the developer's real
+  // ~/.claude must be left untouched — symlinking it away clobbers it.
+  if (!path.isAbsolute(dataDir) || !dataDir.startsWith("/data")) return;
+
   const home = process.env.HOME || "/home/engine";
   const target = path.join(dataDir, ".claude");
   const link = path.join(home, ".claude");

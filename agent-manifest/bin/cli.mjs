@@ -3,7 +3,7 @@
 //
 //   npx @manifestagent/agentmanifest generate [output-dir]   interactive wizard → scaffolds a bundle
 //   npx @manifestagent/agentmanifest validate <bundle-dir>   check a bundle against the spec
-//   npx @manifestagent/agentmanifest deploy [bundle-dir]     validate, upload, deploy via double.md
+//   npx @manifestagent/agentmanifest deploy [bundle-dir]     validate, upload, deploy via sentrel
 
 import { readFileSync } from "node:fs";
 
@@ -19,7 +19,7 @@ Usage:
                                     files, secret-value scan). [--json]
   agentmanifest deploy [bundle-dir]     Validate the bundle (default: current
                                     folder), upload it, and open the
-                                    double.md deploy wizard in your browser.
+                                    sentrel deploy wizard in your browser.
                                     [--server <url>] [--no-open]
   agentmanifest --version               Print the CLI version.
 `;

@@ -75,7 +75,7 @@ export function LandingFooter() {
 
         <div className="mt-16 flex flex-col items-start justify-between gap-4 border-t pt-8 sm:flex-row sm:items-center">
           <span className="font-mono text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Double.md. All systems nominal.
+            © {new Date().getFullYear()} Sentrel. All systems nominal.
           </span>
           <div className="flex items-center gap-2">
             <span className="relative inline-flex size-2">

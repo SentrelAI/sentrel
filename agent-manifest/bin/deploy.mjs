@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // agent-manifest deploy — validate the bundle directory, pack it as a
-// .tar.gz, upload it to double.md, and open the deploy wizard in the
+// .tar.gz, upload it to sentrel, and open the deploy wizard in the
 // browser. The wizard previews the bundle (persona, skills, inputs,
 // integrations) and the actual deploy happens there with your existing
 // browser session — the CLI never needs credentials.
@@ -17,7 +17,7 @@ import { gzipSync } from "node:zlib";
 import { spawn } from "node:child_process";
 import { validateBundle } from "./validate-core.mjs";
 
-const DEFAULT_SERVER = "https://www.double.md";
+const DEFAULT_SERVER = "https://www.sentrel.ai";
 const MAX_FILE_BYTES = 1024 * 1024;        // mirrors the server's untar guard
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // mirrors Fetcher::MAX_BYTES
 

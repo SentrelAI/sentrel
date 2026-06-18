@@ -1,12 +1,12 @@
 {
   "display_information": {
-    "name": "Double.md",
+    "name": "Sentrel",
     "description": "Run AI teammates inside your Slack workspace",
     "background_color": "#0b0b0f"
   },
   "features": {
     "bot_user": {
-      "display_name": "Double.md",
+      "display_name": "Sentrel",
       "always_online": true
     },
     "app_home": {
@@ -17,8 +17,8 @@
     "slash_commands": [
       {
         "command": "/alchemy",
-        "url": "https://www.double.md/webhooks/slack/commands",
-        "description": "Send a message to one of your Double.md agents",
+        "url": "https://www.sentrel.ai/webhooks/slack/commands",
+        "description": "Send a message to one of your Sentrel agents",
         "usage_hint": "<agent-slug> <message>   (or just <message> for the default agent)",
         "should_escape": false
       }
@@ -26,7 +26,7 @@
   },
   "oauth_config": {
     "redirect_urls": [
-      "https://www.double.md/slack/oauth/callback"
+      "https://www.sentrel.ai/slack/oauth/callback"
     ],
     "scopes": {
       "bot": [
@@ -49,7 +49,7 @@
   },
   "settings": {
     "event_subscriptions": {
-      "request_url": "https://www.double.md/webhooks/slack",
+      "request_url": "https://www.sentrel.ai/webhooks/slack",
       "bot_events": [
         "app_mention",
         "message.im",
@@ -60,7 +60,7 @@
     },
     "interactivity": {
       "is_enabled": true,
-      "request_url": "https://www.double.md/webhooks/slack/interactivity"
+      "request_url": "https://www.sentrel.ai/webhooks/slack/interactivity"
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": false,

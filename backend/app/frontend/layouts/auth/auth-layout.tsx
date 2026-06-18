@@ -80,7 +80,7 @@ export function AuthLayout({
         </div>
 
         <p className="relative font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
-          Double.md · Turn effort into outcome
+          Sentrel · Turn effort into outcome
         </p>
       </aside>
 

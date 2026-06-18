@@ -125,7 +125,7 @@ Rails.application.routes.draw do
   # happens.
   post "agent_bundles/upload", to: "agent_bundles#upload", as: :upload_agent_bundles
 
-  # Shareable deploy link — the "Deploy to double.md" button target:
+  # Shareable deploy link — the "Deploy to sentrel" button target:
   #   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
   # PUBLIC: anonymous visitors get the full bundle preview with a sign-in
   # overlay (the controller stores the return location); deploying still

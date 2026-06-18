@@ -45,7 +45,7 @@ sdr/
 node bin/validate.mjs examples/sdr
 ```
 
-Deploy it via the double.md wizard:
+Deploy it via the sentrel wizard:
 
 ```sh
 npx @manifestagent/agentmanifest deploy examples/sdr

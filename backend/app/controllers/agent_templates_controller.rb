@@ -199,7 +199,7 @@ class AgentTemplatesController < ApplicationController
   end
 
   def author_name_for(t)
-    return "Double.md" if t.system_template
+    return "Sentrel" if t.system_template
     t.created_by_user&.name.presence || "Workspace member"
   end
 

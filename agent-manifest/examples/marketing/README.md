@@ -31,7 +31,7 @@ from a stored API credential.
 ## Deploy
 
 ```
-https://double.md/deploy-agent?source=<github-url-to-this-folder>
+https://sentrel.ai/deploy-agent?source=<github-url-to-this-folder>
 ```
 
 Required at deploy: brand name, social handles + voice, and a monthly ad

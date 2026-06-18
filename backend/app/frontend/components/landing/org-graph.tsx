@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 /**
- * Double.md workforce graph — CEO → VPs → specialists rendered as
+ * Sentrel workforce graph — CEO → VPs → specialists rendered as
  * rounded workspace-cards (not circles). Edges stream packets of real
  * work types between them, status stripes show live state.
  */

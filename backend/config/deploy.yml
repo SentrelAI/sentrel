@@ -17,8 +17,8 @@ servers:
 proxy:
   ssl: true
   hosts:
-    - www.double.md
-    - double.md
+    - www.sentrel.ai
+    - sentrel.ai
 
 # GHCR registry.
 registry:
@@ -36,8 +36,8 @@ env:
     AWS_REGION: us-east-1
     DEPLOY_ENV: prod
     AGENT_PROVISIONER: fly
-    WEBHOOK_BASE_URL: https://www.double.md
-    RAILS_INTERNAL_URL: https://www.double.md
+    WEBHOOK_BASE_URL: https://www.sentrel.ai
+    RAILS_INTERNAL_URL: https://www.sentrel.ai
   secret:
     - RAILS_MASTER_KEY
     - DATABASE_URL

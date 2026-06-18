@@ -742,7 +742,7 @@ npx @manifestagent/agentmanifest validate .
 \`\`\`
 
 Deploy when ready — validates, uploads, and opens the
-[double.md](https://www.double.md) deploy wizard in your browser:
+[sentrel](https://www.sentrel.ai) deploy wizard in your browser:
 
 \`\`\`sh
 npx @manifestagent/agentmanifest deploy .

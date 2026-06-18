@@ -4,12 +4,12 @@ module Email
   # Auto-configures the SES DNS records for an email domain when the
   # domain falls under a zone we manage. Routes to a provider-specific
   # backend (Cloudflare or AWS Route 53) so customers can either bring
-  # their own domain or claim a managed subdomain like `acme.double.md`
+  # their own domain or claim a managed subdomain like `acme.sentrel.ai`
   # and we provision everything for them.
   #
   # Env: MANAGED_DNS_ZONES is a comma-separated list. Entries can be:
-  #   - "double.md"                 → defaults to cloudflare
-  #   - "route53:double.md"         → managed via Route 53
+  #   - "sentrel.ai"                 → defaults to cloudflare
+  #   - "route53:sentrel.ai"         → managed via Route 53
   #   - "cloudflare:scribemd.ai"    → managed via Cloudflare (explicit)
   #
   # Provider creds:
@@ -80,9 +80,9 @@ module Email
     # Parses MANAGED_DNS_ZONES into [[zone, provider], ...]. Default provider
     # for unprefixed entries is "cloudflare" (backward compat with the
     # original one-string format). When the env is empty, we default to
-    # route53:double.md — our primary managed zone — so a fresh deploy has
+    # route53:sentrel.ai — our primary managed zone — so a fresh deploy has
     # auto-DNS working without any extra configuration.
-    DEFAULT_MANAGED_ZONES = [ [ "double.md", "route53" ] ].freeze
+    DEFAULT_MANAGED_ZONES = [ [ "sentrel.ai", "route53" ] ].freeze
 
     def parsed_managed_zones
       raw_env = ENV.fetch("MANAGED_DNS_ZONES", "")

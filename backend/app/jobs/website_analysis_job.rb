@@ -388,7 +388,7 @@ class WebsiteAnalysisJob < ApplicationJob
     request = Net::HTTP::Post.new(uri.path)
     request["Content-Type"] = "application/json"
     request["Authorization"] = "Bearer #{api_key}"
-    request["X-Title"] = "Double.md Website Analysis"
+    request["X-Title"] = "Sentrel Website Analysis"
 
     request.body = {
       model: OPENROUTER_MODEL,

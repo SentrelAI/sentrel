@@ -26,7 +26,7 @@ class OauthController < ApplicationController
     base = oauth_base_url
     render json: {
       client_id: "#{base}/oauth/anthropic/client-metadata",
-      client_name: "Double.md",
+      client_name: "Sentrel",
       client_uri: base,
       redirect_uris: [ "#{base}/oauth/anthropic/callback" ],
       grant_types: [ "authorization_code", "refresh_token" ],
@@ -39,7 +39,7 @@ class OauthController < ApplicationController
     base = oauth_base_url
     render json: {
       client_id: "#{base}/oauth/openai/client-metadata",
-      client_name: "Double.md",
+      client_name: "Sentrel",
       client_uri: base,
       redirect_uris: [ "#{base}/oauth/openai/callback" ],
       grant_types: [ "authorization_code", "refresh_token" ],

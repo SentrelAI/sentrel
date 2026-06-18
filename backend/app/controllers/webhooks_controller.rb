@@ -140,7 +140,7 @@ class WebhooksController < ApplicationController
     user_id    = params[:user_id]
 
     install = find_slack_install(team_id: team_id)
-    return render_command_ephemeral("Double.md isn't installed in this workspace yet.") unless install
+    return render_command_ephemeral("Sentrel isn't installed in this workspace yet.") unless install
 
     if raw_text.downcase == "help" || raw_text.empty?
       return render_command_ephemeral(slack_command_help_text)
@@ -292,13 +292,13 @@ class WebhooksController < ApplicationController
   # Help text shown for `/alchemy` with no args or `/alchemy help`.
   def slack_command_help_text
     <<~HELP
-      *Double.md slash command*
+      *Sentrel slash command*
       `/alchemy <agent-slug> <message>` — send a message to a specific agent
       `/alchemy <message>` — send to your org's default Slack agent (set in /settings)
       `/alchemy help` — show this
 
       The agent replies in the same channel you typed the command from.
-      To set a default agent, open https://www.double.md/settings.
+      To set a default agent, open https://www.sentrel.ai/settings.
     HELP
   end
 
