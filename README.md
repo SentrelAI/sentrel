@@ -1,17 +1,17 @@
-# Alchemy
+# Sentrel
 
 > **AI employees that live inside the tools your team already uses.**
 > An agent platform — not a chatbot wrapper.
 
-[![Build engine image](https://github.com/ParseDev/alchemy/actions/workflows/engine-image.yml/badge.svg)](https://github.com/ParseDev/alchemy/actions/workflows/engine-image.yml)
-[![app-deploy](https://github.com/ParseDev/alchemy/actions/workflows/app-deploy.yml/badge.svg)](https://github.com/ParseDev/alchemy/actions/workflows/app-deploy.yml)
-[![CI](https://github.com/ParseDev/alchemy/actions/workflows/ci.yml/badge.svg)](https://github.com/ParseDev/alchemy/actions/workflows/ci.yml)
+[![Build engine image](https://github.com/ParseDev/double.md/actions/workflows/engine-image.yml/badge.svg)](https://github.com/ParseDev/double.md/actions/workflows/engine-image.yml)
+[![app-deploy](https://github.com/ParseDev/double.md/actions/workflows/app-deploy.yml/badge.svg)](https://github.com/ParseDev/double.md/actions/workflows/app-deploy.yml)
+[![CI](https://github.com/ParseDev/double.md/actions/workflows/ci.yml/badge.svg)](https://github.com/ParseDev/double.md/actions/workflows/ci.yml)
 
 ---
 
 ## What is this?
 
-Most "AI agents" today are a single chatbot dressed in different system prompts. Alchemy is the opposite: every agent is a **real teammate** with its own identity, its own runtime, its own logins to Slack / Gmail / your CRM, and its own dedicated channel where humans talk to it.
+Most "AI agents" today are a single chatbot dressed in different system prompts. Sentrel is the opposite: every agent is a **real teammate** with its own identity, its own runtime, its own logins to Slack / Gmail / your CRM, and its own dedicated channel where humans talk to it.
 
 - **One process per agent.** Each agent runs in its own Fly Machine. No shared memory, no shared bot identity. Sarah's context never leaks into Casper's.
 - **Real OAuth, not scrapers.** Native integrations with 250+ tools through Composio + dedicated channel apps (Slack, Gmail, Telegram, WhatsApp).
@@ -43,7 +43,7 @@ Hit Create. **90 seconds later**:
 - A `#sarah` Slack channel auto-creates in your workspace, bot invited, topic set
 - Sarah's first inbound triage runs — she reads a list of new leads from Apollo, drafts emails, posts to `#sarah` with previews for your approval
 
-You DM `@Alchemy "sarah, reach out to anyone from a Series B company in our ICP this week"` in Slack. Sarah picks it up, builds a list, drafts 8 personalized emails, posts them in-thread asking which to send. You ✅ five of them. They go out. She logs each touch in HubSpot. The trace is at `/ops/runs` showing every tool call + cost.
+You DM `@Sentrel "sarah, reach out to anyone from a Series B company in our ICP this week"` in Slack. Sarah picks it up, builds a list, drafts 8 personalized emails, posts them in-thread asking which to send. You ✅ five of them. They go out. She logs each touch in HubSpot. The trace is at `/ops/runs` showing every tool call + cost.
 
 That's what one agent looks like. Now multiply by your team.
 
@@ -53,7 +53,7 @@ That's what one agent looks like. Now multiply by your team.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                  alchemy.scribemd.ai  (Rails control plane)        │
+│                  www.sentrel.ai  (Rails control plane)             │
 │                                                                    │
 │  - Auth / orgs / agents / policies / approvals / templates         │
 │  - Inertia + React UI                                              │
@@ -82,7 +82,7 @@ This isolation matters: when Casper hits an OAuth token revocation, Sarah keeps 
 
 ## What we built on top
 
-Alchemy uses the [Claude Agent SDK](https://docs.anthropic.com/en/api/agent-sdk) as the inner loop — model invocation, tool dispatch, skill primitives — but the SDK is one component among many. The agent loop alone doesn't make a hire-able teammate. The rest of the system is original:
+Sentrel uses the [Claude Agent SDK](https://docs.anthropic.com/en/api/agent-sdk) as the inner loop — model invocation, tool dispatch, skill primitives — but the SDK is one component among many. The agent loop alone doesn't make a hire-able teammate. The rest of the system is original:
 
 **Runtime & infrastructure**
 - Per-agent Fly Machine orchestration — provisioning, auto-start on inbound, `/data` volume lifecycle, fleet rolls
@@ -130,7 +130,7 @@ That's ~30k LoC of original code on top of the SDK. We use the SDK the way you'd
 ## Repo layout
 
 ```
-alchemy/
+sentrel/
 ├── backend/              # Rails 8 + Inertia/React control plane
 │   ├── app/              #   controllers, models, frontend (TSX), services
 │   ├── config/deploy.yml #   kamal target — EC2 host
@@ -159,8 +159,8 @@ alchemy/
 ## Quick start
 
 ```bash
-git clone git@github.com:ParseDev/alchemy.git
-cd alchemy
+git clone git@github.com:ParseDev/double.md.git
+cd double.md
 
 bin/setup    # installs gems + npm + bun deps for both halves
 bin/dev      # foreman: vite + rails + sidekiq + engine
@@ -180,7 +180,7 @@ Visit `http://localhost:3200` once everything's up.
 
 Both halves deploy independently and roll forward without coordination.
 
-**Rails control plane** — push to `main` with changes under `backend/**` triggers `app-deploy.yml`. The workflow builds + pushes the Rails image to GHCR, then SSH's into the EC2 host and runs `kamal deploy` + `db:migrate`. Live at <https://alchemy.scribemd.ai>.
+**Rails control plane** — push to `main` with changes under `backend/**` triggers `app-deploy.yml`. The workflow builds + pushes the Rails image to GHCR, then SSH's into the EC2 host and runs `kamal deploy` + `db:migrate`. Live at <https://www.sentrel.ai>.
 
 **Per-agent engine** — push to `main` with changes under `engine/**` triggers `engine-image.yml`. The workflow builds a multi-arch image and pushes `ghcr.io/parsedev/alchemy-engine:latest`. Each agent's Fly Machine pulls the new image on its next cold-boot (usually within 5 minutes since machines auto-stop when idle).
 
@@ -386,10 +386,10 @@ What's next:
 ## FAQ
 
 **How is this different from Lindy / Relevance / OpenAI's "Assistants"?**
-Lindy and Relevance are **workflow builders** — drag boxes, connect outputs to inputs. Great for one-shot automations. OpenAI's Assistants API is a **stateful chat endpoint** — you wire it into your own UI and host the integration layer yourself. Alchemy gives you persistent **employees** who own a role and react to events 24/7 inside your existing channels. The mental model is "a teammate logs into Slack" not "a workflow runs when triggered" and not "build your own product on top of an API."
+Lindy and Relevance are **workflow builders** — drag boxes, connect outputs to inputs. Great for one-shot automations. OpenAI's Assistants API is a **stateful chat endpoint** — you wire it into your own UI and host the integration layer yourself. Sentrel gives you persistent **employees** who own a role and react to events 24/7 inside your existing channels. The mental model is "a teammate logs into Slack" not "a workflow runs when triggered" and not "build your own product on top of an API."
 
 **How is this different from agent frameworks like OpenClaw / LangGraph / AutoGen / crewAI?**
-Those are **libraries** — you write Python or TypeScript that calls them, then you figure out everything else: hosting, observability, multi-tenant isolation, OAuth flows, retry logic, channel ingress, approval UI, audit trail, billing. Alchemy is a **platform** — your "agent code" is a row in a templates table and a markdown skill bundle; everything around it is solved. You can still drop into our engine's TypeScript when you want to write a custom MCP tool, but the 80% case never needs that. Frameworks give you a runtime; we give you a workspace.
+Those are **libraries** — you write Python or TypeScript that calls them, then you figure out everything else: hosting, observability, multi-tenant isolation, OAuth flows, retry logic, channel ingress, approval UI, audit trail, billing. Sentrel is a **platform** — your "agent code" is a row in a templates table and a markdown skill bundle; everything around it is solved. You can still drop into our engine's TypeScript when you want to write a custom MCP tool, but the 80% case never needs that. Frameworks give you a runtime; we give you a workspace.
 
 **Why per-agent VMs instead of one shared engine?**
 Three reasons. (1) **Isolation**: when an agent's prompt grows or its node modules corrupt, it doesn't take down the rest of the fleet. (2) **State**: each agent has its own `/data` volume — memory, RAG indices, OAuth token caches all survive restarts without a shared database becoming a bottleneck. (3) **Cost transparency**: machine-level cost = agent-level cost. You see exactly what each agent costs.
@@ -406,7 +406,7 @@ At today's pricing: Rails control plane on one t3.medium ≈ $25/mo, Fly Machine
 We don't try to. Each agent's session lives on one model. You can swap the model per agent (so Sarah uses Claude, Casper uses GPT) but cross-provider context migration is out of scope — the abstractions leak too much to be useful.
 
 **Is there a SaaS sign-up?**
-Yes — <https://alchemy.scribemd.ai>. Early access is friendly and the docs are real, but expect rough edges. Email us if anything breaks.
+Yes — <https://www.sentrel.ai>. Early access is friendly and the docs are real, but expect rough edges. Email us if anything breaks.
 
 ---
 

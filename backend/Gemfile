@@ -20,6 +20,7 @@ gem "pundit"
 
 # Background Jobs & Redis
 gem "sidekiq"
+gem "posthog-ruby"
 # Cron-style periodic jobs for Sidekiq OSS. Sidekiq's own `config.periodic`
 # is Enterprise-only; this gem fills the gap with the same Redis-backed
 # leader-only-runs semantics. Schedule registered in
