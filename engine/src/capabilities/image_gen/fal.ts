@@ -23,9 +23,10 @@ const SIZE_BY_ASPECT: Record<string, string> = {
   "3:4": "portrait_4_3",
 };
 
-// pro/ultra models speak aspect_ratio; schnell/dev speak image_size.
+// flux-pro/ultra + nano-banana / gemini image models speak aspect_ratio;
+// flux schnell/dev speak the image_size enum.
 function sizeFields(model: string, input: GenerateImageInput): Record<string, unknown> {
-  if (/flux-pro|ultra/.test(model)) {
+  if (/flux-pro|ultra|nano-banana|gemini/.test(model)) {
     return { aspect_ratio: input.aspect_ratio || "1:1" };
   }
   const mapped = input.aspect_ratio ? SIZE_BY_ASPECT[input.aspect_ratio] : undefined;
