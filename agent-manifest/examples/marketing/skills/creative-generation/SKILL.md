@@ -6,10 +6,15 @@ description: Use when generating images or video for a post or ad. Covers prompt
 # Creative generation
 
 You generate stills and video with the agent's built-in capability tools —
-not a Composio integration. When a Higgsfield key is configured these run
-on Higgsfield (FLUX stills, cinematic image-to-video); otherwise they fall
-back to whatever generator the workspace has a key for. You don't choose
-the vendor — you call the tool and it resolves.
+not a Composio integration. The tool resolves a vendor by default, but for
+ad creative you should choose the model:
+
+- **Ad creative / posters → `model: "fal-ai/nano-banana-pro"`.** It renders
+  crisp, legible text *on* the image (headlines, sub-headers, CTA buttons,
+  logos) and clean SaaS-ad layouts — FLUX and the older models mangle text,
+  which is why earlier ads looked off. Use this for any ad or poster.
+- **Photoreal people/scenes (no baked text) → `model: "fal-ai/flux-pro/v1.1-ultra"`.**
+- Otherwise just call the tool and let it resolve the default.
 
 ## Tools
 
@@ -41,8 +46,11 @@ Generate in the destination's native ratio. Never stretch or letterbox a
 
 1. **Prompt on brand.** Pull the voice/style from the brand-and-safety
    policy and the brand handles. Name the subject, the mood, the lighting,
-   and the format. Keep text-in-image minimal — generators mangle long
-   copy; put the words in the caption, not baked into the asset.
+   and the format. For ad creative with **Nano Banana Pro** you CAN bake the
+   headline + sub-header + CTA into the image (spell the exact text in the
+   prompt, e.g. `headline reading "STOP CHARTING AFTER MIDNIGHT"`) — it
+   renders text cleanly. For non-nano models keep text minimal and put the
+   words in the caption instead.
 2. **Make variants.** Creative is cheap. Generate 2–3 options for a slot so
    the human (or an A/B test) has a choice. Note them in the ledger.
 3. **Respect safety.** If a generation is refused or flagged, don't retry
