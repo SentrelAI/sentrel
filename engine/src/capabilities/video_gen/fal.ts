@@ -39,7 +39,14 @@ const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2.1/
 const DEFAULT_AVATAR = process.env.FAL_AVATAR_MODEL || "veed/avatars/text-to-video";
 // CUSTOM talking avatar: a face image + an audio track → that exact person,
 // lip-synced. This is how the agent makes a generated doctor talk.
-const DEFAULT_LIPSYNC = process.env.FAL_LIPSYNC_MODEL || "fal-ai/kling-video/ai-avatar/v2/standard";
+//
+// OmniHuman (ByteDance) is the default: it preserves real skin texture (no
+// waxy "AI-avatar" sheen that the Kling avatar tiers add). Its one weakness
+// is that it animates the whole body and can mangle hands/arms — the ugc-ads
+// skill counters this by mandating TIGHT head-and-shoulders source framing
+// (no arms in the shot) + a self-review pass. Swap via FAL_LIPSYNC_MODEL
+// (e.g. veed/fabric-1.0 for a cheaper, pose-stable alternative).
+const DEFAULT_LIPSYNC = process.env.FAL_LIPSYNC_MODEL || "fal-ai/bytedance/omnihuman";
 // Voice the script. fal-hosted ElevenLabs → returns a fal.media audio URL
 // the lip-sync model can fetch (our own blob URLs are unreachable to fal).
 const TTS_MODEL = process.env.FAL_TTS_MODEL || "fal-ai/elevenlabs/tts/multilingual-v2";
