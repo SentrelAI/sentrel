@@ -158,13 +158,27 @@ module AgentBundles
 
     def create_ai_config!(agent)
       cfg = @m.model.merge(@model_override.stringify_keys)
+      provider = cfg["provider"].presence || "anthropic"
+      # Prefer the org's connected Claude subscription over a metered API key,
+      # mirroring AgentTemplates::Installer + the in-app create path. Without
+      # this, every agent deployed via the deploy-agent / bundle flow stuck on
+      # the platform API key even when the org had the subscription connected.
+      if provider.to_s == "anthropic" && org_has_anthropic_oauth?(agent.organization_id)
+        provider = "anthropic_account"
+      end
       agent.create_ai_config!(
-        provider:       cfg["provider"].presence || "anthropic",
+        provider:       provider,
         model_id:       (cfg["model_id"] || cfg["id"]).presence || "claude-sonnet-4-6",
         temperature:    cfg["temperature"] || 0.7,
         max_tokens:     cfg["max_tokens"] || 8192,
         thinking_level: cfg["thinking_level"].presence || "none",
       )
+    end
+
+    def org_has_anthropic_oauth?(org_id)
+      OauthCredential.exists?(organization_id: org_id, provider: "anthropic", kind: "ai_provider")
+    rescue StandardError
+      false
     end
 
     # Same collision policy as AgentTemplates::Importer: reuse an
