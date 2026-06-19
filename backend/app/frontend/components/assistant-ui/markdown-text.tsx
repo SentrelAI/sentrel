@@ -8,6 +8,7 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
+import { useMessagePartText } from "@assistant-ui/react";
 import remarkGfm from "remark-gfm";
 import { createContext, type FC, memo, useContext, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
@@ -45,6 +46,14 @@ function guessContentType(href: string, filename: string): string {
 
 const MarkdownTextImpl = () => {
   const citations = useContext(CitationsContext);
+  // Smooth-animate ONLY while the part is actively streaming. AUI's smoothing
+  // re-reveals text from empty whenever the SmoothText (re)mounts — so on a
+  // COMPLETED message (loaded from history, or after a re-render) the already-
+  // rendered content briefly vanishes and retypes, which is exactly the
+  // "table shows then disappears" bug. Once the part is done, smooth=false so
+  // completed messages render stable and GFM tables don't drop out.
+  const part = useMessagePartText() as { status?: { type?: string } } | undefined;
+  const isStreaming = part?.status?.type === "running";
   // Pre-rewrites bare [N] tokens in the prose to special markdown links of
   // the form [N](aui-cite:URL) so the existing `a` renderer below can pick
   // them up and render the superscript hover card. No-ops when the message
@@ -54,9 +63,7 @@ const MarkdownTextImpl = () => {
     : undefined;
   return (
     <MarkdownTextPrimitive
-      // Smoothing on by default in AUI; making it explicit so a library
-      // upgrade can't silently flip it off and bring the chunk-flicker back.
-      smooth
+      smooth={isStreaming}
       remarkPlugins={[remarkGfm]}
       className="aui-md"
       components={defaultComponents}
