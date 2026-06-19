@@ -1098,23 +1098,25 @@ const AssistantMessage: FC = () => {
   );
 };
 
-// Empty-pending assistant placeholder. Renders the typing dot pulse by
-// default; when the agent's machine is scaled to zero / pending / starting,
-// upgrades to a "Waking <name> · ~30s" indicator so the user knows the
-// 30-ish second wait isn't a stall.
+// Empty-pending assistant placeholder. ALWAYS the line-art computer
+// (ThinkingEyes) — one consistent "agent is working" indicator, never a bare
+// dot/spinner. During cold start (machine scaled to zero / pending / starting)
+// we keep the computer and add a "Waking <name> · ~30s" caption beside it so
+// the 30-ish second wait doesn't read as a stall.
 const ColdStartAwareDot: FC = () => {
   const status = useContext(AgentStatusContext);
   const name = useContext(AgentNameContext);
   const cold = !isAgentReady(status);
-  if (cold) {
-    return (
-      <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground" aria-label={`Waking ${name}`}>
-        <Loader2Icon className="size-3.5 animate-spin" />
-        <span><span className="font-medium text-foreground/80">Waking {name}</span> · first reply takes ~30s</span>
-      </div>
-    );
-  }
-  return <ThinkingEyes />;
+  return (
+    <div className="flex items-center gap-2" aria-label={cold ? `Waking ${name}` : "Agent is working"}>
+      <ThinkingEyes />
+      {cold && (
+        <span className="py-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/80">Waking {name}</span> · first reply takes ~30s
+        </span>
+      )}
+    </div>
+  );
 };
 
 // "Agent is thinking" indicator — a tiny line-art computer whose eyes look

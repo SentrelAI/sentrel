@@ -30,6 +30,26 @@ class Api::SecretsController < ApplicationController
         Credential.find_for(agent, provider: provider, kind: kind)
       end
 
+    # Resolve by PROVIDER regardless of kind. The agent asks for "the openrouter
+    # key" without knowing (or caring) how the org classified it — generic /
+    # cloud_provider / llm_api_key are internal labels. Matching on the caller's
+    # guessed `kind` is the actual bug: a key the user clearly added comes back
+    # 404 and the UI loops on the "add credential" card forever. So if the
+    # kind-specific lookup missed, fall back to ANY org credential for this
+    # provider (preferring generic → cloud → llm). The one thing we hold back
+    # is the agent's OWN brain provider, which is piped into env at boot and
+    # must not leak back through a tool result.
+    if cred.nil? && provider.present?
+      brain = agent.ai_config&.provider.to_s.sub(/_account\z/, "")
+      unless provider.casecmp?(brain)
+        cred = Credential
+          .where(organization_id: agent.organization_id, provider: provider)
+          .where(agent_id: [nil, agent.id])
+          .order(Arel.sql("CASE kind WHEN 'generic' THEN 0 WHEN 'cloud_provider' THEN 1 ELSE 2 END"))
+          .first
+      end
+    end
+
     return render(json: { error: "not found" }, status: :not_found) unless cred
     return render(json: { error: "no access" }, status: :forbidden) unless allowed?(agent, cred)
 
