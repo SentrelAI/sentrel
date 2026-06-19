@@ -152,6 +152,17 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
   // over-cap, soft "approaching cap" notify when crossing the threshold.
   // Best-effort — network failure / missing cap doesn't block the run.
   const cap = await checkSpendCap(agent.id).catch(() => null);
+  // Autonomous jobs (scheduled_task / heartbeat) re-fire on a timer and would
+  // spend unbounded if the cap check can't confirm we're under budget. Fail
+  // CLOSED for them: no definitive answer → skip the run. Human-driven inbound
+  // messages stay fail-open so a transient Rails blip doesn't block live chat
+  // (their spend is naturally bounded by the human in the loop).
+  const isAutonomousJob = job.type === "scheduled_task" || job.type === "heartbeat";
+  if (isAutonomousJob && cap === null) {
+    logger.warn(`Spend-cap check unavailable for agent ${agent.id} — skipping autonomous ${job.type} (fail-closed)`);
+    emitError("⚠️ Skipped scheduled run: spend-cap check unavailable (failing safe to avoid unbounded spend).");
+    return;
+  }
   if (cap?.over_daily || cap?.over_monthly) {
     const which = cap.over_daily ? "daily" : "monthly";
     const spent = cap.over_daily ? cap.spend_today_usd : cap.spend_month_usd;

@@ -165,7 +165,17 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
     }
     case "once": {
       if (!item.fire_at) break;
-      const delayMs = new Date(item.fire_at).getTime() - Date.now();
+      // A one-shot fires exactly once. If it has already run at/after its
+      // fire time, never re-register it — otherwise a past-due `once` row
+      // that's still active (e.g. before its deactivation lands, or a legacy
+      // row) gets re-fired on every 60s poll, looping indefinitely.
+      const fireMs = new Date(item.fire_at).getTime();
+      const lastRunMs = item.last_run_at ? new Date(item.last_run_at).getTime() : 0;
+      if (lastRunMs >= fireMs) {
+        logger.info(`Work scheduler: skipping already-serviced one-shot #${item.id} (last_run >= fire_at)`);
+        break;
+      }
+      const delayMs = fireMs - Date.now();
       if (delayMs <= 0) {
         // Already past — fire immediately
         await queue.add(jobType, payload, {

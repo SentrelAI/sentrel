@@ -20,18 +20,31 @@ export interface SpendCapState {
 export async function checkSpendCap(agentId: number): Promise<SpendCapState | null> {
   const rails = process.env.RAILS_INTERNAL_URL;
   const secret = process.env.ENGINE_API_SECRET;
-  if (!rails || !secret) return null;
-  try {
-    const res = await fetch(`${rails}/api/spend_caps/check?agent_id=${agentId}`, {
-      headers: { "X-Engine-Secret": secret },
-      signal: AbortSignal.timeout(2_500),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as SpendCapState;
-  } catch (err) {
-    logger.warn("spend cap check failed", { error: (err as Error).message });
+  if (!rails || !secret) {
+    logger.warn("spend cap check skipped — RAILS_INTERNAL_URL or ENGINE_API_SECRET unset");
     return null;
   }
+  // Retry transient failures so a single network blip doesn't silently open
+  // the gate. Callers fail-closed for autonomous jobs on a null result, so a
+  // false negative here can halt scheduled work — worth a couple of retries.
+  let lastErr: string | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${rails}/api/spend_caps/check?agent_id=${agentId}`, {
+        headers: { "X-Engine-Secret": secret },
+        signal: AbortSignal.timeout(2_500),
+      });
+      if (!res.ok) {
+        lastErr = `HTTP ${res.status}`;
+        continue;
+      }
+      return (await res.json()) as SpendCapState;
+    } catch (err) {
+      lastErr = (err as Error).message;
+    }
+  }
+  logger.warn("spend cap check failed after retries", { error: lastErr });
+  return null;
 }
 
 export async function markSpendNotified(agentId: number): Promise<void> {

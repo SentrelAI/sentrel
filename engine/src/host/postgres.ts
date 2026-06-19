@@ -696,6 +696,17 @@ export class PostgresHost implements Host {
     // knows when to wake the machine again.
     const { rows } = await this.pool.query(`SELECT mode, cron_expression, timezone, fire_at, interval_seconds FROM scheduled_work WHERE id = $1`, [id]);
     if (!rows[0]) return;
+    // A one-shot fires exactly once. Retire it (active=false) instead of
+    // advancing next_run_at — otherwise next_run_at stays pinned at the
+    // (now past) fire_at, the row remains active, and the 60s scheduler poll
+    // re-registers + re-fires it indefinitely (runaway loop).
+    if (rows[0].mode === "once") {
+      await this.pool.query(
+        `UPDATE scheduled_work SET last_run_at = NOW(), active = false, updated_at = NOW() WHERE id = $1`,
+        [id],
+      );
+      return;
+    }
     const nextRunAt = computeNextRunAt(rows[0].mode, rows[0].cron_expression, rows[0].timezone, rows[0].fire_at, rows[0].interval_seconds);
     await this.pool.query(
       `UPDATE scheduled_work SET last_run_at = NOW(), next_run_at = $2, updated_at = NOW() WHERE id = $1`,
