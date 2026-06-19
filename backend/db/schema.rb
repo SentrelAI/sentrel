@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_12_212412) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_19_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -186,8 +186,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_212412) do
     t.text "personality_md"
     t.string "role", null: false
     t.string "slug", null: false
-    t.decimal "spend_daily_cap_usd", precision: 10, scale: 2
-    t.decimal "spend_monthly_cap_usd", precision: 10, scale: 2
+    t.decimal "spend_daily_cap_usd", precision: 10, scale: 2, default: "15.0"
+    t.decimal "spend_monthly_cap_usd", precision: 10, scale: 2, default: "150.0"
     t.date "spend_notified_on"
     t.decimal "spend_notify_threshold_pct", precision: 4, scale: 2, default: "0.8", null: false
     t.string "status", default: "pending", null: false
@@ -439,6 +439,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_212412) do
     t.index ["organization_id", "email"], name: "index_invitations_on_organization_id_and_email", unique: true, where: "(accepted_at IS NULL)"
     t.index ["organization_id"], name: "index_invitations_on_organization_id"
     t.index ["token"], name: "index_invitations_on_token", unique: true
+  end
+
+  create_table "mcp_servers", force: :cascade do |t|
+    t.text "access_token_ciphertext"
+    t.bigint "agent_id"
+    t.string "authorize_endpoint"
+    t.string "client_id"
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: true, null: false
+    t.datetime "expires_at"
+    t.string "issuer"
+    t.text "last_error"
+    t.string "name", null: false
+    t.bigint "organization_id", null: false
+    t.text "refresh_token_ciphertext"
+    t.jsonb "scopes", default: [], null: false
+    t.string "slug", null: false
+    t.string "status", default: "disconnected", null: false
+    t.string "token_endpoint"
+    t.string "transport", default: "http", null: false
+    t.datetime "updated_at", null: false
+    t.string "url", null: false
+    t.index ["agent_id"], name: "index_mcp_servers_on_agent_id"
+    t.index ["organization_id", "slug"], name: "index_mcp_servers_on_organization_id_and_slug", unique: true
+    t.index ["organization_id"], name: "index_mcp_servers_on_organization_id"
   end
 
   create_table "memberships", force: :cascade do |t|
@@ -726,6 +751,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_12_212412) do
   add_foreign_key "integrations", "users", column: "owner_user_id"
   add_foreign_key "invitations", "organizations"
   add_foreign_key "invitations", "users", column: "invited_by_id"
+  add_foreign_key "mcp_servers", "agents"
+  add_foreign_key "mcp_servers", "organizations"
   add_foreign_key "memberships", "organizations"
   add_foreign_key "memberships", "users"
   add_foreign_key "messages", "conversations"
