@@ -1462,8 +1462,8 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
             agent={agent}
             rail={rail}
             spend={spend ? {
-              daily_total_usd: spend.today?.total_cost_usd ?? 0,
-              monthly_total_usd: spend.thirty_day?.total_cost_usd ?? 0,
+              daily_total_usd: spend.today?.cost_usd ?? 0,
+              monthly_total_usd: spend.thirty_day?.cost_usd ?? 0,
               daily_cap_usd: (agent as { spend_daily_cap_usd?: number | null }).spend_daily_cap_usd ?? null,
               monthly_cap_usd: (agent as { spend_monthly_cap_usd?: number | null }).spend_monthly_cap_usd ?? null,
             } : null}

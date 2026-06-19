@@ -10,7 +10,7 @@ module AgentSpend
   def for_agent(agent)
     base = AuditLog.where(agent_id: agent.id)
     {
-      today:      summarize(base.where(created_at: 1.day.ago..)),
+      today:      summarize(base.where(created_at: Time.current.utc.beginning_of_day..)),
       seven_day:  summarize(base.where(created_at: 7.days.ago..)),
       thirty_day: summarize(base.where(created_at: 30.days.ago..))
     }
@@ -19,7 +19,7 @@ module AgentSpend
   def for_organization(org_id)
     base = AuditLog.where(organization_id: org_id)
     {
-      today:      summarize(base.where(created_at: 1.day.ago..)),
+      today:      summarize(base.where(created_at: Time.current.utc.beginning_of_day..)),
       seven_day:  summarize(base.where(created_at: 7.days.ago..)),
       thirty_day: summarize(base.where(created_at: 30.days.ago..))
     }
