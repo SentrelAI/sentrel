@@ -211,8 +211,16 @@ export const api = {
     request<{ ok: boolean }>(`/api/mobile/agents/${id}/messages/read`, { method: "POST", token }),
 
   modelCatalog: (token: string) =>
-    request<{ providers: string[]; models_by_provider: Record<string, { value: string; label: string; hint?: string }[]> }>(
-      "/api/mobile/model_catalog",
-      { token }
-    ),
+    request<{ groups: ModelGroup[] }>("/api/mobile/model_catalog", { token }),
 };
+
+export interface ModelOptionRemote {
+  provider: string;
+  model_id: string;
+  label: string;
+  hint?: string;
+}
+export interface ModelGroup {
+  group: string;
+  options: ModelOptionRemote[];
+}

@@ -1,24 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import type { Agent } from "../lib/types";
-import { MODELS_BY_PROVIDER, PROVIDERS, slugify } from "../lib/models";
+import { slugify } from "../lib/models";
 import { api } from "../lib/api";
+import type { ModelGroup } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Button, Field, SelectField, ToggleRow } from "./ui";
 import { colors } from "../theme/colors";
-
-type ModelOption = { value: string; label: string; hint?: string };
-
-// Agents created against an OAuth subscription store providers like
-// "anthropic_account" / "openai_account"; the model catalog is keyed by the
-// base provider. Map to the catalog key for the model list.
-function catalogKey(provider: string): string {
-  if (provider?.startsWith("anthropic")) return "anthropic";
-  if (provider?.startsWith("openrouter")) return "openrouter";
-  if (provider?.startsWith("openai")) return "openai";
-  if (provider?.startsWith("google")) return "google";
-  return provider;
-}
 
 export interface AgentFormValue {
   agent: Partial<Agent>;
@@ -51,22 +39,19 @@ export function AgentForm({
   onSubmit: (value: AgentFormValue) => void;
 }) {
   const { token } = useAuth();
-  // Model catalog: seed from the static fallback, then replace with the live
-  // catalog from the API so it always matches the web new-agent form.
-  const [catalog, setCatalog] = useState<Record<string, ModelOption[]>>(MODELS_BY_PROVIDER);
-  const [providerList, setProviderList] = useState<string[]>(PROVIDERS);
+  // Grouped model catalog from the API — parsed from the SAME source as the
+  // web model picker (Anthropic direct, OpenRouter specialty incl. Kimi/GLM,
+  // frontier, and the Claude-subscription group when connected).
+  const [groups, setGroups] = useState<ModelGroup[]>([]);
 
   useEffect(() => {
     if (!token) return;
     api
       .modelCatalog(token)
       .then((res) => {
-        if (res?.models_by_provider && Object.keys(res.models_by_provider).length) {
-          setCatalog(res.models_by_provider);
-          setProviderList(res.providers?.length ? res.providers : Object.keys(res.models_by_provider));
-        }
+        if (res?.groups?.length) setGroups(res.groups);
       })
-      .catch(() => {}); // keep the static fallback
+      .catch(() => {});
   }, [token]);
 
   const [name, setName] = useState(initial?.name ?? "");
@@ -85,24 +70,19 @@ export function AgentForm({
     return out;
   });
 
+  // One flat list of every model across providers (matching the web picker).
+  // Value is a composite "provider|model_id" so the same model under different
+  // providers stays distinct; picking one sets both provider + model.
+  const currentValue = `${provider}|${modelId}`;
   const modelOptions = useMemo(() => {
-    const list = catalog[catalogKey(provider)] || [];
-    // Ensure the current model is selectable even if not in the catalog.
-    if (modelId && !list.some((m) => m.value === modelId)) {
-      return [{ value: modelId, label: modelId }, ...list];
-    }
-    return list;
-  }, [catalog, provider, modelId]);
-
-  // Keep the agent's current provider selectable even if it's an alias
-  // (e.g. anthropic_account) that isn't in the catalog's provider list.
-  const providerOptions = useMemo(() => {
-    const opts = providerList.map((p) => ({ value: p, label: p }));
-    if (provider && !opts.some((o) => o.value === provider)) {
-      return [{ value: provider, label: provider }, ...opts];
+    const opts = groups.flatMap((g) =>
+      g.options.map((o) => ({ value: `${o.provider}|${o.model_id}`, label: o.label, hint: o.hint || g.group }))
+    );
+    if (modelId && !opts.some((o) => o.value === currentValue)) {
+      return [{ value: currentValue, label: modelId, hint: provider }, ...opts];
     }
     return opts;
-  }, [providerList, provider]);
+  }, [groups, currentValue, provider, modelId]);
 
   function handleNameChange(v: string) {
     setName(v);
@@ -148,16 +128,15 @@ export function AgentForm({
 
       <SectionLabel>Model</SectionLabel>
       <SelectField
-        label="Provider"
-        value={provider}
-        options={providerOptions}
-        onChange={(p) => {
-          setProvider(p);
-          const first = catalog[catalogKey(p)]?.[0]?.value;
-          if (first) setModelId(first);
+        label="Model"
+        value={currentValue}
+        options={modelOptions}
+        onChange={(v) => {
+          const sep = v.indexOf("|");
+          setProvider(v.slice(0, sep));
+          setModelId(v.slice(sep + 1));
         }}
       />
-      <SelectField label="Model" value={modelId} options={modelOptions} onChange={setModelId} />
 
       <SectionLabel>Spend caps (USD)</SectionLabel>
       <Field label="Daily cap" value={daily} onChangeText={setDaily} keyboardType="decimal-pad" placeholder="15" />
