@@ -38,6 +38,7 @@ Rails.application.routes.draw do
       post "organizations",            to: "organizations#create"
       post "organizations/:id/switch", to: "organizations#switch"
       get  "conversations",            to: "conversations#index"
+      get  "model_catalog",            to: "model_catalog#show"
       get  "onboarding",               to: "onboarding#show"
       post "onboarding/analyze",       to: "onboarding#analyze"
       post "onboarding/complete",      to: "onboarding#complete"
@@ -58,6 +59,7 @@ Rails.application.routes.draw do
         get  "messages",      to: "messages#index"
         post "messages",      to: "messages#create"
         get  "messages/poll", to: "messages#poll"
+        post "messages/read", to: "messages#read"
       end
     end
 

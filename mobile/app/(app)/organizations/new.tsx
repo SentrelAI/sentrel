@@ -18,7 +18,7 @@ export default function NewOrganization() {
     try {
       const res = await api.createOrg(token, name.trim());
       applyUser(res.user); // active org is now the new one
-      router.replace(res.onboarding_required ? "/onboarding" : "/agents");
+      router.replace(res.onboarding_required ? "/onboarding" : "/chats");
     } catch (e) {
       Alert.alert("Error", e instanceof ApiError ? e.message : "Could not create organization");
       setBusy(false);

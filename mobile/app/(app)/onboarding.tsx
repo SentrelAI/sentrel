@@ -49,7 +49,7 @@ export default function Onboarding() {
     try {
       if (generate) await api.onboardingComplete(token);
       else await api.onboardingSkip(token);
-      router.replace("/agents");
+      router.replace("/chats");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not finish setup.");
       setStep("welcome");

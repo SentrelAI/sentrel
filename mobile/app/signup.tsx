@@ -24,7 +24,7 @@ export default function SignUp() {
     setLoading(true);
     try {
       const needsOnboarding = await signUp({ name, email, password, organizationName: org });
-      router.replace(needsOnboarding ? "/onboarding" : "/agents");
+      router.replace(needsOnboarding ? "/onboarding" : "/chats");
     } catch (e: any) {
       setError(e?.messages?.join(", ") || e?.message || "Could not create your account.");
     } finally {

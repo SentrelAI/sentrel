@@ -24,7 +24,7 @@ export default function Login() {
     setLoading(true);
     try {
       await signIn(email, password);
-      router.replace("/agents");
+      router.replace("/chats");
     } catch (e: any) {
       setError(e?.status === 401 ? "Wrong email or password." : e?.message || "Could not sign in.");
     } finally {
@@ -37,7 +37,7 @@ export default function Login() {
     setGoogleLoading(true);
     try {
       await signInWithGoogle();
-      router.replace("/agents");
+      router.replace("/chats");
     } catch (e: any) {
       if (!e?.cancelled) setError(e?.message || "Google sign-in failed.");
     } finally {

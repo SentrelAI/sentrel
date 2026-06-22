@@ -88,7 +88,7 @@ export default function AgentDetail() {
           setBusy(true);
           try {
             await api.deleteAgent(token, id);
-            router.replace("/agents");
+            router.replace("/chats");
           } catch (e) {
             Alert.alert("Error", e instanceof ApiError ? e.message : "Delete failed");
             setBusy(false);

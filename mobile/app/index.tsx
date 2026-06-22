@@ -14,5 +14,5 @@ export default function Index() {
       </View>
     );
   }
-  return <Redirect href={token ? "/agents" : "/login"} />;
+  return <Redirect href={token ? "/chats" : "/login"} />;
 }

@@ -84,6 +84,15 @@ class Api::Mobile::MessagesController < Api::Mobile::BaseController
     render json: { messages: msgs.map { |m| message_json(m) } }
   end
 
+  # POST /api/mobile/agents/:agent_id/messages/read
+  # Mark the user's conversation with this agent as read (now). Drives unread
+  # badges on the chat list.
+  def read
+    convo = current_internal_conversation
+    convo&.update_column(:last_read_at, Time.current)
+    render json: { ok: true }
+  end
+
   private
 
   def load_agent

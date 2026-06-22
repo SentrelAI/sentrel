@@ -1,9 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import type { Agent } from "../lib/types";
 import { MODELS_BY_PROVIDER, PROVIDERS, slugify } from "../lib/models";
+import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { Button, Field, SelectField, ToggleRow } from "./ui";
 import { colors } from "../theme/colors";
+
+type ModelOption = { value: string; label: string; hint?: string };
 
 export interface AgentFormValue {
   agent: Partial<Agent>;
@@ -35,6 +39,25 @@ export function AgentForm({
   submitting?: boolean;
   onSubmit: (value: AgentFormValue) => void;
 }) {
+  const { token } = useAuth();
+  // Model catalog: seed from the static fallback, then replace with the live
+  // catalog from the API so it always matches the web new-agent form.
+  const [catalog, setCatalog] = useState<Record<string, ModelOption[]>>(MODELS_BY_PROVIDER);
+  const [providerList, setProviderList] = useState<string[]>(PROVIDERS);
+
+  useEffect(() => {
+    if (!token) return;
+    api
+      .modelCatalog(token)
+      .then((res) => {
+        if (res?.models_by_provider && Object.keys(res.models_by_provider).length) {
+          setCatalog(res.models_by_provider);
+          setProviderList(res.providers?.length ? res.providers : Object.keys(res.models_by_provider));
+        }
+      })
+      .catch(() => {}); // keep the static fallback
+  }, [token]);
+
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(mode === "edit");
@@ -52,13 +75,13 @@ export function AgentForm({
   });
 
   const modelOptions = useMemo(() => {
-    const list = MODELS_BY_PROVIDER[provider] || [];
+    const list = catalog[provider] || [];
     // Ensure the current model is selectable even if not in the catalog.
     if (modelId && !list.some((m) => m.value === modelId)) {
       return [{ value: modelId, label: modelId }, ...list];
     }
     return list;
-  }, [provider, modelId]);
+  }, [catalog, provider, modelId]);
 
   function handleNameChange(v: string) {
     setName(v);
@@ -106,10 +129,10 @@ export function AgentForm({
       <SelectField
         label="Provider"
         value={provider}
-        options={PROVIDERS.map((p) => ({ value: p, label: p }))}
+        options={providerList.map((p) => ({ value: p, label: p }))}
         onChange={(p) => {
           setProvider(p);
-          const first = MODELS_BY_PROVIDER[p]?.[0]?.value;
+          const first = catalog[p]?.[0]?.value;
           if (first) setModelId(first);
         }}
       />

@@ -75,6 +75,7 @@ export interface ConversationSummary {
   agent: { id: string; name: string; slug: string; role: string; status: string };
   last_message: { role: string; content: string; created_at: string } | null;
   last_message_at: string | null;
+  unread_count: number;
 }
 
 export interface OrgListItem {
@@ -203,6 +204,15 @@ export const api = {
   pollMessages: (token: string, id: string, after: string) =>
     request<{ messages: Message[] }>(
       `/api/mobile/agents/${id}/messages/poll?after=${encodeURIComponent(after)}`,
+      { token }
+    ),
+
+  markRead: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/mobile/agents/${id}/messages/read`, { method: "POST", token }),
+
+  modelCatalog: (token: string) =>
+    request<{ providers: string[]; models_by_provider: Record<string, { value: string; label: string; hint?: string }[]> }>(
+      "/api/mobile/model_catalog",
       { token }
     ),
 };

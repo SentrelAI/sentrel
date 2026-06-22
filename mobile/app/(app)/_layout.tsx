@@ -34,7 +34,8 @@ export default function AppLayout() {
         headerBackTitle: "Back",
       }}
     >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="chats" options={{ title: "Chats" }} />
+      <Stack.Screen name="settings" options={{ title: "Settings" }} />
       <Stack.Screen name="agents/new" options={{ title: "New agent", presentation: "modal" }} />
       <Stack.Screen name="agents/[id]/index" options={{ title: "Agent" }} />
       <Stack.Screen name="agents/[id]/edit" options={{ title: "Edit agent", presentation: "modal" }} />

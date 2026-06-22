@@ -1,5 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +31,7 @@ function fmtTime(iso: string): string {
 export default function Chat() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
   const { token } = useAuth();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -58,7 +59,10 @@ export default function Chat() {
       .listMessages(token, id)
       .then(({ messages }) => ingest(messages))
       .catch((e) => e instanceof ApiError && console.warn(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        api.markRead(token, id).catch(() => {}); // viewing the thread = read
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, id]);
 
@@ -68,7 +72,10 @@ export default function Chat() {
       const { messages } = await api.pollMessages(token, id, lastSeen.current);
       if (messages.length > 0) {
         ingest(messages);
-        if (messages.some((m) => m.role === "assistant")) setWaiting(false);
+        if (messages.some((m) => m.role === "assistant")) {
+          setWaiting(false);
+          api.markRead(token, id).catch(() => {}); // we're viewing → mark read
+        }
       }
     } catch {
       /* keep polling */
@@ -109,7 +116,16 @@ export default function Chat() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
-      <Stack.Screen options={{ title: name || "Chat" }} />
+      <Stack.Screen
+        options={{
+          title: name || "Chat",
+          headerRight: () => (
+            <Pressable onPress={() => router.push(`/agents/${id}/edit`)} hitSlop={12} style={{ paddingHorizontal: 4 }}>
+              <MaterialIcons name="tune" size={22} color={colors.secondary} />
+            </Pressable>
+          ),
+        }}
+      />
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={colors.secondary} />

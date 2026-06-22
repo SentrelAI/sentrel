@@ -13,6 +13,8 @@ class Api::Mobile::ConversationsController < Api::Mobile::BaseController
       agent = c.agent
       next unless agent
       last = c.messages.order(created_at: :desc).first
+      since = c.last_read_at || Time.at(0)
+      unread = c.messages.where(role: "assistant").where("created_at > ?", since).count
       {
         id: c.id,
         agent: { id: agent.to_param, name: agent.name, slug: agent.slug, role: agent.role, status: agent.status },
@@ -22,6 +24,7 @@ class Api::Mobile::ConversationsController < Api::Mobile::BaseController
           created_at: last.created_at.iso8601,
         },
         last_message_at: (c.last_message_at || c.updated_at)&.iso8601,
+        unread_count: unread,
       }
     end
 

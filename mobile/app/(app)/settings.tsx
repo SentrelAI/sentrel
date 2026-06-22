@@ -2,12 +2,12 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
-import { Avatar } from "../../../src/components/Avatar";
-import { ServerBadge } from "../../../src/components/ServerBadge";
-import { api, ApiError, getApiBaseUrl } from "../../../src/lib/api";
-import type { OrgListItem } from "../../../src/lib/api";
-import { useAuth } from "../../../src/lib/auth";
-import { colors, fonts, radius } from "../../../src/theme/colors";
+import { Avatar } from "../../src/components/Avatar";
+import { ServerBadge } from "../../src/components/ServerBadge";
+import { api, ApiError, getApiBaseUrl } from "../../src/lib/api";
+import type { OrgListItem } from "../../src/lib/api";
+import { useAuth } from "../../src/lib/auth";
+import { colors, fonts, radius } from "../../src/theme/colors";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -25,7 +25,7 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function ProfileTab() {
+export default function Settings() {
   const { user, token, applyUser, signOut } = useAuth();
   const router = useRouter();
   const [orgs, setOrgs] = useState<OrgListItem[]>([]);
@@ -45,9 +45,7 @@ export default function ProfileTab() {
     }
   }, [token]);
 
-  useEffect(() => {
-    loadOrgs();
-  }, [loadOrgs]);
+  useEffect(() => { loadOrgs(); }, [loadOrgs]);
 
   async function switchTo(org: OrgListItem) {
     if (!token || org.is_current) return;
@@ -56,7 +54,7 @@ export default function ProfileTab() {
       const res = await api.switchOrg(token, org.id);
       applyUser(res.user);
       setOrgs(res.organizations);
-      router.replace(res.onboarding_required ? "/onboarding" : "/agents");
+      router.replace(res.onboarding_required ? "/onboarding" : "/chats");
     } catch (e) {
       Alert.alert("Error", e instanceof ApiError ? e.message : "Could not switch organization");
     } finally {
@@ -83,8 +81,7 @@ export default function ProfileTab() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.surfaceBright }} contentContainerStyle={{ paddingBottom: 120 }}>
-      {/* Account header */}
+    <ScrollView style={{ flex: 1, backgroundColor: colors.surfaceBright }} contentContainerStyle={{ paddingBottom: 60 }}>
       <View style={{ alignItems: "center", paddingTop: 16, paddingBottom: 8 }}>
         <Avatar name={user?.name || "?"} size={84} />
         <Text style={{ color: colors.text, fontFamily: fonts.extrabold, fontSize: 22, marginTop: 12 }}>{user?.name}</Text>
@@ -94,9 +91,7 @@ export default function ProfileTab() {
       <SectionLabel>Organizations</SectionLabel>
       <Card>
         {loadingOrgs ? (
-          <View style={{ padding: 18 }}>
-            <ActivityIndicator color={colors.textMuted} />
-          </View>
+          <View style={{ padding: 18 }}><ActivityIndicator color={colors.textMuted} /></View>
         ) : (
           orgs.map((o, i) => (
             <Pressable
@@ -111,26 +106,16 @@ export default function ProfileTab() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontFamily: o.is_current ? fonts.bold : fonts.bodyMedium, fontSize: 15 }}>{o.name}</Text>
                 <Text style={{ color: colors.textFaint, fontFamily: fonts.label, fontSize: 12, marginTop: 1 }}>
-                  {o.role}
-                  {!o.onboarding_completed ? " · setup incomplete" : ""}
+                  {o.role}{!o.onboarding_completed ? " · setup incomplete" : ""}
                 </Text>
               </View>
-              {switching === o.id ? (
-                <ActivityIndicator color={colors.secondary} />
-              ) : o.is_current ? (
-                <MaterialIcons name="check-circle" size={20} color={colors.secondary} />
-              ) : (
-                <Text style={{ color: colors.secondary, fontFamily: fonts.labelSemibold }}>Switch</Text>
-              )}
+              {switching === o.id ? <ActivityIndicator color={colors.secondary} /> : o.is_current ? <MaterialIcons name="check-circle" size={20} color={colors.secondary} /> : <Text style={{ color: colors.secondary, fontFamily: fonts.labelSemibold }}>Switch</Text>}
             </Pressable>
           ))
         )}
         <Pressable
           onPress={() => router.push("/organizations/new")}
-          style={({ pressed }) => [
-            { flexDirection: "row", alignItems: "center", gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: colors.outlineVariant + "55" },
-            pressed && { backgroundColor: colors.surfaceContainer },
-          ]}
+          style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 8, padding: 16, borderTopWidth: 1, borderTopColor: colors.outlineVariant + "55" }, pressed && { backgroundColor: colors.surfaceContainer }]}
         >
           <MaterialIcons name="add" size={20} color={colors.secondary} />
           <Text style={{ color: colors.secondary, fontFamily: fonts.bold, fontSize: 15 }}>New organization</Text>
@@ -139,11 +124,7 @@ export default function ProfileTab() {
 
       <SectionLabel>Notifications</SectionLabel>
       <Card>
-        <Pressable
-          onPress={testPush}
-          disabled={testing}
-          style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 10, padding: 16 }, pressed && { backgroundColor: colors.surfaceContainer }]}
-        >
+        <Pressable onPress={testPush} disabled={testing} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 10, padding: 16 }, pressed && { backgroundColor: colors.surfaceContainer }]}>
           <MaterialIcons name="notifications-active" size={20} color={colors.textMuted} />
           <Text style={{ color: colors.text, fontFamily: fonts.bodyMedium, fontSize: 15, flex: 1 }}>Send a test notification</Text>
           {testing ? <ActivityIndicator color={colors.textMuted} /> : <MaterialIcons name="chevron-right" size={20} color={colors.textFaint} />}
@@ -161,10 +142,7 @@ export default function ProfileTab() {
       <View style={{ padding: 16, marginTop: 8 }}>
         <Pressable
           onPress={async () => { await signOut(); router.replace("/login"); }}
-          style={({ pressed }) => [
-            { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger },
-            pressed && { opacity: 0.7 },
-          ]}
+          style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.danger }, pressed && { opacity: 0.7 }]}
         >
           <MaterialIcons name="logout" size={18} color={colors.danger} />
           <Text style={{ color: colors.danger, fontFamily: fonts.bold, fontSize: 15 }}>Sign out</Text>
