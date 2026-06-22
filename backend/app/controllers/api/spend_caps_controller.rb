@@ -37,6 +37,14 @@ class Api::SpendCapsController < ApplicationController
     notified_today = agent.spend_notified_on == Date.current
     crossing_threshold = daily.present? && threshold > 0 && today >= (daily.to_f * threshold) && !over_daily
 
+    # Mobile push when the agent first crosses a hard cap today. Deduped via
+    # spend_cap_pushed_on so the engine's per-run check doesn't re-notify on
+    # every subsequent over-cap run until UTC midnight.
+    if (over_daily || over_monthly) && agent.spend_cap_pushed_on != Date.current
+      push_spend_cap_exceeded(agent, over_daily: over_daily, today: today, month: month, daily: daily, monthly: monthly)
+      agent.update_column(:spend_cap_pushed_on, Date.current)
+    end
+
     render json: {
       daily_cap_usd: daily&.to_f,
       monthly_cap_usd: monthly&.to_f,
@@ -60,6 +68,29 @@ class Api::SpendCapsController < ApplicationController
   end
 
   private
+
+  # Notify every member of the agent's org that it blew through a cap. Members
+  # (not just active-org users) so a notification reaches people regardless of
+  # which org is currently selected on their device.
+  def push_spend_cap_exceeded(agent, over_daily:, today:, month:, daily:, monthly:)
+    user_ids = Membership.where(organization_id: agent.organization_id).pluck(:user_id)
+    return if user_ids.empty?
+
+    body = if over_daily
+      "#{agent.name} hit its daily spend cap ($#{format('%.2f', today)} / $#{format('%.2f', daily.to_f)})."
+    else
+      "#{agent.name} hit its monthly spend cap ($#{format('%.2f', month)} / $#{format('%.2f', monthly.to_f)})."
+    end
+
+    MobilePushJob.perform_later(
+      user_ids: user_ids,
+      title: "Spend cap reached",
+      body: body,
+      data: { type: "spend_cap", agent_id: agent.to_param }
+    )
+  rescue => e
+    Rails.logger.warn("[SpendCaps] mobile push failed: #{e.class}: #{e.message}")
+  end
 
   def verify_engine_secret!
     expected = ENV["ENGINE_API_SECRET"].to_s

@@ -20,6 +20,46 @@ Rails.application.routes.draw do
 
   # API for engine→Rails (blob uploads, etc.)
   namespace :api do
+    # Token-authenticated JSON API for the Expo (React Native) mobile app.
+    # Auth: Authorization: Bearer <MobileDevice#auth_token>. See
+    # Api::Mobile::BaseController. Distinct from the engine endpoints below,
+    # which use the X-Engine-Secret shared secret.
+    namespace :mobile do
+      post   "login",            to: "sessions#create"
+      post   "signup",           to: "registrations#create"
+      get    "me",               to: "sessions#show"
+      delete "logout",           to: "sessions#destroy"
+      # Google sign-in: opened in the app's in-app browser; bounces through the
+      # web omniauth flow and deep-links a device token back to the app.
+      get    "oauth/google/start", to: "oauth#google_start"
+
+      # Multi-org: list / switch / create. Onboarding for a fresh org.
+      get  "organizations",            to: "organizations#index"
+      post "organizations",            to: "organizations#create"
+      post "organizations/:id/switch", to: "organizations#switch"
+      get  "onboarding",               to: "onboarding#show"
+      post "onboarding/analyze",       to: "onboarding#analyze"
+      post "onboarding/complete",      to: "onboarding#complete"
+      post "onboarding/skip",          to: "onboarding#skip"
+      patch  "device",           to: "devices#update"
+      post   "device/test_push", to: "devices#test_push"
+
+      resources :agents, only: [ :index, :show, :create, :update, :destroy ] do
+        # Day-2 ops → Api::Mobile::Agents::OpsController (agent_id param).
+        scope module: :agents do
+          post "ops/restart",     to: "ops#restart"
+          post "ops/reload",      to: "ops#reload"
+          post "ops/redeploy",    to: "ops#redeploy"
+          post "ops/reprovision", to: "ops#reprovision"
+          get  "ops/logs",        to: "ops#logs"
+        end
+        # Chat
+        get  "messages",      to: "messages#index"
+        post "messages",      to: "messages#create"
+        get  "messages/poll", to: "messages#poll"
+      end
+    end
+
     resources :blobs, only: [ :create, :show ], param: :signed_id
     resource :send_email, only: [ :create ]
     # Engine -> Rails for Slack outbound. Same auth pattern as send_email;

@@ -1,12 +1,29 @@
 class Users::OmniauthCallbacksController < Devise::OmniauthCallbacksController
   def google_oauth2
     auth = request.env["omniauth.auth"]
+    # Mobile flow tags the request with mobile=1 + the app's deep-link redirect
+    # (see Api::Mobile::OauthController). Detect it and bounce a device token
+    # back to the app instead of starting a cookie session.
+    mobile = request.env.dig("omniauth.params", "mobile").to_s == "1"
+    app_redirect = request.env.dig("omniauth.params", "redirect").to_s
+
     if auth.blank?
+      return finish_mobile_oauth(app_redirect, error: "not_configured") if mobile
       redirect_to new_user_session_path, alert: "Google sign-in is not configured."
       return
     end
 
     user = find_or_create_user_from_google(auth)
+
+    if mobile
+      if user.persisted?
+        device = user.mobile_devices.create!(platform: "ios", device_name: "Google sign-in", last_seen_at: Time.current)
+        finish_mobile_oauth(app_redirect, token: device.auth_token)
+      else
+        finish_mobile_oauth(app_redirect, error: "signin_failed")
+      end
+      return
+    end
 
     if user.persisted?
       sign_in_and_redirect user, event: :authentication
@@ -23,6 +40,20 @@ class Users::OmniauthCallbacksController < Devise::OmniauthCallbacksController
   end
 
   private
+
+  # Bounce back into the Expo app via its deep link, carrying either the device
+  # token (success) or an error code. Custom-scheme redirect needs
+  # allow_other_host. Falls back to a plain message if the redirect is missing
+  # or not one of our app schemes.
+  def finish_mobile_oauth(app_redirect, token: nil, error: nil)
+    unless Api::Mobile::OauthController.valid_mobile_redirect?(app_redirect)
+      render plain: (token ? "Signed in. Return to the app." : "Sign-in failed."), status: :ok
+      return
+    end
+    sep = app_redirect.include?("?") ? "&" : "?"
+    query = token ? "token=#{CGI.escape(token)}" : "error=#{CGI.escape(error.to_s)}"
+    redirect_to "#{app_redirect}#{sep}#{query}", allow_other_host: true
+  end
 
   # Resolution order:
   # 1. UserIdentity row for channel=google + Google `sub` → existing OAuth user.

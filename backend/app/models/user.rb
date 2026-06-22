@@ -12,6 +12,8 @@ class User < ApplicationRecord
   has_many :user_identities, dependent: :destroy
   has_many :memberships, dependent: :destroy
   has_many :organizations, through: :memberships
+  # Logged-in Expo mobile devices. Each row is one device session + push target.
+  has_many :mobile_devices, dependent: :destroy
 
   validates :name, presence: true
   validates :role, presence: true, inclusion: { in: %w[owner admin member viewer] }

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_21_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -186,6 +186,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000000) do
     t.text "personality_md"
     t.string "role", null: false
     t.string "slug", null: false
+    t.date "spend_cap_pushed_on"
     t.decimal "spend_daily_cap_usd", precision: 10, scale: 2, default: "15.0"
     t.decimal "spend_monthly_cap_usd", precision: 10, scale: 2, default: "150.0"
     t.date "spend_notified_on"
@@ -497,6 +498,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000000) do
     t.index ["sender_user_id"], name: "index_messages_on_sender_user_id"
   end
 
+  create_table "mobile_devices", force: :cascade do |t|
+    t.string "auth_token", null: false
+    t.datetime "created_at", null: false
+    t.string "device_name"
+    t.string "expo_push_token"
+    t.datetime "last_seen_at"
+    t.string "platform"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["auth_token"], name: "index_mobile_devices_on_auth_token", unique: true
+    t.index ["expo_push_token"], name: "index_mobile_devices_on_expo_push_token"
+    t.index ["user_id"], name: "index_mobile_devices_on_user_id"
+  end
+
   create_table "oauth_credentials", force: :cascade do |t|
     t.text "access_token_ciphertext"
     t.string "account_email"
@@ -757,6 +772,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_000000) do
   add_foreign_key "memberships", "users"
   add_foreign_key "messages", "conversations"
   add_foreign_key "messages", "users", column: "sender_user_id", validate: false
+  add_foreign_key "mobile_devices", "users"
   add_foreign_key "oauth_credentials", "organizations"
   add_foreign_key "organizations", "agents", column: "default_slack_agent_id", on_delete: :nullify
   add_foreign_key "pending_approvals", "agents"

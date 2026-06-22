@@ -35,10 +35,38 @@ class Api::AgentEventsController < ActionController::API
       end
     end
 
+    # Mobile push — when the engine finishes a turn it emits a persisted
+    # assistant `message` event (see engine/src/agent-runner.ts). Notify the
+    # human who started the conversation so they can reopen the chat. The
+    # engine writes the row via raw SQL, so this relay is the only Rails-side
+    # signal that a reply landed.
+    notify_mobile_of_reply(agent, event) if event["type"] == "message" && event["role"] == "assistant"
+
     head :ok
   end
 
   private
+
+  # Best-effort: resolve the conversation owner from the event and enqueue a
+  # push. Never raises into the relay — a notification failure must not drop
+  # the engine's event.
+  def notify_mobile_of_reply(agent, event)
+    content = event["content"].to_s
+    return if content.strip.empty?
+
+    convo_id = event.dig("metadata", "conversation_id") || event["conversation_id"]
+    user_id  = convo_id && Conversation.where(id: convo_id).pick(:user_id)
+    return unless user_id
+
+    MobilePushJob.perform_later(
+      user_ids: [ user_id ],
+      title: "#{agent.name} replied",
+      body: content,
+      data: { type: "agent_reply", agent_id: agent.to_param, conversation_id: convo_id }
+    )
+  rescue => e
+    Rails.logger.warn("[AgentEvents] mobile push failed: #{e.class}: #{e.message}")
+  end
 
   def authenticate_engine!
     secret = ENV["ENGINE_API_SECRET"]
