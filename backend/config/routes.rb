@@ -65,6 +65,9 @@ Rails.application.routes.draw do
     end
 
     resources :blobs, only: [ :create, :show ], param: :signed_id
+    # Engine -> Rails: agent's file-finder files (list_files tool). Bytes are
+    # fetched separately via /api/blobs/:signed_id. Auth = engine secret.
+    resources :agent_files, only: [ :index ]
     resource :send_email, only: [ :create ]
     # Engine -> Rails for Slack outbound. Same auth pattern as send_email;
     # gated by send_slack_message permission on the agent.
@@ -263,6 +266,13 @@ Rails.application.routes.draw do
     # Knowledge base (RAG) — per-agent document upload + index management
     resources :agents, only: [] do
       resources :knowledge_documents, only: [ :index, :create, :destroy ] do
+        member do
+          post :promote
+        end
+      end
+      # File finder — whole files (ActiveStorage), browsed/read by the agent
+      # via the engine list_files / read_file tools. Not vectorized.
+      resources :files, only: [ :index, :create, :destroy ], controller: "agent_files" do
         member do
           post :promote
         end

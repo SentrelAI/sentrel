@@ -20,6 +20,7 @@ import { resolveActionApproval } from "./security/action-approval.js";
 import { getComposioMcpServer, getActiveToolkits } from "./integrations/composio.js";
 import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
+import { buildFilesMcpServer } from "./tools/files.js";
 import { buildSecretsMcpServer } from "./tools/secrets.js";
 import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
 import { buildShareFileMcpServer } from "./tools/share-file.js";
@@ -1453,6 +1454,15 @@ async function buildQueryOptions(
     const knowledgeServer = buildKnowledgeMcpServer(agent.id, agent.organization_id);
     mcpServers.knowledge = knowledgeServer;
     baseMcpServers.knowledge = knowledgeServer;
+  }
+
+  // File finder — list_files / read_file over whole ActiveStorage files
+  // (not vectorized). Gated by capabilities.agent_files, auto-enabled on
+  // the first upload in the Files tab.
+  if (caps.agent_files.enabled) {
+    const filesServer = buildFilesMcpServer(agent.id, agent.organization_id);
+    mcpServers.files = filesServer;
+    baseMcpServers.files = filesServer;
   }
 
   // Stored-credentials access — exposes `secrets.get` so the agent can fetch

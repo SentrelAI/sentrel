@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -51,6 +51,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
     t.index ["agent_id", "credential_id"], name: "index_agent_credential_grants_uniq", unique: true
     t.index ["agent_id"], name: "index_agent_credential_grants_on_agent_id"
     t.index ["credential_id"], name: "index_agent_credential_grants_on_credential_id"
+  end
+
+  create_table "agent_files", force: :cascade do |t|
+    t.bigint "agent_id"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.bigint "organization_id", null: false
+    t.string "scope", default: "agent", null: false
+    t.string "title", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id"], name: "index_agent_files_on_agent_id"
+    t.index ["organization_id", "agent_id"], name: "index_agent_files_on_organization_id_and_agent_id"
+    t.index ["organization_id", "scope"], name: "index_agent_files_on_organization_id_and_scope"
+    t.index ["organization_id"], name: "index_agent_files_on_organization_id"
   end
 
   create_table "agent_skills", force: :cascade do |t|
@@ -726,6 +740,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "agent_credential_grants", "agents"
   add_foreign_key "agent_credential_grants", "credentials"
+  add_foreign_key "agent_files", "agents"
+  add_foreign_key "agent_files", "organizations"
   add_foreign_key "agent_skills", "agents"
   add_foreign_key "agent_skills", "skill_definitions"
   add_foreign_key "agent_summaries", "agents"

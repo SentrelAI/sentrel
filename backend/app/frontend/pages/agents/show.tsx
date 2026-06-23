@@ -17,6 +17,7 @@ import {
   Brain,
   Sparkles,
   BookOpen,
+  FolderOpen,
   PenLine,
   Save,
   Check,
@@ -60,6 +61,7 @@ import { AgentModelPicker } from "@/components/agent-model-picker"
 import { AgentSpendCard } from "@/components/agent-spend-card"
 import { DollarSign, Brain as BrainIcon } from "lucide-react"
 import KnowledgePanel, { type KnowledgeDocument } from "@/components/knowledge-panel"
+import FilesPanel, { type AgentFile } from "@/components/files-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -207,6 +209,7 @@ interface Props {
   installed_skills: SkillItem[]
   available_skills: SkillItem[]
   knowledge_documents: KnowledgeDocument[]
+  agent_files?: AgentFile[]
   anthropic_account_connected?: boolean
   available_llm_providers?: string[]
   missing_integrations?: Array<{
@@ -219,7 +222,7 @@ interface Props {
   rail?: import("@/components/agents/agent-rail").RailPayload
 }
 
-type Section = "chat" | "inbox" | "tasks" | "schedule" | "webhooks" | "skills" | "knowledge" | "identity" | "memory" | "spend"
+type Section = "chat" | "inbox" | "tasks" | "schedule" | "webhooks" | "skills" | "knowledge" | "files" | "identity" | "memory" | "spend"
 
 interface WebhookItem {
   id: number
@@ -501,7 +504,7 @@ function toNumOrNull(v: number | string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, webhooks = [], installed_skills = [], available_skills = [], knowledge_documents = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
+export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, webhooks = [], installed_skills = [], available_skills = [], knowledge_documents = [], agent_files = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -512,7 +515,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     const fromEmail = (emails as Array<{ direction?: string; from?: string }> | undefined)?.find((e) => e.direction === "outbound")?.from
     return fromEmail ?? null
   })()
-  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "identity", "memory", "spend"]
+  const VALID_SECTIONS: Section[] = ["chat", "inbox", "tasks", "schedule", "skills", "knowledge", "files", "identity", "memory", "spend"]
   const initialSection: Section = (() => {
     if (typeof window === "undefined") return "chat"
     const t = new URLSearchParams(window.location.search).get("tab") as Section | null
@@ -746,6 +749,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     { key: "webhooks", label: "Webhooks", icon: Plug, count: webhooks.length },
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
     { key: "knowledge", label: "Knowledge", icon: BookOpen, count: knowledge_documents.length },
+    { key: "files", label: "Files", icon: FolderOpen, count: agent_files.length },
     { key: "identity", label: "Identity", icon: User },
     { key: "memory", label: "Memory", icon: BrainIcon },
     { key: "spend", label: "Spend", icon: DollarSign },
@@ -1417,6 +1421,13 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         {section === "knowledge" && (
           <div className="flex-1 overflow-hidden">
             <KnowledgePanel agentId={agent.id} agentName={agent.name} documents={knowledge_documents} />
+          </div>
+        )}
+
+        {/* Files */}
+        {section === "files" && (
+          <div className="flex-1 overflow-hidden">
+            <FilesPanel agentId={agent.id} agentName={agent.name} files={agent_files} />
           </div>
         )}
 

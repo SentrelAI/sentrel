@@ -38,6 +38,7 @@ export interface CodeSandboxCapability extends Capability {
 
 export interface Capabilities {
   knowledge_base?: KnowledgeBaseCapability;
+  agent_files?:   Capability;
   scheduling?:    Capability;
   tasks?:         Capability;
   integrations?:  Capability;

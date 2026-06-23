@@ -15,6 +15,7 @@ import type {
 
 type ResolvedCapabilities = {
   knowledge_base: Required<Pick<KnowledgeBaseCapability, "enabled">> & KnowledgeBaseCapability;
+  agent_files:  Capability;
   scheduling:   Capability;
   tasks:        Capability;
   integrations: Capability;
@@ -37,6 +38,7 @@ const DEFAULTS: ResolvedCapabilities = {
     threshold: 0.75,
     top_k: 5,
   },
+  agent_files:  { enabled: false },
   scheduling:   { enabled: true },
   tasks:        { enabled: true },
   integrations: { enabled: true },
@@ -64,6 +66,7 @@ export function resolveCapabilities(agent: Agent): ResolvedCapabilities {
   const caps = agent.capabilities || {};
   return {
     knowledge_base: mergeCap(DEFAULTS.knowledge_base, caps.knowledge_base),
+    agent_files:    mergeCap(DEFAULTS.agent_files,    caps.agent_files),
     scheduling:     mergeCap(DEFAULTS.scheduling,     caps.scheduling),
     tasks:          mergeCap(DEFAULTS.tasks,          caps.tasks),
     integrations:   mergeCap(DEFAULTS.integrations,   caps.integrations),

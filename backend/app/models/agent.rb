@@ -43,6 +43,10 @@ class Agent < ApplicationRecord
       "threshold" => 0.75,
       "top_k" => 5
     },
+    # File finder — whole files the agent can list + read in full (no
+    # vectorization). Auto-enabled on first upload. Files live in the
+    # agent_files table (ActiveStorage), not the RAG store.
+    "agent_files"  => { "enabled" => false },
     "scheduling"   => { "enabled" => true },
     "tasks"        => { "enabled" => true },
     "integrations" => { "enabled" => true },

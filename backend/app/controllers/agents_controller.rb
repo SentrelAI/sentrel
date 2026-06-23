@@ -262,6 +262,7 @@ class AgentsController < ApplicationController
          .merge(url: w.url(request.base_url))
       },
       knowledge_documents: fetch_knowledge_documents(@agent),
+      agent_files: AgentFile.visible_to_agent(@agent).with_attached_file.order(created_at: :desc).map(&:as_engine_json),
       # Sprint 6 — skills
       installed_skills: @agent.agent_skills.includes(:skill_definition).filter_map { |as|
         sd = as.skill_definition
