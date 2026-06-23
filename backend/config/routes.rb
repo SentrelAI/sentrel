@@ -92,6 +92,10 @@ Rails.application.routes.draw do
     # Engine fetches the canonical supported-integrations list from Composio
     # at boot + every 30 min. Source of truth — no hard-coded list to drift.
     get "integrations/supported", to: "integrations#supported"
+    # Engine fetches the agent's CONNECTED Nango providers (for nango_request).
+    get "integrations", to: "integrations#connected"
+    # Engine's nango_request tool proxies a provider API call through here.
+    post "nango_proxy", to: "integrations#proxy"
     # Engine asks for a stored credential via the secrets.get MCP tool.
     # ACL: Credential.find_for resolves per-agent grant first, falls back to
     # org default. Every fetch writes an audit log row.
@@ -320,6 +324,16 @@ Rails.application.routes.draw do
         # "Request" and we record demand here, surfacing aggregate counts to
         # ops so prioritisation is data-driven.
         post ":service_name/request", action: :request_integration, as: :request_integration
+
+        # ── Nango-backed connect flow (managed / byo_oauth / byo_token) ──
+        # Managed + BYO-OAuth: mint a Nango Connect session; the browser SDK
+        # runs the OAuth UI and hands the connection id back to #nango_finalize.
+        post ":service_name/nango_session",  action: :nango_session,  as: :nango_session
+        post ":service_name/nango_finalize", action: :nango_finalize, as: :nango_finalize
+        # Paste-token: store a Credential + connect the app without OAuth.
+        post ":service_name/paste_token",    action: :paste_token,    as: :paste_token
+        # Org admin: set an app's connect mode + (for byo_oauth) app creds.
+        post ":service_name/org_config",     action: :org_config,     as: :org_config
       end
     end
 

@@ -30,6 +30,21 @@ class AgentToolPolicy < ApplicationRecord
     allowed_tools.include?(tool_name) || matches_preset?(tool_name)
   end
 
+  # For proxy-style tools (nango_request) there is no per-endpoint tool name to
+  # pattern-match, so classify by HTTP verb instead: GET/HEAD/OPTIONS = read,
+  # everything else = write. Mirrors the read_only/read_write/full presets.
+  #   full / read_write → all methods
+  #   read_only         → reads only
+  #   custom            → reads only (custom can't express endpoints here)
+  def allows_http_method?(method)
+    read = %w[GET HEAD OPTIONS].include?(method.to_s.upcase)
+    case preset
+    when "full", "read_write" then true
+    when "read_only", "custom" then read
+    else read
+    end
+  end
+
   def matches_preset?(tool_name)
     case preset
     when "read_only"

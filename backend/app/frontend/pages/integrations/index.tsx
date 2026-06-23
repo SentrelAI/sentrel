@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ConnectModal, type CatalogApp, type ConnectMode } from "@/components/integrations/connect-modal"
 
 interface SupportedService {
   slug: string
@@ -23,6 +24,25 @@ interface SupportedService {
   description: string | null
   available: boolean
   logo: string | null
+}
+
+interface CatalogEntry {
+  slug: string
+  label: string
+  category: string
+  description: string | null
+  logo: string | null
+  available: boolean
+  auth_type: string
+  modes: ConnectMode[]
+  review: "none" | "google" | "gated"
+}
+
+interface OrgIntegrationConfig {
+  provider: string
+  mode: ConnectMode
+  client_id: string | null
+  has_secret: boolean
 }
 
 interface Integration {
@@ -48,6 +68,9 @@ interface McpServerRow {
 interface Props {
   integrations: Integration[]
   supported_services: SupportedService[]
+  catalog?: CatalogEntry[]
+  org_integration_configs?: OrgIntegrationConfig[]
+  nango_connect_base_url?: string | null
   requested_services?: string[]
   mcp_servers?: McpServerRow[]
 }
@@ -55,10 +78,20 @@ interface Props {
 export default function IntegrationsIndex({
   integrations,
   supported_services = [],
+  catalog = [],
+  org_integration_configs = [],
+  nango_connect_base_url = null,
   requested_services = [],
   mcp_servers = [],
 }: Props) {
   const requestedSet = new Set(requested_services)
+  // Prefer the static catalog (Nango) when present; fall back to the legacy
+  // Composio supported list during the transition.
+  const services: SupportedService[] = catalog.length
+    ? catalog.map((c) => ({ slug: c.slug, label: c.label, category: c.category, description: c.description, available: c.available, logo: c.logo }))
+    : supported_services
+  const catalogBySlug = new Map(catalog.map((c) => [c.slug, c]))
+  const orgConfigBySlug = new Map(org_integration_configs.map((c) => [c.provider, c]))
 
   const [query, setQuery] = useState("")
   const [scopeView, setScopeView] = useState<"org" | "user">("org")
@@ -68,8 +101,24 @@ export default function IntegrationsIndex({
   const [disconnectingId, setDisconnectingId] = useState<number | null>(null)
   const [pendingDisconnect, setPendingDisconnect] = useState<{ id: number; label: string } | null>(null)
   const [optimisticRequested, setOptimisticRequested] = useState<Set<string>>(new Set())
+  // When set, the 3-mode connect modal (Managed / BYO-OAuth / Paste-token).
+  const [connectApp, setConnectApp] = useState<CatalogApp | null>(null)
 
-  async function connect(serviceName: string, scope: "org" | "user" = "org") {
+  // Catalog apps open the 3-mode modal (Managed / BYO-OAuth / Paste-token).
+  // Legacy Composio entries (no catalog row) keep the old direct popup flow.
+  function connect(serviceName: string, scope: "org" | "user" = "org") {
+    const entry = catalogBySlug.get(serviceName)
+    if (entry) {
+      setConnectApp({
+        slug: entry.slug, label: entry.label, category: entry.category, description: entry.description,
+        logo: entry.logo, auth_type: entry.auth_type, modes: entry.modes, review: entry.review,
+      })
+      return
+    }
+    legacyComposioConnect(serviceName, scope)
+  }
+
+  async function legacyComposioConnect(serviceName: string, scope: "org" | "user") {
     const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
     const res = await fetch(`/integrations/${serviceName}/connect`, {
       method: "POST",
@@ -137,7 +186,7 @@ export default function IntegrationsIndex({
     const q = query.toLowerCase()
     return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
   }
-  const allFiltered = supported_services
+  const allFiltered = services
     .filter(matchesQuery)
     .sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1))
 
@@ -433,12 +482,23 @@ export default function IntegrationsIndex({
         </main>
       </div>
 
+      {connectApp && (
+        <ConnectModal
+          app={connectApp}
+          scope={scopeView}
+          orgConfig={orgConfigBySlug.get(connectApp.slug)}
+          connectBaseUrl={nango_connect_base_url}
+          onClose={() => setConnectApp(null)}
+          onConnected={() => { setConnectApp(null); router.reload() }}
+        />
+      )}
+
       <Dialog open={pendingDisconnect !== null} onOpenChange={(open) => !open && setPendingDisconnect(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Disconnect {pendingDisconnect?.label}?</DialogTitle>
             <DialogDescription>
-              This removes the connected account from Composio. Agents will lose access until you reconnect it.
+              This removes the connected account. Agents will lose access until you reconnect it.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

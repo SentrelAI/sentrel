@@ -10,15 +10,70 @@ class Api::IntegrationsController < ActionController::API
   before_action :authenticate_engine!
 
   # GET /api/integrations/supported?organization_id=N
-  # Engine passes the agent's org_id; we read the org-scoped toolkit cache.
+  # The connectable-app catalog the engine advertises for propose_connection.
+  # Now the static IntegrationCatalog (config/integrations.yml), not a live
+  # Composio fetch — org_id is accepted for back-compat but unused.
   def supported
-    org_id = params[:organization_id].to_i
-    return render(json: { items: [] }) if org_id <= 0
-
-    render json: { items: ComposioSupported.list_for_engine(org_id) }
+    render json: { items: IntegrationCatalog.list_for_engine }
   rescue => e
     Rails.logger.warn "GET /api/integrations/supported failed: #{e.class}: #{e.message}"
     render json: { items: [], error: e.message }, status: :ok # don't break engine boot
+  end
+
+  # GET /api/integrations?agent_id=N[&user_id=M]
+  # The agent's CONNECTED providers, so the engine knows which apps nango_request
+  # can target + where to route them (api_base_url) + how they're connected.
+  # Tokens never leave Rails — the engine round-trips calls through #proxy.
+  def connected
+    agent = Agent.find(params[:agent_id])
+    rows = Integration.where(organization_id: agent.organization_id, status: "connected")
+    rows = rows.where("scope = 'org' OR (scope = 'user' AND owner_user_id = ?)", params[:user_id]) if params[:user_id].present?
+    rows = rows.where(scope: "org") unless params[:user_id].present?
+
+    items = rows.filter_map do |row|
+      entry = IntegrationCatalog.find(row.service_name) or next
+      {
+        provider: row.service_name,
+        label: entry[:label],
+        api_base_url: entry[:api_base_url],
+        connect_mode: row.connect_mode,
+        tool: entry[:tool],         # "proxy" → nango_request ; "mcp" → dedicated MCP
+        docs_url: entry[:docs_url],
+      }
+    end
+    render json: { integrations: items }
+  rescue ActiveRecord::RecordNotFound
+    render json: { integrations: [], error: "agent not found" }, status: :ok
+  end
+
+  # POST /api/nango_proxy
+  # Body: { agent_id, provider, method, path, query?, body?, approved? }
+  # The engine's nango_request tool hits this; we resolve the connection,
+  # enforce ACL + the approval gate, and proxy through Nango (or the pasted
+  # token for byo_token providers).
+  def proxy
+    agent = Agent.find(params[:agent_id])
+    integration = Integration.where(organization_id: agent.organization_id, service_name: params[:provider].to_s, status: "connected").first
+    return render(json: { error: "#{params[:provider]} is not connected", needs_connection: true }, status: :not_found) unless integration
+
+    result = Nango::Proxy.call(
+      agent: agent, integration: integration,
+      method: params[:method].to_s.presence || "GET",
+      path: params[:path].to_s,
+      query: params[:query]&.to_unsafe_h || {},
+      body: params[:body],
+      approved: ActiveModel::Type::Boolean.new.cast(params[:approved]),
+    )
+    render json: { status: result.status, body: result.body, source: result.source }
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: "agent not found" }, status: :not_found
+  rescue Nango::Proxy::ApprovalRequired
+    render json: { error: "approval required", requires_approval: true }, status: :accepted
+  rescue Nango::Proxy::Forbidden => e
+    render json: { error: e.message, forbidden: true }, status: :forbidden
+  rescue => e
+    Rails.logger.warn "POST /api/nango_proxy failed: #{e.class}: #{e.message}"
+    render json: { error: e.message }, status: :bad_gateway
   end
 
   private

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_23_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -412,14 +412,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
 
   create_table "integrations", force: :cascade do |t|
     t.string "composio_connection_id"
+    t.string "connect_mode", default: "managed", null: false
     t.datetime "created_at", null: false
+    t.string "nango_connection_id"
     t.bigint "organization_id", null: false
     t.bigint "owner_user_id"
+    t.string "provider_config_key"
     t.string "scope", default: "org", null: false
     t.string "scopes", default: [], array: true
     t.string "service_name", null: false
     t.string "status", default: "connected", null: false
     t.datetime "updated_at", null: false
+    t.index ["organization_id", "nango_connection_id"], name: "index_integrations_on_organization_id_and_nango_connection_id"
     t.index ["organization_id", "scope", "owner_user_id", "service_name"], name: "idx_integrations_lookup", unique: true
     t.index ["organization_id", "service_name"], name: "index_integrations_on_organization_id_and_service_name"
     t.index ["organization_id"], name: "index_integrations_on_organization_id"
@@ -530,6 +534,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
     t.index ["kind"], name: "index_oauth_credentials_on_kind"
     t.index ["organization_id", "provider"], name: "index_oauth_credentials_on_organization_id_and_provider", unique: true
     t.index ["organization_id"], name: "index_oauth_credentials_on_organization_id"
+  end
+
+  create_table "org_integration_configs", force: :cascade do |t|
+    t.string "client_id"
+    t.text "client_secret_ciphertext"
+    t.datetime "created_at", null: false
+    t.string "mode", default: "managed", null: false
+    t.bigint "organization_id", null: false
+    t.string "provider", null: false
+    t.jsonb "scopes", default: [], null: false
+    t.datetime "updated_at", null: false
+    t.index ["organization_id", "provider"], name: "index_org_integration_configs_on_organization_id_and_provider", unique: true
+    t.index ["organization_id"], name: "index_org_integration_configs_on_organization_id"
   end
 
   create_table "organizations", force: :cascade do |t|
@@ -775,6 +792,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_22_000000) do
   add_foreign_key "messages", "users", column: "sender_user_id", validate: false
   add_foreign_key "mobile_devices", "users"
   add_foreign_key "oauth_credentials", "organizations"
+  add_foreign_key "org_integration_configs", "organizations"
   add_foreign_key "organizations", "agents", column: "default_slack_agent_id", on_delete: :nullify
   add_foreign_key "pending_approvals", "agents"
   add_foreign_key "pending_approvals", "messages", on_delete: :nullify

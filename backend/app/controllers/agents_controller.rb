@@ -295,7 +295,7 @@ class AgentsController < ApplicationController
   def missing_integrations_for(agent)
     slugs = agent.missing_integration_slugs
     return [] if slugs.empty?
-    catalog = ComposioSupported.list(current_tenant.id).index_by { |t| t[:slug] }
+    catalog = IntegrationCatalog.list(current_tenant.id).index_by { |t| t[:slug] }
     slugs.map do |slug|
       meta = catalog[slug] || {}
       {

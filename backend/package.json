@@ -26,6 +26,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@inertiajs/react": "^3.0.2",
     "@inertiajs/vite": "^3.0.2",
+    "@nangohq/frontend": "^0.70.8",
     "@radix-ui/react-popover": "^1.1.15",
     "@rails/actioncable": "^8.1.300",
     "@rails/activestorage": "^8.1.300",

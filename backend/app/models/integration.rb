@@ -1,5 +1,6 @@
 class Integration < ApplicationRecord
   SCOPES = %w[org user].freeze
+  CONNECT_MODES = %w[managed byo_oauth byo_token].freeze
 
   acts_as_tenant :organization
   belongs_to :organization
@@ -8,10 +9,19 @@ class Integration < ApplicationRecord
   validates :service_name, presence: true
   validates :scope, presence: true, inclusion: { in: SCOPES }
   validates :status, presence: true, inclusion: { in: %w[pending connected disconnected expired] }
+  validates :connect_mode, presence: true, inclusion: { in: CONNECT_MODES }
   validate  :owner_user_consistent_with_scope
 
   scope :org_wide, -> { where(scope: "org") }
   scope :owned_by, ->(user) { where(scope: "user", owner_user_id: user.id) }
+  scope :connected, -> { where(status: "connected") }
+  scope :nango_backed, -> { where.not(connect_mode: "byo_token") }
+
+  # True when this app is connected by a pasted token/key rather than an OAuth
+  # connection in Nango. The Nango proxy resolves a Credential for these.
+  def byo_token?
+    connect_mode == "byo_token"
+  end
 
   # Composio's user_id partitions connections by tenant. We've used
   # "org_<id>" for the workspace-wide bucket; user-scoped integrations get

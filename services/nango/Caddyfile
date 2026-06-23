@@ -1,0 +1,38 @@
+# Host-based routing for the Nango app. fly-proxy terminates TLS and forwards
+# every hostname to Caddy on :8080.
+#
+#   nango-admin.sentrel.ai + sentrel-nango.fly.dev → the ADMIN DASHBOARD
+#       (the Nango server's own SPA on :3003 — login, integrations, connections)
+#   connect.sentrel.ai                              → the end-user CONNECT UI
+#       (static SPA) + the API (by path → :3003)
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	# fly-proxy terminates TLS then forwards plain HTTP to Caddy, so Caddy would
+	# otherwise tell the Nango server X-Forwarded-Proto: http → req.secure=false
+	# → broken session cookies. Force https (the app is only reachable via the
+	# TLS fly-proxy) so Nango sets secure, same-site cookies correctly.
+	@admin host nango-admin.sentrel.ai sentrel-nango.fly.dev
+	handle @admin {
+		reverse_proxy localhost:3003 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# ── Connect UI host (connect.sentrel.ai + anything else) ──
+	# API paths → :3003; everything else → the static Connect UI SPA.
+	@api path /health /providers* /config* /environment* /connect/* /proxy/* /oauth/* /webhook/* /api/* /auth/* /v1/* /fleet* /records/* /sync/* /action/* /flow* /integrations* /connections*
+	handle @api {
+		reverse_proxy localhost:3003 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	handle {
+		root * /app/nango/packages/connect-ui/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

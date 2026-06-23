@@ -1,0 +1,194 @@
+# Static integration catalog — replaces the live Composio toolkit catalog.
+#
+# Each entry is one connectable app. Keyed by `service_name` (our internal
+# slug, also what SkillDefinition.requires_connections must match). Loaded by
+# IntegrationCatalog (app/services/integration_catalog.rb).
+#
+# Fields:
+#   label               human name shown in the UI
+#   category            grouping for the Integrations page filter
+#   provider_config_key Nango integration key (from providers.yaml). Omitted
+#                       for `tool: mcp` apps (those use a dedicated MCP server).
+#   auth_type           oauth2 | api_key  (how the provider authenticates)
+#   api_base_url        base URL the agent's nango_request paths are relative to
+#   docs_url            provider API reference (surfaced to the agent)
+#   scopes              default OAuth scopes requested in managed mode
+#   modes               connect modes offered to the user, in priority order
+#                       (managed | byo_oauth | byo_token)
+#   tool                proxy  -> generic nango_request + a SKILL.md
+#                       mcp    -> a dedicated McpServer (rich named tools)
+#   review              none | google | gated  (UI badge: what managed needs)
+#
+# Ship-first 🟢 (standard OAuth, managed works immediately) ---------------------
+
+github:
+  label: GitHub
+  category: Developer
+  provider_config_key: github
+  auth_type: oauth2
+  api_base_url: https://api.github.com
+  docs_url: https://docs.github.com/en/rest
+  scopes: [repo, read:org, read:user]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: none
+
+linear:
+  label: Linear
+  category: Productivity
+  provider_config_key: linear
+  auth_type: oauth2
+  api_base_url: https://api.linear.app
+  docs_url: https://developers.linear.app/docs
+  scopes: [read, write]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: none
+
+airtable:
+  label: Airtable
+  category: Productivity
+  provider_config_key: airtable
+  auth_type: oauth2
+  api_base_url: https://api.airtable.com
+  docs_url: https://airtable.com/developers/web/api/introduction
+  scopes: ["data.records:read", "data.records:write", "schema.bases:read"]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: none
+
+notion:
+  label: Notion
+  category: Productivity
+  provider_config_key: notion
+  auth_type: oauth2
+  api_base_url: https://api.notion.com
+  docs_url: https://developers.notion.com/reference
+  scopes: []
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: none
+
+slack:
+  label: Slack
+  category: Communication
+  provider_config_key: slack
+  auth_type: oauth2
+  api_base_url: https://slack.com/api
+  docs_url: https://api.slack.com/methods
+  scopes: [chat:write, channels:read, channels:history, users:read]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: none
+
+sentry:
+  label: Sentry
+  category: Developer
+  provider_config_key: sentry-oauth
+  auth_type: oauth2
+  api_base_url: https://sentry.io/api/0
+  docs_url: https://docs.sentry.io/api/
+  scopes: [project:read, event:read, org:read]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: none
+
+# Vercel ships as API_KEY in Nango (no OAuth template) -> paste-token only.
+vercel:
+  label: Vercel
+  category: Developer
+  auth_type: api_key
+  api_base_url: https://api.vercel.com
+  docs_url: https://vercel.com/docs/rest-api
+  modes: [byo_token]
+  tool: proxy
+  review: none
+
+# Google 🟡 (managed requires Google OAuth verification) -----------------------
+
+gmail:
+  label: Gmail
+  category: Communication
+  provider_config_key: google-mail
+  auth_type: oauth2
+  api_base_url: https://gmail.googleapis.com
+  docs_url: https://developers.google.com/gmail/api/reference/rest
+  scopes: [https://www.googleapis.com/auth/gmail.modify]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_drive:
+  label: Google Drive
+  category: Productivity
+  provider_config_key: google-drive
+  auth_type: oauth2
+  api_base_url: https://www.googleapis.com/drive/v3
+  docs_url: https://developers.google.com/drive/api/reference/rest/v3
+  scopes: [https://www.googleapis.com/auth/drive]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_calendar:
+  label: Google Calendar
+  category: Productivity
+  provider_config_key: google-calendar
+  auth_type: oauth2
+  api_base_url: https://www.googleapis.com/calendar/v3
+  docs_url: https://developers.google.com/calendar/api/v3/reference
+  scopes: [https://www.googleapis.com/auth/calendar]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_sheets:
+  label: Google Sheets
+  category: Productivity
+  provider_config_key: google-sheet
+  auth_type: oauth2
+  api_base_url: https://sheets.googleapis.com/v4
+  docs_url: https://developers.google.com/sheets/api/reference/rest
+  scopes: [https://www.googleapis.com/auth/spreadsheets]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+# Gated 🔴 (Sentrel app review + business verification; paste-token bridges) ----
+
+# Meta Ads is served by the dedicated self-hosted MCP (services/meta-ads-mcp),
+# NOT the Nango proxy — it needs the full ads funnel surface. Listed here so it
+# shows in the catalog; `tool: mcp` routes it to the McpServer path.
+meta_ads:
+  label: Meta Ads
+  category: Marketing
+  auth_type: oauth2
+  api_base_url: https://graph.facebook.com
+  docs_url: https://developers.facebook.com/docs/marketing-apis
+  modes: [byo_token, managed]
+  tool: mcp
+  review: gated
+
+linkedin:
+  label: LinkedIn
+  category: Marketing
+  provider_config_key: linkedin
+  auth_type: oauth2
+  api_base_url: https://api.linkedin.com
+  docs_url: https://learn.microsoft.com/en-us/linkedin/
+  scopes: [r_liteprofile, w_member_social]
+  modes: [byo_token, managed, byo_oauth]
+  tool: proxy
+  review: gated
+
+tiktok:
+  label: TikTok Ads
+  category: Marketing
+  provider_config_key: tiktok-ads
+  auth_type: oauth2
+  api_base_url: https://business-api.tiktok.com
+  docs_url: https://business-api.tiktok.com/portal/docs
+  scopes: []
+  modes: [byo_token, managed, byo_oauth]
+  tool: proxy
+  review: gated

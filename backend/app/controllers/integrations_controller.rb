@@ -63,12 +63,32 @@ class IntegrationsController < ApplicationController
       []
     end
 
+    # Per-(org, provider) connect-mode policy + BYO-OAuth app creds. Keyed by
+    # provider so the frontend can show the right default mode per app.
+    org_configs = begin
+      if defined?(OrgIntegrationConfig) && ActiveRecord::Base.connection.table_exists?("org_integration_configs")
+        OrgIntegrationConfig.where(organization_id: current_tenant.id).map { |c|
+          { provider: c.provider, mode: c.mode, client_id: c.client_id, has_secret: c.client_secret.present? }
+        }
+      else
+        []
+      end
+    rescue StandardError
+      []
+    end
+
     render inertia: "integrations/index", props: {
       integrations: visible_scope.as_json(
-        only: [ :id, :service_name, :status, :composio_connection_id, :created_at, :scope, :owner_user_id ]
+        only: [ :id, :service_name, :status, :composio_connection_id, :created_at, :scope, :owner_user_id, :connect_mode, :provider_config_key ]
       ).map { |i|
         i.merge("is_mine" => i["scope"] == "user" && i["owner_user_id"] == current_user.id)
       },
+      # NEW: static integration catalog (config/integrations.yml) — replaces the
+      # live Composio toolkit list. Runs alongside supported_services during the
+      # transition; the frontend prefers `catalog` when present.
+      catalog: IntegrationCatalog.list(current_tenant.id),
+      org_integration_configs: org_configs,
+      nango_connect_base_url: ENV["NANGO_CONNECT_BASE_URL"],
       # Single source of truth — durable per-org cache populated by
       # RefreshComposioCacheJob (hourly + on-demand). Read straight from
       # Postgres on the hot path; no Composio HTTP call here.
@@ -316,7 +336,18 @@ class IntegrationsController < ApplicationController
       return
     end
 
-    if ENV["COMPOSIO_API_KEY"].present?
+    # Nango-backed (managed/byo_oauth): revoke the Nango connection.
+    if integration.nango_connection_id.present? && integration.provider_config_key.present?
+      begin
+        Nango::Client.delete_connection(integration.nango_connection_id, integration.provider_config_key)
+      rescue => e
+        Rails.logger.warn "Nango disconnect failed for #{name}: #{e.class}: #{e.message}"
+      end
+    # byo_token: drop the pasted Credential.
+    elsif integration.byo_token?
+      current_tenant.credentials.where(provider: name, kind: "generic", agent_id: nil).destroy_all
+    # Legacy Composio rows.
+    elsif ENV["COMPOSIO_API_KEY"].present? && integration.composio_connection_id.present?
       result = disconnect_composio_integration(integration)
       unless result[:ok]
         redirect_to integrations_path, alert: "Could not disconnect #{name.titleize} from Composio: #{result[:message]}"
@@ -330,7 +361,125 @@ class IntegrationsController < ApplicationController
     redirect_to integrations_path, notice: "#{name.titleize} disconnected"
   end
 
+  # ── Nango-backed connect flow ─────────────────────────────────────────────
+
+  # POST /integrations/:service_name/nango_session
+  # Managed / BYO-OAuth: mint a Nango Connect session token for the browser SDK.
+  def nango_session
+    entry = catalog_entry!(params[:service_name]) or return
+    provider_config_key = entry[:provider_config_key]
+    unless provider_config_key.present?
+      return render json: { error: "#{entry[:label]} can't be connected with OAuth — paste a token instead." }, status: :unprocessable_entity
+    end
+    unless Nango::Client.configured?
+      return render json: { error: "Nango is not configured on the server yet." }, status: :unprocessable_entity
+    end
+
+    # BYO-OAuth: run the OAuth dance on the org's own app credentials.
+    cfg = OrgIntegrationConfig.find_by(organization_id: current_tenant.id, provider: entry[:slug])
+    byo = cfg&.oauth_overrides
+
+    session_res = Nango::Client.create_connect_session(
+      organization: current_tenant, user: current_user,
+      provider_config_key: provider_config_key, byo_overrides: byo
+    )
+    render json: {
+      session_token: session_res["token"] || session_res.dig("data", "token"),
+      connect_base_url: ENV["NANGO_CONNECT_BASE_URL"],
+      provider_config_key: provider_config_key,
+    }
+  rescue Nango::Client::Error => e
+    render json: { error: "Could not start connection: #{e.message}" }, status: :bad_gateway
+  end
+
+  # POST /integrations/:service_name/nango_finalize { connection_id, scope }
+  # Called by the browser after the Connect UI succeeds. Upserts the Integration
+  # row, auto-installs skills, and wakes the engines.
+  def nango_finalize
+    entry = catalog_entry!(params[:service_name]) or return
+    connection_id = params[:connection_id].to_s
+    return render(json: { error: "missing connection_id" }, status: :unprocessable_entity) if connection_id.blank?
+
+    scope = params[:scope].to_s == "user" ? "user" : "org"
+    mode  = OrgIntegrationConfig.mode_for(current_tenant.id, entry[:slug]) == "byo_oauth" ? "byo_oauth" : "managed"
+    row = upsert_integration(entry[:slug], scope: scope, connect_mode: mode,
+                             nango_connection_id: connection_id, provider_config_key: entry[:provider_config_key])
+    after_connect(row)
+    render json: { ok: true, id: row.id }
+  end
+
+  # POST /integrations/:service_name/paste_token { token, scope }
+  # BYO-token: store the pasted key as a Credential and connect the app.
+  def paste_token
+    entry = catalog_entry!(params[:service_name]) or return
+    token = params[:token].to_s.strip
+    return render(json: { error: "missing token" }, status: :unprocessable_entity) if token.blank?
+    scope = params[:scope].to_s == "user" ? "user" : "org"
+
+    cred = current_tenant.credentials.find_or_initialize_by(provider: entry[:slug], kind: "generic", agent_id: nil)
+    cred.name ||= "#{entry[:slug]}-token"
+    cred.fields = { "value" => token }
+    cred.save!
+
+    row = upsert_integration(entry[:slug], scope: scope, connect_mode: "byo_token",
+                             nango_connection_id: nil, provider_config_key: nil)
+    after_connect(row)
+    render json: { ok: true, id: row.id }
+  end
+
+  # POST /integrations/:service_name/org_config { mode, client_id, client_secret }
+  # Org admin sets the default connect mode for an app + (byo_oauth) app creds.
+  def org_config
+    entry = catalog_entry!(params[:service_name]) or return
+    cfg = OrgIntegrationConfig.find_or_initialize_by(organization_id: current_tenant.id, provider: entry[:slug])
+    cfg.mode = params[:mode].to_s.presence || "managed"
+    cfg.client_id = params[:client_id] if params.key?(:client_id)
+    cfg.client_secret = params[:client_secret] if params[:client_secret].present?
+    if cfg.save
+      render json: { ok: true, mode: cfg.mode }
+    else
+      render json: { error: cfg.errors.full_messages.join(", ") }, status: :unprocessable_entity
+    end
+  end
+
   private
+
+  # Look up a catalog entry or render a 404 JSON error (returns nil so callers
+  # can `entry = catalog_entry!(...) or return`).
+  def catalog_entry!(slug)
+    entry = IntegrationCatalog.find(slug.to_s)
+    render(json: { error: "Unknown integration #{slug}" }, status: :not_found) unless entry
+    entry
+  end
+
+  # Create/update the Integration row for a (service, scope) — shared by every
+  # Nango connect mode. Honors the org/user scope unique key.
+  def upsert_integration(service, scope:, connect_mode:, nango_connection_id:, provider_config_key:)
+    owner_user_id = scope == "user" ? current_user.id : nil
+    row = current_tenant.integrations
+      .where(service_name: service, scope: scope, owner_user_id: owner_user_id)
+      .first_or_initialize
+    row.assign_attributes(
+      status: "connected", connect_mode: connect_mode,
+      nango_connection_id: nango_connection_id, provider_config_key: provider_config_key,
+    )
+    row.save!
+    row
+  end
+
+  # Post-connect side effects shared by every mode: auto-install matching
+  # skills + wake every engine in the org. Mirrors the Composio callback.
+  def after_connect(row)
+    begin
+      result = IntegrationSkillAutoInstaller.new(row).call
+      if result.installed.positive?
+        Rails.logger.info "IntegrationSkillAutoInstaller: #{row.service_name} → installed on #{result.installed} agent-skill rows"
+      end
+    rescue => e
+      Rails.logger.warn "IntegrationSkillAutoInstaller failed for #{row.service_name}: #{e.class}: #{e.message}"
+    end
+    sync_agents_after_integration_change(row)
+  end
 
   def find_composio_auth_config(api_key, app_name)
     response = composio_get("/api/v3/auth_configs", api_key)

@@ -1,0 +1,47 @@
+# Self-hosted Nango (open-source, NangoHQ/nango) — our OAuth / token-storage /
+# token-refresh / API-proxy layer, replacing Composio. We use only the FREE
+# self-host "Auth + Proxy" surface: OAuth, encrypted token storage, automatic
+# server-side refresh, Connect Sessions, the Connect UI, and the /proxy
+# endpoint. Functions / Syncs / Webhooks / the Nango MCP are Enterprise-gated
+# and we deliberately do NOT use them.
+#
+# A Caddy reverse proxy (baked into the image) puts the API (:3003) and Connect
+# UI (:3009) behind one public domain, https://connect.sentrel.ai. The Nango
+# Secret Key lives only in Rails (kamal secret); the engine never talks to
+# Nango directly.
+app = "sentrel-nango"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The Nango "server" (API + dashboard + email links + OAuth callback) lives on
+  # the admin domain; the end-user Connect UI lives on connect.sentrel.ai. Both
+  # domains route to this same app (Caddy splits by host/path). Keeping them
+  # separate means password-reset / verification emails + the OAuth callback go
+  # to the DASHBOARD, while connect sessions open the Connect UI.
+  NANGO_SERVER_URL = "https://nango-admin.sentrel.ai"
+  NANGO_PUBLIC_SERVER_URL = "https://nango-admin.sentrel.ai"
+  NANGO_PUBLIC_CONNECT_URL = "https://connect.sentrel.ai"
+  SERVER_PORT = "3003"
+  # Connect UI is served STATICALLY by Caddy from the image's built files, so we
+  # don't run the flaky vite dev-server. (Caddy reads the dist directly.)
+  FLAG_SERVE_CONNECT_UI = "false"
+  # We don't run Syncs/Functions/Webhooks — keep the footprint to Auth+Proxy.
+  # No Elasticsearch yet → disable the operation-logs persistence layer so the
+  # server boots without an ES backend. Add ES + flip this on later if wanted.
+  NANGO_LOGS_ENABLED = "false"
+  TELEMETRY = "false"
+
+[http_service]
+  # Caddy listens here; it proxies to :3003 (API) and :3009 (Connect UI).
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1024mb"

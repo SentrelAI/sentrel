@@ -13,10 +13,10 @@ module Forge
   class SkillRequirementsAnalyzer
     Requirement = Struct.new(:capability, :query, :priority, :rationale, :composio_toolkit, keyword_init: true)
 
-    # The 50-or-so curated slugs from ComposioSupported::CATEGORY_MAP, shown
-    # as well-known examples in the prompt to anchor Claude on the common
-    # cases (gmail, slack, salesforce, ...). Tight prompt, big signal.
-    EXAMPLE_TOOLKITS = ComposioSupported::CATEGORY_MAP.keys.freeze
+    # Well-known integration slugs from the static catalog, shown as examples
+    # in the prompt to anchor Claude on the common cases (gmail, slack, …).
+    # Tight prompt, big signal.
+    EXAMPLE_TOOLKITS = IntegrationCatalog.slugs.freeze
 
     def initialize(brief:, model: AnthropicClient::DEFAULT_MODEL, max_count: 10)
       @brief = brief.is_a?(Hash) ? brief : { description: brief.to_s }
@@ -24,13 +24,11 @@ module Forge
       @max_count = max_count
     end
 
-    # The FULL Composio catalog (1000+ slugs) as the validation set. If
-    # Claude picks "convertkit" or "intercom" and that slug exists on
-    # Composio, we accept it — we just don't list every long-tail slug in
-    # the prompt. Memoized at the class level so 109 parallel analyzers
-    # share the lookup.
+    # The catalog slugs as the validation set. We only support the curated
+    # catalog now, so a slug Claude picks must be one we actually integrate.
+    # Memoized at the class level so parallel analyzers share the lookup.
     def self.valid_toolkit_set
-      @valid_toolkit_set ||= ComposioSupported.all_toolkit_slugs.to_set
+      @valid_toolkit_set ||= IntegrationCatalog.slugs.to_set
     end
 
     def self.reset_valid_toolkit_cache!
