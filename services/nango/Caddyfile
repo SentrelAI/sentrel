@@ -23,16 +23,36 @@
 	}
 
 	# ── Connect UI host (connect.sentrel.ai + anything else) ──
-	# API paths → :3003; everything else → the static Connect UI SPA.
-	@api path /health /providers* /config* /environment* /connect/* /proxy/* /oauth/* /webhook/* /api/* /auth/* /v1/* /fleet* /records/* /sync/* /action/* /flow* /integrations* /connections*
-	handle @api {
+	# Inverted routing: serve ONLY the static Connect UI SPA shell (root + its
+	# assets) from disk; route EVERYTHING ELSE — the API (/connect, /connection,
+	# /proxy, /oauth, /providers, …) AND WebSocket upgrades — to the Nango
+	# server. This avoids whack-a-mole on individual API paths (a missing one
+	# silently 200s the SPA HTML and breaks the call).
+
+	# WebSocket upgrades (Nango's OAuth result channel) → server. Without this
+	# the OAuth popup hangs blank: the SDK waits for the WS before navigating.
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @websocket {
 		reverse_proxy localhost:3003 {
 			header_up X-Forwarded-Proto https
 		}
 	}
-	handle {
+
+	# Static SPA shell only.
+	@connectui path / /assets/* /favicon.ico /fonts/* /images/* /locales/*
+	handle @connectui {
 		root * /app/nango/packages/connect-ui/dist
 		try_files {path} /index.html
 		file_server
+	}
+
+	# Everything else → the Nango server (API).
+	handle {
+		reverse_proxy localhost:3003 {
+			header_up X-Forwarded-Proto https
+		}
 	}
 }
