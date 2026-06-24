@@ -18,6 +18,17 @@ RSpec.describe AgentTemplate do
     end
   end
 
+  describe ".featured" do
+    it "returns only featured templates, ordered by position (nulls last) then name" do
+      a = described_class.create!(slug: "a", name: "Zed",   role: "R", featured: true,  featured_position: 2)
+      b = described_class.create!(slug: "b", name: "Alpha", role: "R", featured: true,  featured_position: 1)
+      c = described_class.create!(slug: "c", name: "Nora",  role: "R", featured: true,  featured_position: nil)
+      _d = described_class.create!(slug: "d", name: "Skip", role: "R", featured: false)
+
+      expect(described_class.featured.to_a).to eq([ b, a, c ])
+    end
+  end
+
   describe "#render" do
     let(:t) do
       described_class.create!(

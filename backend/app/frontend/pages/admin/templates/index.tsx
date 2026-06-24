@@ -1,6 +1,6 @@
 import { Link, router } from "@inertiajs/react"
 import { useEffect, useState } from "react"
-import { Sparkles } from "lucide-react"
+import { Sparkles, Star } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
 import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
@@ -14,6 +14,8 @@ interface Template {
   description: string
   icon: string | null
   published: boolean
+  featured: boolean
+  featured_position: number | null
   install_count: number
   system_template: boolean
   suggested_model: string
@@ -67,6 +69,16 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
 
   function togglePublished(t: Template) {
     router.put(`/admin/templates/${t.id}`, { published: !t.published }, { preserveScroll: true })
+  }
+
+  function toggleFeatured(t: Template) {
+    if (!t.featured && !t.system_template) {
+      const ok = confirm(
+        `"${t.slug}" is a community/org-owned template. Featuring shows it publicly, but it can only be deployed by its owning org unless it's promoted to a system template first. Feature anyway?`,
+      )
+      if (!ok) return
+    }
+    router.put(`/admin/templates/${t.id}`, { featured: !t.featured }, { preserveScroll: true })
   }
 
   function destroy(t: Template) {
@@ -153,9 +165,17 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
                         <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800">pending</span>
                       )}
                       {!t.system_template && <span className="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700">community</span>}
+                      {t.featured && <span className="ml-1 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">featured</span>}
                     </td>
                     <td className="p-2 text-right">
-                      <button onClick={() => togglePublished(t)} className="rounded border px-2 py-1 text-xs hover:bg-muted">
+                      <button
+                        onClick={() => toggleFeatured(t)}
+                        title={t.featured ? "Remove from Featured" : "Add to Featured"}
+                        className={`rounded border px-2 py-1 text-xs hover:bg-muted ${t.featured ? "border-indigo-300 text-indigo-600" : ""}`}
+                      >
+                        <Star className={`size-3.5 ${t.featured ? "fill-current" : ""}`} />
+                      </button>
+                      <button onClick={() => togglePublished(t)} className="ml-1 rounded border px-2 py-1 text-xs hover:bg-muted">
                         {t.published ? "Unpublish" : "Publish"}
                       </button>
                       <button onClick={() => destroy(t)} className="ml-1 rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50">
