@@ -46,10 +46,12 @@ env:
     WEBHOOK_BASE_URL: https://www.sentrel.ai
     RAILS_INTERNAL_URL: https://www.sentrel.ai
     # Self-hosted Nango (services/nango on Fly). Rails runs on EC2 (kamal), NOT
-    # on Fly's private network, so it reaches Nango over the PUBLIC URL. The
-    # browser uses the same public URL for the Connect UI. Secret key is below.
-    NANGO_BASE_URL: https://sentrel-nango.fly.dev
-    NANGO_CONNECT_BASE_URL: https://sentrel-nango.fly.dev
+    # on Fly's private network, so it reaches Nango over the PUBLIC URL. Use the
+    # connect.sentrel.ai domain (Caddy routes its API paths to the server, and
+    # serves the static Connect UI for the browser to iframe — fly.dev would
+    # route to the dashboard, which sets X-Frame-Options and blocks framing).
+    NANGO_BASE_URL: https://connect.sentrel.ai
+    NANGO_CONNECT_BASE_URL: https://connect.sentrel.ai
   secret:
     - RAILS_MASTER_KEY
     - DATABASE_URL

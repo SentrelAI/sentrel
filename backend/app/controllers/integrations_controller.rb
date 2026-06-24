@@ -389,7 +389,17 @@ class IntegrationsController < ApplicationController
       provider_config_key: provider_config_key,
     }
   rescue Nango::Client::Error => e
-    render json: { error: "Could not start connection: #{e.message}" }, status: :bad_gateway
+    # Managed/BYO-OAuth needs the provider's OAuth app registered in Nango first.
+    # Until an admin configures it, steer the user to paste-token instead of
+    # surfacing a raw gateway error.
+    if e.message.include?("Integration does not exist")
+      render json: {
+        error: "One-click connect for #{entry[:label]} isn't set up yet — paste a token instead, or have an admin add the #{entry[:label]} OAuth app in Nango.",
+        needs_provider_config: true,
+      }, status: :unprocessable_entity
+    else
+      render json: { error: "Could not start connection: #{e.message}" }, status: :bad_gateway
+    end
   end
 
   # POST /integrations/:service_name/nango_finalize { connection_id, scope }
