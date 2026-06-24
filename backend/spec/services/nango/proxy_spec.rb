@@ -158,6 +158,18 @@ RSpec.describe Nango::Proxy do
       }.to raise_error(Nango::Proxy::Transient)
     end
 
+    it "raises AuthExpired + marks the integration error on 401" do
+      intg = integration(mode: "managed")
+      fake = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:start).and_yield(fake)
+      allow(fake).to receive(:request).and_return(http_resp(code: "401", body: "bad token"))
+
+      expect {
+        described_class.call(agent: agent, integration: intg, method: "GET", path: "/user")
+      }.to raise_error(Nango::Proxy::AuthExpired)
+      expect(intg.reload.status).to eq("error")
+    end
+
     it "raises RateLimited with retry_after on 429" do
       intg = integration(mode: "managed")
       fake = instance_double(Net::HTTP)

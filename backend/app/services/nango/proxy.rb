@@ -23,6 +23,10 @@ module Nango
     # retries. Distinct from "not connected" so the agent retries later instead
     # of telling the user to reconnect a connection that's actually fine.
     class Transient < StandardError; end
+    # The provider rejected the token (401) — the connection is broken (revoked
+    # / refresh failed). The user must reconnect. We mark the Integration so the
+    # UI + health job know, and the agent surfaces a reconnect prompt.
+    class AuthExpired < StandardError; end
     # Provider rate limit. Carries when it's safe to try again.
     class RateLimited < StandardError
       attr_reader :retry_after
@@ -104,6 +108,7 @@ module Nango
       req["Provider-Config-Key"] = integration.provider_config_key.to_s
       res = perform(uri, req)
       check_rate_limit!(res, integration.service_name)
+      check_auth!(res, integration)
       Result.new(status: res.code.to_i, body: capped_body(res), source: integration.connect_mode)
     end
 
@@ -121,6 +126,7 @@ module Nango
       req["Authorization"] = "Bearer #{token}"
       res = perform(uri, req)
       check_rate_limit!(res, integration.service_name)
+      check_auth!(res, integration)
       cred.use! if cred.respond_to?(:use!)
       Result.new(status: res.code.to_i, body: capped_body(res), source: "byo_token")
     end
@@ -195,6 +201,15 @@ module Nango
           [res["x-ratelimit-reset"].to_i - Time.now.to_i, 0].max
         end
       raise RateLimited.new("#{provider} rate limited", retry_after: retry_after)
+    end
+
+    # A 401 on a connected integration means the token is dead (revoked or
+    # refresh failed). Mark the connection unhealthy so the UI + health job
+    # know, and raise so the agent prompts a reconnect — not a generic failure.
+    def check_auth!(res, integration)
+      return unless res.code.to_i == 401
+      integration.update_columns(status: "error", updated_at: Time.current) rescue nil
+      raise AuthExpired, "#{integration.service_name} connection rejected (401) — reconnect needed"
     end
 
     def capped_body(res)

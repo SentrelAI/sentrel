@@ -78,6 +78,10 @@ class Api::IntegrationsController < ActionController::API
     # Momentary infra blip that survived retries — NOT a disconnect. Tell the
     # agent to try again shortly, not to reconnect.
     render json: { error: e.message, transient: true }, status: :service_unavailable
+  rescue Nango::Proxy::AuthExpired => e
+    # Token is dead (revoked / refresh failed). The connection is genuinely
+    # broken — the user must reconnect.
+    render json: { error: e.message, needs_reconnect: true }, status: :unauthorized
   rescue => e
     Rails.logger.warn "POST /api/nango_proxy failed: #{e.class}: #{e.message}"
     render json: { error: e.message }, status: :bad_gateway

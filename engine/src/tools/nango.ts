@@ -128,6 +128,19 @@ export function buildNangoMcpServer(ctx: NangoContext) {
           return { content: [{ type: "text" as const, text: `Temporary hiccup reaching ${titleCase(args.provider)} (transient). Try the same call again in a moment — the connection is fine.` }], isError: true };
         }
 
+        // Token rejected (401) — the connection is genuinely broken (revoked /
+        // refresh failed). Post a reconnect card; don't retry.
+        if (res.status === 401) {
+          await postProposal({
+            ctx: { agentId, orgId, origin },
+            slug: args.provider.toLowerCase(),
+            label: titleCase(args.provider),
+            why: `to reconnect ${titleCase(args.provider)} (the connection expired)`,
+            kind: "api_credential",
+          });
+          return { content: [{ type: "text" as const, text: `${titleCase(args.provider)}'s connection expired (token rejected) — posted a Reconnect card. Ask the user to reconnect, then retry. Don't retry until they do.` }], isError: true };
+        }
+
         if (!res.ok) {
           const text = await res.text();
           return { content: [{ type: "text" as const, text: `nango_request failed: ${res.status} ${text.slice(0, 300)}` }], isError: true };

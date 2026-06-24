@@ -14,6 +14,7 @@ Sidekiq.configure_server do |config|
       "ArchiveDormantConversationsJob"   => { "cron" => "0 3 * * *",   "class" => "ArchiveDormantConversationsJob" },   # daily 3am
       "RefreshOauthTokensJob"            => { "cron" => "*/30 * * * *", "class" => "RefreshOauthTokensJob" },           # every 30 min
       "RefreshComposioCacheJob"          => { "cron" => "0 * * * *",   "class" => "RefreshComposioCacheJob" },          # hourly
+      "IntegrationHealthJob"             => { "cron" => "*/30 * * * *", "class" => "IntegrationHealthJob" },            # every 30 min — Nango connection health
       # Wake stopped agent machines ~30s before their scheduled work is due.
       # Fly auto-start only fires on HTTP traffic; our engine consumes Redis,
       # so a delayed BullMQ job in a sleeping machine never fires on its own.

@@ -8,7 +8,7 @@ class Integration < ApplicationRecord
 
   validates :service_name, presence: true
   validates :scope, presence: true, inclusion: { in: SCOPES }
-  validates :status, presence: true, inclusion: { in: %w[pending connected disconnected expired] }
+  validates :status, presence: true, inclusion: { in: %w[pending connected disconnected expired error] }
   validates :connect_mode, presence: true, inclusion: { in: CONNECT_MODES }
   validate  :owner_user_consistent_with_scope
 
