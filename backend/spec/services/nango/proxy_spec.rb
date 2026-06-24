@@ -21,7 +21,7 @@ RSpec.describe Nango::Proxy do
         status: "connected",
         connect_mode: mode,
         nango_connection_id: (mode == "byo_token" ? nil : "conn_123"),
-        provider_config_key: (mode == "byo_token" ? nil : "github"),
+        provider_config_key: (mode == "byo_token" ? nil : "github")
       }.merge(attrs))
     end
   end

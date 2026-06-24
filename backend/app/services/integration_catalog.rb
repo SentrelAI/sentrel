@@ -76,7 +76,7 @@ class IntegrationCatalog
         scopes: attrs["scopes"] || [],
         modes: attrs["modes"] || %w[managed],
         tool: attrs["tool"] || "proxy",
-        review: attrs["review"] || "none",
+        review: attrs["review"] || "none"
       }
     end
   end

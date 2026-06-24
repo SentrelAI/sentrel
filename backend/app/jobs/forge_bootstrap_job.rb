@@ -52,7 +52,7 @@ class ForgeBootstrapJob < ApplicationJob
       "duration_s"       => summary.duration_s.round(1),
       "failures"         => summary.failures.first(20).map { |r| { slug: r.brief.is_a?(Hash) ? r.brief[:slug] : r.brief, error: r.error } },
       "usage"            => usage,
-      "cost_estimate_usd" => cost.round(2),
+      "cost_estimate_usd" => cost.round(2)
     }
   end
 end

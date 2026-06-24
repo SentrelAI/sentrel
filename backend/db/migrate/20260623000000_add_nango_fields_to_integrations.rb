@@ -12,6 +12,6 @@ class AddNangoFieldsToIntegrations < ActiveRecord::Migration[8.0]
     add_column :integrations, :connect_mode, :string, null: false, default: "managed"
     add_column :integrations, :provider_config_key, :string
 
-    add_index :integrations, [:organization_id, :nango_connection_id]
+    add_index :integrations, [ :organization_id, :nango_connection_id ]
   end
 end

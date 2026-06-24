@@ -60,7 +60,7 @@ module Forge
           "slug"   => slug,
           "path"   => path,
           "html_url" => item["html_url"],
-          "stars"  => item.dig("repository", "stargazers_count"),
+          "stars"  => item.dig("repository", "stargazers_count")
         }
       end
     end
@@ -92,7 +92,7 @@ module Forge
         "id" => "#{source}/#{File.basename(dir)}",
         "source" => source,
         "slug" => File.basename(dir),
-        "files" => files,
+        "files" => files
       }
     end
 

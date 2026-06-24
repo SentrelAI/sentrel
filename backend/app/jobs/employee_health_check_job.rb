@@ -57,7 +57,7 @@ class EmployeeHealthCheckJob < ApplicationJob
     # heartbeat-related message we wrote ourselves.
     attrs = {
       status: "stopped",
-      updated_at: Time.current,
+      updated_at: Time.current
     }
     existing = agent.instance.provisioning_error.to_s
     if existing.blank? || existing.start_with?("Engine heartbeat", "No engine heartbeat", "Engine heartbeat payload invalid")

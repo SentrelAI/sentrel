@@ -44,7 +44,7 @@ class Api::SecretsController < ApplicationController
       unless provider.casecmp?(brain)
         cred = Credential
           .where(organization_id: agent.organization_id, provider: provider)
-          .where(agent_id: [nil, agent.id])
+          .where(agent_id: [ nil, agent.id ])
           .order(Arel.sql("CASE kind WHEN 'generic' THEN 0 WHEN 'cloud_provider' THEN 1 ELSE 2 END"))
           .first
       end

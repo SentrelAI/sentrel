@@ -13,11 +13,11 @@ module Admin
           skills_published: SkillDefinition.where(published: true).count,
           agents: Agent.count,
           users: User.count,
-          organizations: Organization.count,
+          organizations: Organization.count
         }
         rt = AgentTemplate.order(updated_at: :desc).limit(8).map { |t| template_row(t) }
         rs = SkillDefinition.order(updated_at: :desc).limit(8).map { |s| skill_row(s) }
-        [c, rt, rs]
+        [ c, rt, rs ]
       end
 
       render inertia: "admin/dashboard", props: {
@@ -25,7 +25,7 @@ module Admin
         env_sources: env_sources,
         recent_templates: recent_templates,
         recent_skills: recent_skills,
-        last_run: Forge::Bootstrap.load_state,
+        last_run: Forge::Bootstrap.load_state
       }
     end
 
@@ -36,14 +36,14 @@ module Admin
         env_row("ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "Required — Forge generation"),
         env_row("SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "skills.sh marketplace (8420 skills)"),
         env_row("GH_TOKEN",      ENV["GH_TOKEN"],      false, "GitHub Search source for SKILL.md scraping"),
-        env_row("COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "Live Composio toolkit catalog refresh"),
+        env_row("COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "Live Composio toolkit catalog refresh")
       ]
     end
 
     def env_row(name, value, required, note)
       {
         name: name, required: required, present: value.present?,
-        last_four: value.present? ? value[-4..] : nil, note: note,
+        last_four: value.present? ? value[-4..] : nil, note: note
       }
     end
 
@@ -53,7 +53,7 @@ module Admin
         id: t.id, slug: t.slug, name: t.name, role: t.role, category: t.category,
         published: t.published, install_count: t.install_count,
         suggested_model: t.suggested_model, updated_at: t.updated_at,
-        quality_pass: lint.pass, quality_score: lint.score,
+        quality_pass: lint.pass, quality_score: lint.score
       }
     end
 
@@ -63,7 +63,7 @@ module Admin
         id: s.id, slug: s.slug, name: s.name, category: s.category,
         published: s.published, source: s.source, source_url: s.source_url,
         requires_connections: s.requires_connections, updated_at: s.updated_at,
-        quality_pass: lint.pass, quality_score: lint.score,
+        quality_pass: lint.pass, quality_score: lint.score
       }
     end
   end

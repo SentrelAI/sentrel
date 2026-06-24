@@ -75,7 +75,7 @@ class AgentTemplatesController < ApplicationController
           ),
           definition: definition,
           current_version: version_summary(version),
-          versions: template.versions.map { |v| version_summary(v) }.compact,
+          versions: template.versions.map { |v| version_summary(v) }.compact
         }
       }
     end
@@ -133,7 +133,7 @@ class AgentTemplatesController < ApplicationController
   # The form posts back to #import with one of {definition, json, url}.
   def new_import
     render inertia: "templates/import", props: {
-      supported_spec_versions: AgentTemplates::Importer::SUPPORTED_SPEC_VERSIONS,
+      supported_spec_versions: AgentTemplates::Importer::SUPPORTED_SPEC_VERSIONS
     }
   end
 
@@ -241,7 +241,7 @@ class AgentTemplatesController < ApplicationController
       license:        version.license,
       changelog:      version.changelog,
       created_at:     version.created_at,
-      created_by:     version.created_by_user&.name,
+      created_by:     version.created_by_user&.name
     }
   end
 
@@ -261,16 +261,16 @@ class AgentTemplatesController < ApplicationController
         "identity_md"        => t.identity_md,
         "personality_md"     => t.personality_md,
         "instructions_md"    => t.instructions_md,
-        "email_signature_md" => t.email_signature_md,
+        "email_signature_md" => t.email_signature_md
       },
       "model" => {
         "provider" => t.suggested_provider,
-        "model_id" => t.suggested_model,
+        "model_id" => t.suggested_model
       }.compact,
       "capabilities" => t.capabilities || {},
       "skills"       => Array(t.suggested_skill_slugs).map { |s| { "slug" => s } },
       "integrations_required" => Array(t.suggested_integrations).map { |s| { "service" => s } },
-      "approval_rules" => [],
+      "approval_rules" => []
     }
   end
 

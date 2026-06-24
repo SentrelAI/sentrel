@@ -26,7 +26,7 @@ class TemplatesController < ApplicationController
 
     render inertia: "templates/public", props: {
       templates: templates,
-      categories: AgentTemplate::CATEGORIES,
+      categories: AgentTemplate::CATEGORIES
     }
   end
 
@@ -53,7 +53,7 @@ class TemplatesController < ApplicationController
         skills: skills_for(template),
         suggested_model: template.suggested_model,
         suggested_provider: template.suggested_provider,
-      ),
+      )
     }
   end
 

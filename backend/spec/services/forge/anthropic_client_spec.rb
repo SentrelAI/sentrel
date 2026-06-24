@@ -16,7 +16,7 @@ RSpec.describe Forge::AnthropicClient do
     end
 
     it "handles arrays" do
-      expect(described_class.parse_json("[1,2,3]")).to eq([1, 2, 3])
+      expect(described_class.parse_json("[1,2,3]")).to eq([ 1, 2, 3 ])
     end
 
     it "raises Forge::AnthropicClient::Error on unparseable input" do

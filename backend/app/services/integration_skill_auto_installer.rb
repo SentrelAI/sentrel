@@ -37,7 +37,7 @@ class IntegrationSkillAutoInstaller
     # every agent the moment the org connects that service.
     matching_skills = SkillDefinition
       .where(published: true)
-      .where("requires_connections @> ?::jsonb", [service].to_json)
+      .where("requires_connections @> ?::jsonb", [ service ].to_json)
       .where("slug IN (?) OR organization_id = ?", SkillDefinition.canonical_seed_slugs, @integration.organization_id)
       .to_a
 

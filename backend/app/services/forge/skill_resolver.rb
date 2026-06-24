@@ -103,7 +103,7 @@ module Forge
     def ensure_composio_link!(skill, toolkit)
       current = Array(skill.requires_connections).map(&:to_s)
       return if current.include?(toolkit)
-      skill.update!(requires_connections: current + [toolkit])
+      skill.update!(requires_connections: current + [ toolkit ])
     end
 
     # ── 1. Local match ──────────────────────────────────────────────────
@@ -121,7 +121,7 @@ module Forge
       end
       scope = SkillDefinition.where(conditions.join(" OR "), *values)
       # Score by number of token hits — closest match wins.
-      ranked = scope.to_a.map { |s| [s, score(s, tokens)] }.sort_by { |_, sc| -sc }
+      ranked = scope.to_a.map { |s| [ s, score(s, tokens) ] }.sort_by { |_, sc| -sc }
       best, best_score = ranked.first
       best if best_score >= 2 || (best_score >= 1 && tokens.size == 1)
     end
@@ -173,7 +173,7 @@ module Forge
         name: @requirement.capability,
         description: @requirement.capability,
         category: infer_category,
-        notes: "Generated to satisfy a template-level capability requirement.",
+        notes: "Generated to satisfy a template-level capability requirement."
       }
       gres = SkillGenerator.new(brief: brief, write_file: false).call
       gres.ok? ? gres.skill : nil

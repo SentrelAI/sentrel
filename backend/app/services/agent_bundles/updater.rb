@@ -45,7 +45,7 @@ module AgentBundles
       attrs = {
         identity_md:     substitute(persona_value("identity"), ctx),
         personality_md:  substitute(persona_value("personality"), ctx),
-        instructions_md: substitute([persona_value("instructions"), render_goal_section].compact.join("\n\n"), ctx),
+        instructions_md: substitute([ persona_value("instructions"), render_goal_section ].compact.join("\n\n"), ctx)
       }
       role = @role_override || @m.role.presence
       attrs[:role] = role if role
@@ -142,7 +142,7 @@ module AgentBundles
         attrs = {
           instruction: substitute(s["instruction"], ctx),
           cron_expression: s["cron"],
-          timezone: s["timezone"].presence || "UTC",
+          timezone: s["timezone"].presence || "UTC"
         }
         row = @agent.scheduled_work.find_by(mode: "cron", name: s["name"])
         if row

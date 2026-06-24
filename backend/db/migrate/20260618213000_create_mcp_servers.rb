@@ -34,6 +34,6 @@ class CreateMcpServers < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :mcp_servers, [:organization_id, :slug], unique: true
+    add_index :mcp_servers, [ :organization_id, :slug ], unique: true
   end
 end

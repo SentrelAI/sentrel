@@ -11,7 +11,7 @@ module Admin
         last_run: Rails.cache.read(PROGRESS_CACHE_KEY),
         last_dedup: Rails.cache.read("forge:last_dedup"),
         idea_bank_size: Forge::IdeaBank::ALL.size,
-        defaults: { concurrency: 20, prewarm_count: 50, brief_count: 10 },
+        defaults: { concurrency: 20, prewarm_count: 50, brief_count: 10 }
       }
     end
 
@@ -118,7 +118,7 @@ module Admin
         env_row("ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "Required — Forge generation"),
         env_row("SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "skills.sh marketplace (8420 skills)"),
         env_row("GH_TOKEN",      ENV["GH_TOKEN"],      false, "GitHub Search for SKILL.md scraping"),
-        env_row("COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "Composio toolkit catalog refresh"),
+        env_row("COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "Composio toolkit catalog refresh")
       ]
     end
 

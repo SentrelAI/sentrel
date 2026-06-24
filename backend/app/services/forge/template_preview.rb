@@ -56,7 +56,7 @@ module Forge
               via: res.via,
               exists_in_db: true,
               would_create: false,
-              composio_toolkit: req.composio_toolkit,
+              composio_toolkit: req.composio_toolkit
             }
           elsif res.would_generate
             placeholder_slug = req.query.to_s.downcase.gsub(/[^a-z0-9]+/, "-").squeeze("-").gsub(/\A-|-\z/, "")
@@ -68,7 +68,7 @@ module Forge
               via: "would_generate",
               exists_in_db: false,
               would_create: true,
-              composio_toolkit: req.composio_toolkit,
+              composio_toolkit: req.composio_toolkit
             }
           end
         else

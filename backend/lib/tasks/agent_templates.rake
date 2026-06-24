@@ -35,17 +35,17 @@ namespace :agent_templates do
           "license"      => t.license.presence || "CC-BY-4.0",
           "metadata"     => {
             "exported_at" => t.updated_at&.iso8601,
-            "source"      => "backfill_from_legacy_template_row",
+            "source"      => "backfill_from_legacy_template_row"
           },
           "persona" => {
             "identity_md"        => t.identity_md,
             "personality_md"     => t.personality_md,
             "instructions_md"    => t.instructions_md,
-            "email_signature_md" => t.email_signature_md,
+            "email_signature_md" => t.email_signature_md
           },
           "model" => {
             "provider"  => t.suggested_provider,
-            "model_id"  => t.suggested_model,
+            "model_id"  => t.suggested_model
           }.compact,
           "capabilities" => t.capabilities.presence || {},
           # Legacy templates only stored slug arrays + integration service
@@ -55,7 +55,7 @@ namespace :agent_templates do
           "integrations_required"  => Array(t.suggested_integrations).map { |s| { "service" => s } },
           "credentials_required"   => [],
           "channels_required"      => [],
-          "approval_rules"         => [],
+          "approval_rules"         => []
         }
 
         version = AgentTemplateVersion.create!(
@@ -108,7 +108,7 @@ namespace :agent_templates do
   end
 
   desc "Delete a non-system template by slug (e.g. bdr). Safe — system seeds are refused."
-  task :delete, [:slug] => :environment do |_, args|
+  task :delete, [ :slug ] => :environment do |_, args|
     slug = args[:slug].to_s.strip
     if slug.empty?
       puts "Usage: bin/rails agent_templates:delete[the-slug]"
@@ -163,7 +163,7 @@ namespace :agent_templates do
   desc "List Forge-generated SkillDefinitions that look like hallucinations (no SkillFile rows, source 'generated')"
   task list_suspicious_skills: :environment do
     suspicious = SkillDefinition
-      .where(source: ["generated", "ai_generated", "forge"])
+      .where(source: [ "generated", "ai_generated", "forge" ])
       .left_joins(:skill_files)
       .group("skill_definitions.id")
       .having("COUNT(skill_files.id) = 0")

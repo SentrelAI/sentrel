@@ -41,7 +41,7 @@ module AgentTemplates
         "integrations_required" => integrations_required,
         "credentials_required"  => credentials_required,
         "channels_required"     => channels_required,
-        "runtime_hints"         => runtime_hints,
+        "runtime_hints"         => runtime_hints
       }.compact
     end
 
@@ -62,7 +62,7 @@ module AgentTemplates
         "exported_at"            => Time.current.iso8601,
         "exported_by"            => exporter_block,
         "source_agent_public_id" => @agent.to_param,
-        "source_organization_id" => @agent.organization_id,
+        "source_organization_id" => @agent.organization_id
       }.compact
     end
 
@@ -76,7 +76,7 @@ module AgentTemplates
         "identity_md"        => @agent.identity_md,
         "personality_md"     => @agent.personality_md,
         "instructions_md"    => @agent.instructions_md,
-        "email_signature_md" => @agent.try(:email_signature_md),
+        "email_signature_md" => @agent.try(:email_signature_md)
       }.compact
     end
 
@@ -88,7 +88,7 @@ module AgentTemplates
         "model_id"       => cfg.model_id,
         "temperature"    => cfg.temperature,
         "max_tokens"     => cfg.max_tokens,
-        "thinking_level" => cfg.try(:thinking_level),
+        "thinking_level" => cfg.try(:thinking_level)
       }.compact
     end
 
@@ -96,7 +96,7 @@ module AgentTemplates
       {
         "daily_usd"            => @agent.try(:spend_daily_cap_usd),
         "monthly_usd"          => @agent.try(:spend_monthly_cap_usd),
-        "notify_threshold_pct" => @agent.try(:spend_notify_threshold_pct),
+        "notify_threshold_pct" => @agent.try(:spend_notify_threshold_pct)
       }.compact
     end
 
@@ -111,7 +111,7 @@ module AgentTemplates
           "predicate"      => r.predicate,
           "auto_decision"  => r.auto_decision,
           "enabled"        => r.enabled,
-          "scope"          => "agent",
+          "scope"          => "agent"
         }.compact
       end
     end
@@ -151,7 +151,7 @@ module AgentTemplates
         "icon"                  => s.icon,
         "requires_connections"  => Array(s.requires_connections),
         "required_capabilities" => Array(s.required_capabilities),
-        "required_integrations" => Array(s.try(:required_integrations)),
+        "required_integrations" => Array(s.try(:required_integrations))
       }.compact
     end
 
@@ -167,7 +167,7 @@ module AgentTemplates
         "requires_connections"  => Array(s.requires_connections),
         "required_capabilities" => Array(s.required_capabilities),
         "required_integrations" => Array(s.try(:required_integrations)),
-        "files"                 => skill_files_for(s),
+        "files"                 => skill_files_for(s)
       }.compact
     end
 
@@ -182,7 +182,7 @@ module AgentTemplates
       return rows if rows.any?
       legacy = s.skill_md.to_s
       return [] if legacy.strip.empty?
-      [{ "path" => "SKILL.md", "content" => legacy, "file_type" => "md" }]
+      [ { "path" => "SKILL.md", "content" => legacy, "file_type" => "md" } ]
     end
 
     # Distinct integrations any embedded skill depends on — recipient
@@ -217,8 +217,8 @@ module AgentTemplates
     def runtime_hints
       {
         "claude_agent_sdk" => {
-          "tool_routing" => ENV["TOOL_ROUTING"].presence || "smart",
-        }.compact,
+          "tool_routing" => ENV["TOOL_ROUTING"].presence || "smart"
+        }.compact
       }
     end
   end

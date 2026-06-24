@@ -39,11 +39,11 @@ module Nango
       body = {
         end_user: end_user,
         organization: { id: "org_#{organization.id}", display_name: organization.name }.compact,
-        allowed_integrations: [provider_config_key],
+        allowed_integrations: [ provider_config_key ]
       }
       if byo_overrides.present?
         body[:integrations_config_defaults] = {
-          provider_config_key => { connection_config: byo_overrides },
+          provider_config_key => { connection_config: byo_overrides }
         }
       end
       post_json("/connect/sessions", body)

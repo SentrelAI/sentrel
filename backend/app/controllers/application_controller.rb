@@ -101,7 +101,7 @@ class ApplicationController < ActionController::Base
         pending_approvals: pending_counts[agent.id] || 0,
         # Frontend uses this to color the badge by age — older = redder.
         oldest_pending_age_hours: oldest ? ((Time.current - oldest) / 3600).to_i : nil,
-        active_conversations: inbox_counts[agent.id] || 0,
+        active_conversations: inbox_counts[agent.id] || 0
       }
       (by_manager[agent.id] || []).each { |child| build_node.call(child, depth + 1) }
     }
@@ -207,7 +207,7 @@ class ApplicationController < ActionController::Base
       value: data.to_json,
       expires: 30.days.from_now,
       httponly: true,
-      same_site: :lax,
+      same_site: :lax
     }
   end
 

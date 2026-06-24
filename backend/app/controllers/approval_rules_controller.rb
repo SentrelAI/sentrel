@@ -14,7 +14,7 @@ class ApprovalRulesController < ApplicationController
     render inertia: "approval_rules/index", props: {
       rules: rules,
       agents: agents,
-      payload_types: ApprovalRule::PAYLOAD_TYPES,
+      payload_types: ApprovalRule::PAYLOAD_TYPES
     }
   end
 
@@ -46,7 +46,7 @@ class ApprovalRulesController < ApplicationController
       payload_type: params[:payload_type].presence,
       auto_decision: params[:auto_decision],
       label: params[:label].to_s.strip.presence,
-      enabled: params[:enabled],
+      enabled: params[:enabled]
     }
     attrs[:predicate] = parse_predicate(params[:predicate]) if params[:predicate].present?
 
@@ -103,7 +103,7 @@ class ApprovalRulesController < ApplicationController
         payload_type: row.payload_type,
         created_at: row.created_at,
         status: row.status,
-        tool_input: row.tool_input,
+        tool_input: row.tool_input
       }
     end
 
@@ -113,7 +113,7 @@ class ApprovalRulesController < ApplicationController
       matched: matches.size,
       sample: sample,
       # When we hit the 500-row cap, the count is a floor not a true total.
-      truncated: rows.size >= 500,
+      truncated: rows.size >= 500
     }
   rescue JSON::ParserError => e
     render json: { error: "Predicate JSON invalid: #{e.message}" }, status: :unprocessable_entity
@@ -155,7 +155,7 @@ class ApprovalRulesController < ApplicationController
       enabled: r.enabled,
       predicate: r.predicate,
       created_at: r.created_at,
-      updated_at: r.updated_at,
+      updated_at: r.updated_at
     }
   end
 
@@ -171,7 +171,7 @@ class ApprovalRulesController < ApplicationController
         agent_id: rule.agent_id,
         payload_type: rule.payload_type,
         auto_decision: rule.auto_decision,
-        enabled: rule.enabled,
+        enabled: rule.enabled
       }.compact,
       status: "success",
     )

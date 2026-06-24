@@ -8,7 +8,7 @@ RSpec.describe Forge::TemplateGenerator do
       role: "Spec Test",
       category: "starter",
       description: "A test template generated under spec",
-      notes: "for testing purposes only",
+      notes: "for testing purposes only"
     }
   end
 
@@ -25,11 +25,11 @@ RSpec.describe Forge::TemplateGenerator do
       "suggested_skill_slugs" => [],
       "suggested_integrations" => [],
       "capabilities" => { "knowledge_base" => { "enabled" => true } },
-      "variables" => ["company_name"],
+      "variables" => [ "company_name" ],
       "identity_md" => "I am {{agent_name}}.",
       "personality_md" => "Direct.",
       "instructions_md" => "# How I work\n## Section\n- do things",
-      "email_signature_md" => "— {{agent_name}}\nSpec Test · {{company_name}}",
+      "email_signature_md" => "— {{agent_name}}\nSpec Test · {{company_name}}"
     }
   end
 
@@ -72,8 +72,8 @@ RSpec.describe Forge::TemplateGenerator do
     payload = valid_payload.merge("suggested_skill_slugs" => %w[real-slug fake-slug])
     allow(Forge::AnthropicClient).to receive(:complete).and_return(payload.to_json)
 
-    result = described_class.new(brief: valid_brief, available_skills: ["real-slug"]).call
+    result = described_class.new(brief: valid_brief, available_skills: [ "real-slug" ]).call
 
-    expect(result.template.suggested_skill_slugs).to eq(["real-slug"])
+    expect(result.template.suggested_skill_slugs).to eq([ "real-slug" ])
   end
 end

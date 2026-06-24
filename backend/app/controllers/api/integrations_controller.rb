@@ -38,7 +38,7 @@ class Api::IntegrationsController < ActionController::API
         api_base_url: entry[:api_base_url],
         connect_mode: row.connect_mode,
         tool: entry[:tool],         # "proxy" → nango_request ; "mcp" → dedicated MCP
-        docs_url: entry[:docs_url],
+        docs_url: entry[:docs_url]
       }
     end
     render json: { integrations: items }

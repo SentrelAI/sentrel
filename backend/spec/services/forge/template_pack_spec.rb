@@ -8,7 +8,7 @@ RSpec.describe Forge::TemplatePack do
       role: "Pack Test",
       category: "starter",
       description: "Test template that integrates analyzer + resolver + generator",
-      notes: "for testing",
+      notes: "for testing"
     }
   end
 
@@ -23,7 +23,7 @@ RSpec.describe Forge::TemplatePack do
       source: "built_in",
       visibility: "marketplace",
       published: true,
-      requires_connections: ["gmail"],
+      requires_connections: [ "gmail" ],
     )
   end
 
@@ -45,7 +45,7 @@ RSpec.describe Forge::TemplatePack do
         priority: "required",
         rationale: "test",
         composio_toolkit: "gmail",
-      ),
+      )
     ])
 
     # Stub the TemplateGenerator's underlying Claude call.
@@ -58,14 +58,14 @@ RSpec.describe Forge::TemplatePack do
       "icon" => "TestTube",
       "suggested_provider" => "anthropic",
       "suggested_model" => "claude-sonnet-4-6",
-      "suggested_skill_slugs" => ["spec-send-email-pack"],
+      "suggested_skill_slugs" => [ "spec-send-email-pack" ],
       "suggested_integrations" => [],
       "capabilities" => {},
-      "variables" => ["company_name"],
+      "variables" => [ "company_name" ],
       "identity_md" => "I am {{agent_name}}.\n\nI report to {{user_name}}.\nI do test things.\nI ship.\nI'm direct.\nI care about correctness.",
       "personality_md" => "I am direct.\nI don't waste words.\nI ask before guessing.\nI ship.\nI shut up and listen.",
       "instructions_md" => "# How I work\n\n## Delegation\n- via tools\n\n## Prioritization\n- one loop at a time\n\n## Escalation\n- brief user",
-      "email_signature_md" => "— {{agent_name}}\nPack Test · {{company_name}}",
+      "email_signature_md" => "— {{agent_name}}\nPack Test · {{company_name}}"
     }
     allow(Forge::AnthropicClient).to receive(:complete).and_return(payload.to_json)
 
@@ -73,7 +73,7 @@ RSpec.describe Forge::TemplatePack do
 
     expect(result).to be_ok
     template = AgentTemplate.find_by(slug: "spec-pack-agent")
-    expect(template.suggested_skill_slugs).to eq(["spec-send-email-pack"])
+    expect(template.suggested_skill_slugs).to eq([ "spec-send-email-pack" ])
     # Aggregated from the resolved skill's requires_connections
     expect(template.suggested_integrations).to include("gmail")
     expect(template.published).to be true
@@ -87,7 +87,7 @@ RSpec.describe Forge::TemplatePack do
         priority: "required",
         rationale: "test",
         composio_toolkit: nil,
-      ),
+      )
     ])
 
     # Payload deliberately missing email_signature_md + short copy → fails lint.
@@ -100,13 +100,13 @@ RSpec.describe Forge::TemplatePack do
       "icon" => "TestTube",
       "suggested_provider" => "anthropic",
       "suggested_model" => "claude-sonnet-4-6",
-      "suggested_skill_slugs" => ["spec-send-email-pack"],
+      "suggested_skill_slugs" => [ "spec-send-email-pack" ],
       "suggested_integrations" => [],
       "capabilities" => {},
       "variables" => [],
       "identity_md" => "I am leveraging synergy.",
       "personality_md" => "Direct.",
-      "instructions_md" => "# Stuff\n- do things",
+      "instructions_md" => "# Stuff\n- do things"
     }
     allow(Forge::AnthropicClient).to receive(:complete).and_return(bad_payload.to_json)
 

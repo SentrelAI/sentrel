@@ -26,7 +26,7 @@ RSpec.describe "Agent bundle CLI uploads", type: :request do
         end
       end
     end
-    file = Tempfile.new(["bundle", ".tar.gz"])
+    file = Tempfile.new([ "bundle", ".tar.gz" ])
     file.binmode
     file.write(io.string)
     file.rewind
@@ -40,7 +40,7 @@ RSpec.describe "Agent bundle CLI uploads", type: :request do
         name: CLI Test Agent
         role: Tester
       YAML
-      "personality.md" => "Calm and methodical.",
+      "personality.md" => "Calm and methodical."
     }
   end
 
@@ -70,7 +70,7 @@ RSpec.describe "Agent bundle CLI uploads", type: :request do
     end
 
     it "rejects a non-gzip payload" do
-      file = Tempfile.new(["junk", ".tar.gz"])
+      file = Tempfile.new([ "junk", ".tar.gz" ])
       file.write("not a tarball")
       file.rewind
       post upload_agent_bundles_path, params: { bundle: Rack::Test::UploadedFile.new(file.path, "application/gzip") }

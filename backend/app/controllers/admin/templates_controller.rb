@@ -27,7 +27,7 @@ module Admin
         categories: AgentTemplate::CATEGORIES,
         pagy: pagy_props(pagy),
         q: q,
-        category: category.presence || "all",
+        category: category.presence || "all"
       }
     end
 
@@ -64,7 +64,7 @@ module Admin
         categories: AgentTemplate::CATEGORIES,
         form: extract_form_params,
         preview_token: params[:preview_token],
-        preview_state: preview_state, # nil | { status:, preview?:, error? }
+        preview_state: preview_state # nil | { status:, preview?:, error? }
       }
     end
 
@@ -78,7 +78,7 @@ module Admin
         name: form["name"].presence,
         role: form["role"].presence,
         category: form["category"].presence,
-        description: form["description"].to_s,
+        description: form["description"].to_s
       }.compact
 
       token = SecureRandom.hex(16)
@@ -139,7 +139,7 @@ module Admin
         description: params[:description].to_s,
         name:        params[:name].to_s,
         role:        params[:role].to_s,
-        category:    params[:category].to_s,
+        category:    params[:category].to_s
       }
     end
 
@@ -156,7 +156,7 @@ module Admin
         identity_md: t.identity_md, personality_md: t.personality_md,
         instructions_md: t.instructions_md, email_signature_md: t.email_signature_md,
         updated_at: t.updated_at, created_at: t.created_at,
-        quality: { pass: lint.pass, score: lint.score, warnings: lint.warnings },
+        quality: { pass: lint.pass, score: lint.score, warnings: lint.warnings }
       }
     end
   end

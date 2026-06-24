@@ -73,7 +73,7 @@ class OnboardingController < ApplicationController
     end
     if conflict
       return render json: {
-        error: "#{full_domain} is already claimed by another organization. Pick a different subdomain.",
+        error: "#{full_domain} is already claimed by another organization. Pick a different subdomain."
       }, status: :unprocessable_entity
     end
 
@@ -85,7 +85,7 @@ class OnboardingController < ApplicationController
 
     render json: {
       domain: full_domain,
-      records: build_dns_records(full_domain, result.verification_token, dkim.dkim_tokens),
+      records: build_dns_records(full_domain, result.verification_token, dkim.dkim_tokens)
     }
   rescue ActiveRecord::RecordInvalid => e
     # Catches the model-level uniqueness validation (e.g. race condition

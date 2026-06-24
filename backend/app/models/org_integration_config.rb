@@ -34,7 +34,7 @@ class OrgIntegrationConfig < ApplicationRecord
     return nil unless mode == "byo_oauth" && client_id.present?
     {
       oauth_client_id_override: client_id,
-      oauth_client_secret_override: client_secret,
+      oauth_client_secret_override: client_secret
     }
   end
 

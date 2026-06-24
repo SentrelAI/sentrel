@@ -168,7 +168,7 @@ module Forge
         "description" => parsed["description"],
         "category" => parsed["category"],
         "icon" => parsed["icon"],
-        "requires_connections" => parsed["requires_connections"],
+        "requires_connections" => parsed["requires_connections"]
       }.to_yaml.sub(/\A---\n/, "")
       File.write(path, "---\n#{frontmatter}---\n\n#{parsed["skill_md"]}\n")
       path.to_s
@@ -198,7 +198,7 @@ module Forge
       # occupies 0. Existing files with the same path are updated in place;
       # files no longer listed are dropped so re-generating cleans up
       # stale supporting files.
-      kept_paths = ["SKILL.md"]
+      kept_paths = [ "SKILL.md" ]
       Array(parsed["additional_files"]).each_with_index do |f, idx|
         kept_paths << f["path"]
         sf = record.skill_files.find_or_initialize_by(path: f["path"])

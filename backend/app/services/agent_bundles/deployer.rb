@@ -84,7 +84,7 @@ module AgentBundles
         role: effective_role,
         identity_md:     substitute(persona_value("identity"), ctx),
         personality_md:  substitute(persona_value("personality"), ctx),
-        instructions_md: substitute([persona_value("instructions"), goal_section].compact.join("\n\n"), ctx),
+        instructions_md: substitute([ persona_value("instructions"), goal_section ].compact.join("\n\n"), ctx),
         permissions: mapped_permissions,
       )
     end
@@ -123,7 +123,7 @@ module AgentBundles
           "user_name"      => @user.try(:name).presence || @user.try(:email),
           "user_email"     => @user.try(:email).presence,
           "role"           => effective_role,
-          "company_domain" => @org.try(:email_domain).presence,
+          "company_domain" => @org.try(:email_domain).presence
         }.compact)
     end
 
@@ -138,7 +138,7 @@ module AgentBundles
     def render_goal_section
       g = effective_goal&.stringify_keys
       return nil unless g
-      lines = ["## Goal", "", g["mission"].to_s.strip]
+      lines = [ "## Goal", "", g["mission"].to_s.strip ]
       kpis = Array(g["kpis"]).filter_map { |kpi| kpi.is_a?(Hash) ? kpi.stringify_keys.first : nil }
       if kpis.any?
         lines << "" << "KPIs:"

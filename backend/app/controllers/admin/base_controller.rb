@@ -30,7 +30,7 @@ module Admin
         count: pagy.count,
         per_page: pagy.limit,
         from: pagy.from,
-        to: pagy.to,
+        to: pagy.to
       }
     end
 
@@ -54,7 +54,7 @@ module Admin
             target_type: record.class.name,
             target_id: record.id,
             target_slug: record.try(:slug),
-            target_name: record.try(:name) || record.try(:email),
+            target_name: record.try(:name) || record.try(:email)
           }.compact,
           status: "success",
         )

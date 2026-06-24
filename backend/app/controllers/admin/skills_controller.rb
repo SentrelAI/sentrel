@@ -21,7 +21,7 @@ module Admin
         categories: Forge::SkillGenerator::CATEGORIES,
         pagy: pagy_props(pagy),
         q: q,
-        category: category.presence || "all",
+        category: category.presence || "all"
       }
     end
 
@@ -52,7 +52,7 @@ module Admin
         categories: Forge::SkillGenerator::CATEGORIES,
         form: extract_form_params,
         preview_token: params[:preview_token],
-        preview_state: preview_state,
+        preview_state: preview_state
       }
     end
 
@@ -65,7 +65,7 @@ module Admin
         name: form["name"].presence,
         category: form["category"].presence,
         description: form["description"].to_s,
-        requires_connections: form["requires_connections"].to_s.split(",").map(&:strip).reject(&:empty?),
+        requires_connections: form["requires_connections"].to_s.split(",").map(&:strip).reject(&:empty?)
       }.compact
 
       token = SecureRandom.hex(16)
@@ -163,7 +163,7 @@ module Admin
         description:          params[:description].to_s,
         name:                 params[:name].to_s,
         category:             params[:category].to_s,
-        requires_connections: params[:requires_connections].to_s,
+        requires_connections: params[:requires_connections].to_s
       }
     end
 
@@ -177,7 +177,7 @@ module Admin
         skill_md: s.skill_md,
         files: s.skill_files.order(:position).map { |f| { path: f.path, file_type: f.file_type } },
         updated_at: s.updated_at, created_at: s.created_at,
-        quality: { pass: lint.pass, score: lint.score, warnings: lint.warnings },
+        quality: { pass: lint.pass, score: lint.score, warnings: lint.warnings }
       }
     end
   end

@@ -18,7 +18,7 @@ module Forge
       # set. Keep this list short and high-quality.
       { source: "anthropics/skills",       slugs: %w[skill-creator pdf docx pptx xlsx] },
       { source: "heygen-com/hyperframes",  slugs: %w[hyperframes hyperframes-cli hyperframes-media css-animations] },
-      { source: "vercel-labs/agent-skills", slugs: %w[next-js-development react-development] },
+      { source: "vercel-labs/agent-skills", slugs: %w[next-js-development react-development] }
     ].freeze
 
     Summary = Struct.new(:skills_prewarmed, :template_results, :duration_s, keyword_init: true) do
@@ -122,7 +122,7 @@ module Forge
       manifests.each { |m| queue << m }
       queue.close
 
-      Array.new([@concurrency, manifests.size].min) do
+      Array.new([ @concurrency, manifests.size ].min) do
         Thread.new do
           while (manifest = queue.pop)
             res = SkillIngestor.new(manifest: manifest).call

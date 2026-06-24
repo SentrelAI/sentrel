@@ -141,9 +141,9 @@ class SkillsController < ApplicationController
     # and follow the "Edit files" link into this same editor.
     scope = if current_user&.respond_to?(:platform_admin?) && current_user.platform_admin?
               SkillDefinition.all
-            else
+    else
               SkillDefinition.visible_to(current_tenant)
-            end
+    end
     @skill = scope.find_by!(slug: params[:id])
   end
 

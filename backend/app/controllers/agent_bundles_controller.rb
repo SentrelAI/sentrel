@@ -104,7 +104,7 @@ class AgentBundlesController < ApplicationController
       platform_skills: SkillDefinition
         .where(slug: SkillDefinition.canonical_seed_slugs, published: true)
         .order(:category, :slug)
-        .map { |s| { slug: s.slug, name: s.name, category: s.category, description: s.description.to_s.truncate(110), requires_connections: Array(s.requires_connections) } },
+        .map { |s| { slug: s.slug, name: s.name, category: s.category, description: s.description.to_s.truncate(110), requires_connections: Array(s.requires_connections) } }
     }
   end
 
@@ -129,7 +129,7 @@ class AgentBundlesController < ApplicationController
       id: token,
       name: manifest.name,
       url: deploy_agent_url(upload: token),
-      expires_in: UPLOAD_TTL.to_i,
+      expires_in: UPLOAD_TTL.to_i
     }, status: :created
   rescue AgentBundles::FetchError, AgentBundles::InvalidBundle => e
     render json: { error: e.message }, status: :unprocessable_entity
@@ -282,7 +282,7 @@ class AgentBundlesController < ApplicationController
       persona: {
         identity_md: manifest.persona_md("identity"),
         personality_md: manifest.persona_md("personality"),
-        instructions_md: manifest.persona_md("instructions"),
+        instructions_md: manifest.persona_md("instructions")
       },
       # Inbound webhook endpoints created at deploy (tokenized URLs land
       # on the agent's Webhooks tab).
@@ -295,14 +295,14 @@ class AgentBundlesController < ApplicationController
         {
           key: i["key"], label: i["label"], description: i["description"],
           placeholder: i["placeholder"], default: i["default"],
-          required: i["required"] == true,
+          required: i["required"] == true
         }
       },
       skills: manifest.skill_bundles.map { |b|
         {
           slug: b[:slug],
           file_count: b[:files].size,
-          skill_md: b[:files]["SKILL.md"].to_s.truncate(2_000),
+          skill_md: b[:files]["SKILL.md"].to_s.truncate(2_000)
         }
       },
       knowledge: manifest.knowledge_docs.map { |d| { path: d[:path], why: d[:why], bytes: d[:content].to_s.bytesize } },
@@ -320,7 +320,7 @@ class AgentBundlesController < ApplicationController
         end
       },
       secrets: manifest.secret_names,
-      permissions: manifest.permissions,
+      permissions: manifest.permissions
     }
   end
 end

@@ -74,7 +74,7 @@ module Masquerading
           target_user_email: target.email,
           admin_user_id: admin.id,
           admin_user_email: admin.email,
-          remote_ip: request&.remote_ip,
+          remote_ip: request&.remote_ip
         }.compact,
         status: "success",
       )

@@ -286,7 +286,7 @@ class AgentsController < ApplicationController
       # Surface integrations the agent's enabled skills need but the org
       # hasn't connected yet. Drives the "Connect to unlock this agent"
       # callout on the show page. Empty array = fully connected (hide).
-      missing_integrations: missing_integrations_for(@agent),
+      missing_integrations: missing_integrations_for(@agent)
     }
   end
 
@@ -305,7 +305,7 @@ class AgentsController < ApplicationController
         label: meta[:label] || slug.titleize,
         category: meta[:category] || "Other",
         logo: meta[:logo],
-        description: meta[:description],
+        description: meta[:description]
       }
     end
   end
@@ -450,16 +450,16 @@ class AgentsController < ApplicationController
         "identity_md"        => template.identity_md,
         "personality_md"     => template.personality_md,
         "instructions_md"    => template.instructions_md,
-        "email_signature_md" => template.email_signature_md,
+        "email_signature_md" => template.email_signature_md
       },
       "model" => {
         "provider" => template.suggested_provider,
-        "model_id" => template.suggested_model,
+        "model_id" => template.suggested_model
       }.compact,
       "capabilities" => template.capabilities || {},
       "skills"       => Array(template.suggested_skill_slugs).map { |s| { "slug" => s } },
       "integrations_required" => Array(template.suggested_integrations).map { |s| { "service" => s } },
-      "approval_rules" => [],
+      "approval_rules" => []
     }
   end
 
@@ -479,7 +479,7 @@ class AgentsController < ApplicationController
           payload_type: r.payload_type,
           auto_decision: r.auto_decision,
           enabled: r.enabled,
-          predicate: r.predicate,
+          predicate: r.predicate
         }
       }
 
@@ -501,7 +501,7 @@ class AgentsController < ApplicationController
       # Per-(kind, provider) field schema — the agent edit Capabilities
       # tab uses this to render an inline "Add key" form without bouncing
       # to /settings/credentials.
-      credential_field_schemas: Credential::FIELD_SCHEMAS.merge("__default__" => Credential::DEFAULT_FIELDS),
+      credential_field_schemas: Credential::FIELD_SCHEMAS.merge("__default__" => Credential::DEFAULT_FIELDS)
     }
   end
 
@@ -606,7 +606,7 @@ class AgentsController < ApplicationController
             tool_input: a.tool_input,
             context: a.context,
             options: a.options,
-            created_at: a.created_at,
+            created_at: a.created_at
           }
         },
       # Last few tool calls / sent messages so the rail shows "what it just did".
@@ -622,7 +622,7 @@ class AgentsController < ApplicationController
             tool_name: l.tool_name,
             status: l.status,
             created_at: l.created_at,
-            duration_ms: l.duration_ms,
+            duration_ms: l.duration_ms
           }
         },
       channels: agent.channel_configs.where(enabled: true).order(:channel_type).pluck(:channel_type).uniq,
@@ -630,7 +630,7 @@ class AgentsController < ApplicationController
       # to siblings without going back to the sidebar.
       manager: agent.manager && { id: agent.manager.to_param, name: agent.manager.name, role: agent.manager.role },
       reports: agent.sub_agents.order(:name).map { |a| { id: a.to_param, name: a.name, role: a.role, status: a.status } },
-      skills: agent.skill_definitions.order(:name).limit(12).pluck(:slug, :name).map { |slug, name| { slug: slug, name: name } },
+      skills: agent.skill_definitions.order(:name).limit(12).pluck(:slug, :name).map { |slug, name| { slug: slug, name: name } }
     }
   end
 

@@ -19,7 +19,7 @@ module Admin
         users: rows.map { |u| serialize(u) },
         roles: %w[owner admin member viewer],
         pagy: pagy_props(pagy),
-        q: q,
+        q: q
       }
     end
 
@@ -80,10 +80,10 @@ module Admin
       {
         id: u.id, name: u.name, email: u.email, role: u.role,
         platform_admin: u.platform_admin,
-        organization: u.organization&.as_json(only: [:id, :name, :slug]),
+        organization: u.organization&.as_json(only: [ :id, :name, :slug ]),
         created_at: u.created_at, current_sign_in_at: u.try(:current_sign_in_at),
         signup_utm: u.signup_utm.presence,
-        is_current: u == current_user,
+        is_current: u == current_user
       }
     end
   end

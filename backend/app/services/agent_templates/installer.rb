@@ -51,7 +51,7 @@ module AgentTemplates
       attrs = {
         name: @agent_attrs[:name],
         slug: @agent_attrs[:slug],
-        role: @agent_attrs[:role].presence || @definition["role"],
+        role: @agent_attrs[:role].presence || @definition["role"]
       }
       attrs[:manager_id] = @agent_attrs[:manager_id] if @agent_attrs.key?(:manager_id)
       # Pre-set persona fields from the caller's @agent_attrs so
@@ -73,7 +73,7 @@ module AgentTemplates
         "company_name" => @organization.name,
         "user_name"    => @user.name,
         "user_email"   => @user.try(:email),
-        "role"         => agent.role,
+        "role"         => agent.role
       }.compact
       persona = @definition["persona"] || {}
       agent.identity_md       ||= substitute(persona["identity_md"], ctx)
@@ -109,7 +109,7 @@ module AgentTemplates
         model_id:       (@ai_config_attrs[:model_id].presence || defaults["model_id"]),
         temperature:    (@ai_config_attrs[:temperature]      || defaults["temperature"]),
         max_tokens:     (@ai_config_attrs[:max_tokens]       || defaults["max_tokens"]),
-        thinking_level: (@ai_config_attrs[:thinking_level].presence || defaults["thinking_level"]),
+        thinking_level: (@ai_config_attrs[:thinking_level].presence || defaults["thinking_level"])
       }.compact
       # Prefer the org's Claude OAuth subscription over the platform key
       # for bare "anthropic" picks. Caller toggles this — agents_controller

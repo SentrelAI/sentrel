@@ -46,7 +46,7 @@ module Forge
       briefs.each { |b| queue << b }
       queue.close
 
-      threads = Array.new([concurrency, briefs.size].min) do
+      threads = Array.new([ concurrency, briefs.size ].min) do
         Thread.new do
           while (brief = queue.pop)
             res = run_one(brief: brief, generator: generator, opts: opts)

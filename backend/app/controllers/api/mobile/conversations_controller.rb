@@ -21,10 +21,10 @@ class Api::Mobile::ConversationsController < Api::Mobile::BaseController
         last_message: last && {
           role: last.role,
           content: last.content.to_s,
-          created_at: last.created_at.iso8601,
+          created_at: last.created_at.iso8601
         },
         last_message_at: (c.last_message_at || c.updated_at)&.iso8601,
-        unread_count: unread,
+        unread_count: unread
       }
     end
 

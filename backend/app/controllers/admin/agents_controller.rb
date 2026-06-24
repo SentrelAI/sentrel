@@ -20,7 +20,7 @@ module Admin
       render inertia: "admin/agents/index", props: {
         agents: rows.map { |a| serialize(a) },
         pagy: pagy_props(pagy),
-        q: q,
+        q: q
       }
     end
 
@@ -57,12 +57,12 @@ module Admin
     def serialize(a)
       {
         id: a.id, name: a.name, slug: a.slug, role: a.role, status: a.status,
-        organization: a.organization&.as_json(only: [:id, :name, :slug]),
-        ai_config: a.ai_config&.as_json(only: [:provider, :model_id]),
+        organization: a.organization&.as_json(only: [ :id, :name, :slug ]),
+        ai_config: a.ai_config&.as_json(only: [ :provider, :model_id ]),
         created_at: a.created_at, updated_at: a.updated_at,
         # Quick-glance: how many channels + skills are wired
         channels: a.respond_to?(:channel_configs) ? a.channel_configs.count : 0,
-        skills: a.respond_to?(:skill_definitions) ? a.skill_definitions.count : 0,
+        skills: a.respond_to?(:skill_definitions) ? a.skill_definitions.count : 0
       }
     end
   end

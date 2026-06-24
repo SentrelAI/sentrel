@@ -22,9 +22,9 @@ module Forge
       mission-critical world-class best-in-class table-stakes
       move-the-needle north-star circle-back
     ].freeze
-    BUZZWORD_PHRASES = ["circle back", "deep dive", "low hanging", "move the needle",
+    BUZZWORD_PHRASES = [ "circle back", "deep dive", "low hanging", "move the needle",
                         "north star", "table stakes", "mission critical", "best in class",
-                        "world class"].freeze
+                        "world class" ].freeze
 
     # Skill section headers we expect to find. Match case-insensitively
     # and across small variants ("When NOT to Use" / "When to Avoid").
@@ -35,7 +35,7 @@ module Forge
       /^#+\s*endpoints?(\s|$|:)|^#+\s*tools?(\s|$|:)/i,
       /^#+\s*workflow|^#+\s*usage/i,
       /^#+\s*errors?(\s|$|:)|^#+\s*common\s+errors?/i,
-      /^#+\s*rules?(\s|$|:)|^#+\s*do(\s|$)|^#+\s*don.t/i,
+      /^#+\s*rules?(\s|$|:)|^#+\s*do(\s|$)|^#+\s*don.t/i
     ].freeze
 
     # ── Public entry points ─────────────────────────────────────────────
@@ -185,7 +185,7 @@ module Forge
         else 5
         end
       end
-      [100 - penalty, 0].max
+      [ 100 - penalty, 0 ].max
     end
   end
 end

@@ -35,7 +35,7 @@ class AgentTemplateVersionsController < ApplicationController
       changelog:      v.changelog,
       created_at:     v.created_at,
       created_by:     v.created_by_user&.name,
-      published:      v.published,
+      published:      v.published
     }
   end
 end

@@ -45,7 +45,7 @@ module Forge
       groups = []
       rows.each do |row|
         next if seen.include?(row.id)
-        group = [row]
+        group = [ row ]
         rows.each do |other|
           next if other.id == row.id || seen.include?(other.id)
           score = compare(row, other).score
@@ -102,7 +102,7 @@ module Forge
       return 1.0 if na == nb
       return 0.0 if na.empty? || nb.empty?
       dist = levenshtein(na, nb).to_f
-      max_len = [na.length, nb.length].max
+      max_len = [ na.length, nb.length ].max
       1.0 - (dist / max_len)
     end
 

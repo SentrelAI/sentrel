@@ -29,7 +29,7 @@ module Forge
 
     MAX_ATTEMPTS = 3
     MAX_RETRY_AFTER = 30 # seconds — cap whatever the server asks
-    BACKOFF_5XX = [1, 2, 4].freeze
+    BACKOFF_5XX = [ 1, 2, 4 ].freeze
 
     class Error < StandardError; end
 
@@ -44,7 +44,7 @@ module Forge
         {
           input_tokens: @input_tokens.value,
           output_tokens: @output_tokens.value,
-          calls: @call_count.value,
+          calls: @call_count.value
         }
       end
 
@@ -66,7 +66,7 @@ module Forge
       body = {
         model: model,
         max_tokens: max_tokens,
-        messages: [{ role: "user", content: prompt }],
+        messages: [ { role: "user", content: prompt } ]
       }
       body[:system] = system if system.present?
 
@@ -138,7 +138,7 @@ module Forge
       raw = response["retry-after"].to_s.strip
       return nil if raw.empty?
       n = raw.to_i
-      n > 0 ? [n, MAX_RETRY_AFTER].min : nil
+      n > 0 ? [ n, MAX_RETRY_AFTER ].min : nil
     end
 
     def self.record_usage!(parsed, model)

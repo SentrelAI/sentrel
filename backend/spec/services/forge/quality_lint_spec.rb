@@ -83,7 +83,7 @@ RSpec.describe Forge::QualityLint do
 
   describe ".skill" do
     it "passes a well-structured skill" do
-      sections = ["When to Use", "When NOT to Use", "Auth", "Endpoints", "Workflow", "Errors", "Rules"]
+      sections = [ "When to Use", "When NOT to Use", "Auth", "Endpoints", "Workflow", "Errors", "Rules" ]
       body = sections.map { |s| "## #{s}\n- bullet\n" }.join("\n") + ("\nfiller line." * 50)
       good_skill = double("skill", skill_md: body, source: "built_in")
       result = described_class.skill(good_skill)

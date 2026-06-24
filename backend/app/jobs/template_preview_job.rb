@@ -24,7 +24,7 @@ class TemplatePreviewJob < ApplicationJob
         resolved_skills: result.resolved_skills,
         unresolved_capabilities: result.unresolved_capabilities,
         lint: result.lint,
-        duplicates: result.duplicates,
+        duplicates: result.duplicates
       }
       write_state(token, status: "done", finished_at: Time.current.iso8601, preview: payload)
     else

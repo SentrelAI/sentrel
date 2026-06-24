@@ -20,7 +20,7 @@ class SkillPreviewJob < ApplicationJob
         skill_attrs: result.skill_attrs,
         additional_files: result.additional_files,
         lint: result.lint,
-        duplicates: result.duplicates,
+        duplicates: result.duplicates
       }
       write_state(token, status: "done", finished_at: Time.current.iso8601, preview: payload)
     else

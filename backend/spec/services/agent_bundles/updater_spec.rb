@@ -11,16 +11,16 @@ RSpec.describe AgentBundles::Updater do
       "name" => "Scheduler",
       "role" => "Scheduling Assistant",
       "schedules" => [
-        { "name" => "Morning sweep", "cron" => cron, "instruction" => "Sweep the calendar." },
-      ],
+        { "name" => "Morning sweep", "cron" => cron, "instruction" => "Sweep the calendar." }
+      ]
     }
     yaml["model"] = model if model
-    yaml["skills"] = ["skills/follow-up"] if skill_md
+    yaml["skills"] = [ "skills/follow-up" ] if skill_md
     files = {
       "agent.yaml" => yaml.to_yaml,
       "identity.md" => "I am {{agent_name}}.",
       "personality.md" => "Crisp.",
-      "instructions.md" => instructions,
+      "instructions.md" => instructions
     }
     files["skills/follow-up/SKILL.md"] = skill_md if skill_md
     AgentBundles::Manifest.parse!(files)

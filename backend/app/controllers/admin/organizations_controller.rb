@@ -17,7 +17,7 @@ module Admin
       render inertia: "admin/organizations/index", props: {
         organizations: rows.map { |o| serialize(o) },
         pagy: pagy_props(pagy),
-        q: q,
+        q: q
       }
     end
 
@@ -53,7 +53,7 @@ module Admin
           # Member count (membership-based) — counts everyone who belongs to
           # the org, including members currently switched into another org.
           users: o.memberships.count,
-          agents: o.agents.count,
+          agents: o.agents.count
         }
       end
       {
@@ -62,7 +62,7 @@ module Admin
         onboarding_completed_at: o.try(:onboarding_completed_at),
         created_at: o.created_at,
         users_count: counts[:users],
-        agents_count: counts[:agents],
+        agents_count: counts[:agents]
       }
     end
   end

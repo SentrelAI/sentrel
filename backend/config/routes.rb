@@ -136,14 +136,14 @@ Rails.application.routes.draw do
     root to: "dashboard#index", as: :root
     get "dashboard", to: "dashboard#index"
 
-    resources :templates, only: [:index, :new, :update, :destroy] do
+    resources :templates, only: [ :index, :new, :update, :destroy ] do
       collection do
         post :draft          # AI Template Creator: run preview (no DB write)
         post :commit         # AI Template Creator: commit the preview
         post :bulk_destroy
       end
     end
-    resources :skills, only: [:index, :new, :update, :destroy] do
+    resources :skills, only: [ :index, :new, :update, :destroy ] do
       member { post :resync }
       collection do
         post :draft        # AI Skill Creator: run preview (no DB write)
@@ -151,14 +151,14 @@ Rails.application.routes.draw do
         post :bulk_destroy
       end
     end
-    resources :agents, only: [:index, :update, :destroy] do
+    resources :agents, only: [ :index, :update, :destroy ] do
       collection { post :bulk_destroy }
     end
-    resources :users, only: [:index, :update, :destroy] do
+    resources :users, only: [ :index, :update, :destroy ] do
       member { post :masquerade }
       collection { post :bulk_destroy }
     end
-    resources :organizations, only: [:index, :update, :destroy] do
+    resources :organizations, only: [ :index, :update, :destroy ] do
       collection { post :bulk_destroy }
     end
 
@@ -190,7 +190,7 @@ Rails.application.routes.draw do
     # Stop an in-flight admin masquerade. Lives outside /admin because
     # while impersonating, current_user is the target (not necessarily a
     # platform admin) and the /admin gate would block the escape hatch.
-    resource :masquerade, only: [:destroy], controller: "masquerades"
+    resource :masquerade, only: [ :destroy ], controller: "masquerades"
 
     get "onboarding", to: "onboarding#show", as: :onboarding
     post "onboarding/analyze", to: "onboarding#analyze", as: :onboarding_analyze

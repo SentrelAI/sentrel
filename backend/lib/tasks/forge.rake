@@ -2,10 +2,10 @@ namespace :forge do
   desc "Print env-source health table. Exits non-zero if ANTHROPIC_API_KEY missing."
   task check_env: :environment do
     rows = [
-      ["ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "required — no key, no generation"],
-      ["SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "optional — enables skills.sh API (8420 skills)"],
-      ["GH_TOKEN",      ENV["GH_TOKEN"],      false, "optional — enables GitHub search source"],
-      ["COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "optional — for live toolkit catalog refresh"],
+      [ "ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "required — no key, no generation" ],
+      [ "SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "optional — enables skills.sh API (8420 skills)" ],
+      [ "GH_TOKEN",      ENV["GH_TOKEN"],      false, "optional — enables GitHub search source" ],
+      [ "COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "optional — for live toolkit catalog refresh" ]
     ]
     puts "Forge env-source health:"
     puts "─" * 90
@@ -28,17 +28,17 @@ namespace :forge do
   end
 
   desc "Generate agent templates from a brief list. Args: batch (1|2|all, default 1), concurrency (default 20)"
-  task :templates, [:batch, :concurrency] => :environment do |_, args|
+  task :templates, [ :batch, :concurrency ] => :environment do |_, args|
     batch = (args[:batch] || "1").to_s
     concurrency = (args[:concurrency] || "20").to_i
 
     briefs = case batch
-             when "1"   then Forge::RoleBriefs::BATCH_1
-             when "2"   then Forge::RoleBriefs::BATCH_2
-             when "all" then Forge::RoleBriefs::ALL
-             else
+    when "1"   then Forge::RoleBriefs::BATCH_1
+    when "2"   then Forge::RoleBriefs::BATCH_2
+    when "all" then Forge::RoleBriefs::ALL
+    else
                raise "Unknown batch: #{batch} (use 1, 2, or all)"
-             end
+    end
 
     puts "[forge:templates] firing #{briefs.size} briefs at concurrency=#{concurrency}"
     summary = Forge::Orchestrator.run(briefs: briefs, generator: Forge::TemplateGenerator, concurrency: concurrency)
@@ -47,17 +47,17 @@ namespace :forge do
   end
 
   desc "Generate skills from a brief list. Args: batch (1|2|all, default 1), concurrency (default 20)"
-  task :skills, [:batch, :concurrency] => :environment do |_, args|
+  task :skills, [ :batch, :concurrency ] => :environment do |_, args|
     batch = (args[:batch] || "1").to_s
     concurrency = (args[:concurrency] || "20").to_i
 
     briefs = case batch
-             when "1"   then Forge::SkillBriefs::BATCH_1
-             when "2"   then Forge::SkillBriefs::BATCH_2
-             when "all" then Forge::SkillBriefs::ALL
-             else
+    when "1"   then Forge::SkillBriefs::BATCH_1
+    when "2"   then Forge::SkillBriefs::BATCH_2
+    when "all" then Forge::SkillBriefs::ALL
+    else
                raise "Unknown batch: #{batch} (use 1, 2, or all)"
-             end
+    end
 
     puts "[forge:skills] firing #{briefs.size} briefs at concurrency=#{concurrency}"
     summary = Forge::Orchestrator.run(briefs: briefs, generator: Forge::SkillGenerator, concurrency: concurrency)
@@ -66,7 +66,7 @@ namespace :forge do
   end
 
   desc "Generate one template from a free-text role description. Args: description"
-  task :template_one, [:description] => :environment do |_, args|
+  task :template_one, [ :description ] => :environment do |_, args|
     description = args[:description].to_s.strip
     raise "Provide a description, e.g. rake forge:template_one[\"I want a real-estate showing scheduler\"]" if description.empty?
     res = Forge::TemplateGenerator.new(brief: description).call
@@ -82,7 +82,7 @@ namespace :forge do
   end
 
   desc "Full 100-template bootstrap. Args: concurrency (20), prewarm_count (50), resume (0|1)"
-  task :bootstrap, [:concurrency, :prewarm_count, :resume] => :environment do |_, args|
+  task :bootstrap, [ :concurrency, :prewarm_count, :resume ] => :environment do |_, args|
     concurrency = (args[:concurrency] || "20").to_i
     prewarm = (args[:prewarm_count] || "50").to_i
     resume = args[:resume].to_s == "1"
@@ -116,7 +116,7 @@ namespace :forge do
   end
 
   desc "Lint every template + skill against QualityLint rules. Pass --unpublish to downgrade failures."
-  task :lint, [:unpublish] => :environment do |_, args|
+  task :lint, [ :unpublish ] => :environment do |_, args|
     unpublish = args[:unpublish].to_s == "1"
     template_pass = template_fail = 0
     skill_pass = skill_fail = 0
@@ -155,7 +155,7 @@ namespace :forge do
   end
 
   desc "Pre-warm skill library only (skills.sh trending or KNOWN_REPOS)"
-  task :prewarm_skills, [:concurrency, :count] => :environment do |_, args|
+  task :prewarm_skills, [ :concurrency, :count ] => :environment do |_, args|
     concurrency = (args[:concurrency] || "20").to_i
     count = (args[:count] || "50").to_i
     summary = Forge::Bootstrap.new(briefs: [], concurrency: concurrency, prewarm_count: count).run
@@ -163,7 +163,7 @@ namespace :forge do
   end
 
   desc "Generate one skill from a free-text description. Args: description"
-  task :skill_one, [:description] => :environment do |_, args|
+  task :skill_one, [ :description ] => :environment do |_, args|
     description = args[:description].to_s.strip
     raise "Provide a description, e.g. rake forge:skill_one[\"send fax via documo\"]" if description.empty?
     res = Forge::SkillGenerator.new(brief: description).call

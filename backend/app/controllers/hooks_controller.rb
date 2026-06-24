@@ -63,7 +63,7 @@ class HooksController < ApplicationController
     event_hints = {
       "GitHub event" => request.headers["X-GitHub-Event"],
       "Sentry resource" => request.headers["Sentry-Hook-Resource"],
-      "Linear event" => request.headers["Linear-Event"],
+      "Linear event" => request.headers["Linear-Event"]
     }.compact_blank.map { |k, v| "#{k}: #{v}" }.join(" · ")
 
     json = JSON.pretty_generate(payload) rescue payload.to_s

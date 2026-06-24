@@ -40,7 +40,7 @@ RSpec.describe Nango::Client do
 
       expect(res["token"]).to eq("sess_abc")
       expect(captured[:req]["Authorization"]).to eq("Bearer nango-secret")
-      expect(captured[:body]["allowed_integrations"]).to eq(["github"])
+      expect(captured[:body]["allowed_integrations"]).to eq([ "github" ])
       expect(captured[:body]["end_user"]["id"]).to eq("org_#{org.id}")
       expect(captured[:body]).not_to have_key("integrations_config_defaults")
     end

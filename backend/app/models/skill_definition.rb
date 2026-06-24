@@ -73,7 +73,7 @@ class SkillDefinition < ApplicationRecord
           frontmatter = parse_seed_frontmatter(path)
           slug = frontmatter["slug"] || File.basename(path, ".md")
           data[slug] = {
-            "requires_connections" => Array(frontmatter["requires_connections"]).map(&:to_s),
+            "requires_connections" => Array(frontmatter["requires_connections"]).map(&:to_s)
           }
         end
       end

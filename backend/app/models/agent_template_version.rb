@@ -31,7 +31,7 @@ class AgentTemplateVersion < ApplicationRecord
       description: d["description"],
       category:    d["category"],
       icon:        d["icon"],
-      license:     license.presence || d["license"],
+      license:     license.presence || d["license"]
     }.compact
   end
 

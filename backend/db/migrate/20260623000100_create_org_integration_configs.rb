@@ -23,6 +23,6 @@ class CreateOrgIntegrationConfigs < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :org_integration_configs, [:organization_id, :provider], unique: true
+    add_index :org_integration_configs, [ :organization_id, :provider ], unique: true
   end
 end

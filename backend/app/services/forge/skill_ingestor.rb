@@ -25,7 +25,7 @@ module Forge
       "engineering"    => %w[engineer code dev github deploy aws docker kubernetes vercel api ci cd pipeline],
       "finance"        => %w[finance stripe invoice expense bookkeep account payment refund payable receivable],
       "productivity"   => %w[calendar notion airtable sheets drive document task schedule meeting reminder],
-      "communication"  => %w[slack email gmail chat message sms whatsapp telegram],
+      "communication"  => %w[slack email gmail chat message sms whatsapp telegram]
     }.freeze
 
     def initialize(manifest:, write_seed_file: false)
@@ -87,12 +87,12 @@ module Forge
     # YAML frontmatter parser — same shape as our existing seed loader.
     def parse_frontmatter(raw)
       match = raw.match(/\A---\n(.*?)\n---\s*\n(.*)/m)
-      return [{}, raw] unless match
+      return [ {}, raw ] unless match
       # Some third-party SKILL.md frontmatter includes Date / Time / Symbol
       # values (created_on, updated_at, etc). Whitelist them so safe_load
       # doesn't raise "Tried to load unspecified class: Date" mid-bootstrap.
-      meta = YAML.safe_load(match[1], permitted_classes: [Date, Time, Symbol], aliases: true) || {}
-      [meta, match[2].to_s.lstrip]
+      meta = YAML.safe_load(match[1], permitted_classes: [ Date, Time, Symbol ], aliases: true) || {}
+      [ meta, match[2].to_s.lstrip ]
     end
 
     def normalize_slug(s)
@@ -133,7 +133,7 @@ module Forge
       end
 
       return "common" if scores.empty?
-      scores.sort_by { |cat, sc| [-sc, cat] }.first.first
+      scores.sort_by { |cat, sc| [ -sc, cat ] }.first.first
     end
 
     def tokens_in(text)
@@ -181,7 +181,7 @@ module Forge
         "description" => record.description,
         "category" => category,
         "icon" => record.icon,
-        "requires_connections" => record.requires_connections,
+        "requires_connections" => record.requires_connections
       }.to_yaml.sub(/\A---\n/, "")
       File.write(path, "---\n#{fm}---\n\n#{body}\n")
     end

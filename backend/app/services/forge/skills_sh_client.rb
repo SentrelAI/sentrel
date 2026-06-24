@@ -61,7 +61,7 @@ module Forge
         "#{source}/main/skills/#{slug}/SKILL.md",
         "#{source}/main/#{slug}/SKILL.md",
         "#{source}/master/skills/.curated/#{slug}/SKILL.md",
-        "#{source}/master/#{slug}/SKILL.md",
+        "#{source}/master/#{slug}/SKILL.md"
       ]
       paths_to_try.each do |path|
         url = "#{RAW_GITHUB}/#{path}"
@@ -71,7 +71,7 @@ module Forge
           "id" => "#{source}/#{slug}",
           "source" => source,
           "slug" => slug,
-          "files" => [{ "path" => "SKILL.md", "contents" => body }],
+          "files" => [ { "path" => "SKILL.md", "contents" => body } ]
         }
       end
       raise Error, "skills.sh skill not found via raw GitHub fallback: #{source}/#{slug}"

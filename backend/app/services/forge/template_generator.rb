@@ -195,7 +195,7 @@ module Forge
       "google-calendar" => "googlecalendar",
       "google_calendar" => "googlecalendar",
       "google-drive"    => "googledrive",
-      "google_drive"    => "googledrive",
+      "google_drive"    => "googledrive"
     }.freeze
 
     def self.sanitize_integrations(raw)

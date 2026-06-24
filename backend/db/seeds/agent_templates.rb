@@ -1013,7 +1013,7 @@ TEMPLATE_INTEGRATIONS = {
   "researcher"         => %w[google_drive notion],
   "recruiter"          => %w[gmail linkedin google_calendar],
   "seo-specialist"     => %w[google_sheets google_drive slack],
-  "meeting-manager"    => %w[google_calendar gmail slack],
+  "meeting-manager"    => %w[google_calendar gmail slack]
 }.freeze
 TEMPLATE_INTEGRATIONS.each do |slug, services|
   AgentTemplate.find_by(slug: slug)&.update!(suggested_integrations: services)

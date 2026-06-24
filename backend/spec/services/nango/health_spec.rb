@@ -9,7 +9,7 @@ RSpec.describe Nango::Health do
         organization: org, service_name: "github", scope: "org", status: status,
         connect_mode: mode,
         nango_connection_id: (mode == "byo_token" ? nil : "conn_1"),
-        provider_config_key: (mode == "byo_token" ? nil : "github"),
+        provider_config_key: (mode == "byo_token" ? nil : "github")
       }.merge(attrs))
     end
   end
@@ -23,7 +23,7 @@ RSpec.describe Nango::Health do
 
     it "is :error when Nango reports errors" do
       intg = integration
-      allow(Nango::Client).to receive(:get_connection).and_return("errors" => [{ "type" => "auth" }])
+      allow(Nango::Client).to receive(:get_connection).and_return("errors" => [ { "type" => "auth" } ])
       expect(described_class.check(intg)).to eq(:error)
     end
 
@@ -50,7 +50,7 @@ RSpec.describe Nango::Health do
     it "marks a broken connection error and heals a recovered one" do
       broken = integration(status: "connected")
       recovered = integration(status: "error", nango_connection_id: "conn_2")
-      allow(Nango::Client).to receive(:get_connection).with("conn_1", "github").and_return("errors" => [{ "x" => 1 }])
+      allow(Nango::Client).to receive(:get_connection).with("conn_1", "github").and_return("errors" => [ { "x" => 1 } ])
       allow(Nango::Client).to receive(:get_connection).with("conn_2", "github").and_return("errors" => [])
 
       result = described_class.sweep

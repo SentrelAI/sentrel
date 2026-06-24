@@ -42,7 +42,7 @@ module Nango
 
     # Retry transient failures so a momentary blip never surfaces to the agent.
     MAX_ATTEMPTS = 3
-    RETRYABLE_STATUSES = [502, 503, 504].freeze
+    RETRYABLE_STATUSES = [ 502, 503, 504 ].freeze
     RETRYABLE_ERRORS = [
       Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::ECONNREFUSED,
       Errno::EHOSTUNREACH, EOFError, SocketError, IOError
@@ -142,7 +142,7 @@ module Nango
 
     def build_uri(base, prefix, path, query)
       clean = path.to_s.sub(%r{\A/+}, "")
-      joined = [base.to_s.chomp("/"), prefix, clean].compact.reject(&:empty?).join("/")
+      joined = [ base.to_s.chomp("/"), prefix, clean ].compact.reject(&:empty?).join("/")
       uri = URI(joined)
       uri.query = URI.encode_www_form(query) if query.present?
       uri
@@ -205,7 +205,7 @@ module Nango
         if res["retry-after"].present?
           res["retry-after"].to_i
         elsif res["x-ratelimit-reset"].present?
-          [res["x-ratelimit-reset"].to_i - Time.now.to_i, 0].max
+          [ res["x-ratelimit-reset"].to_i - Time.now.to_i, 0 ].max
         end
       raise RateLimited.new("#{provider} rate limited", retry_after: retry_after)
     end

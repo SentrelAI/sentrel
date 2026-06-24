@@ -30,7 +30,7 @@ class CredentialsController < ApplicationController
           # If it has no explicit grants, it's the org-wide default for the
           # (kind, provider) pair and EngineSync hits every agent.
           dependent_agent_count: grants.positive? ? grants : org_agent_count,
-          dependent_scope: grants.positive? ? "granted" : "org_default",
+          dependent_scope: grants.positive? ? "granted" : "org_default"
         }
       end
 
@@ -327,7 +327,7 @@ class CredentialsController < ApplicationController
         kind: cred.kind,
         provider: cred.provider,
         name: cred.name,
-        suffix: cred.display_suffix,
+        suffix: cred.display_suffix
       }.merge(extra).compact,
       status: "success",
     )

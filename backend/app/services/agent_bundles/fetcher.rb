@@ -36,7 +36,7 @@ module AgentBundles
 
       # codeload prefixes every path with "<repo>-<ref>/" — strip it, then
       # narrow to the requested subdir if one was given.
-      files = files.map { |p, c| [p.split("/", 2)[1], c] }.reject { |p, _| p.nil? }.to_h
+      files = files.map { |p, c| [ p.split("/", 2)[1], c ] }.reject { |p, _| p.nil? }.to_h
       if subdir.present?
         prefix = "#{subdir.chomp('/')}/"
         files = files.select { |p, _| p.start_with?(prefix) }.transform_keys { |p| p.delete_prefix(prefix) }

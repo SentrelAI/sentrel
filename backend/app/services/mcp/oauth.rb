@@ -32,7 +32,7 @@ module Mcp
         authorize_endpoint: asm["authorization_endpoint"],
         token_endpoint:     asm["token_endpoint"],
         scopes:             Array(prm["scopes_supported"]).presence || Array(asm["scopes_supported"]),
-        resource:           prm["resource"] || url,
+        resource:           prm["resource"] || url
       }
     end
 
@@ -40,7 +40,7 @@ module Mcp
     def pkce_pair
       verifier  = SecureRandom.urlsafe_base64(64)
       challenge = Base64.urlsafe_encode64(Digest::SHA256.digest(verifier), padding: false)
-      [verifier, challenge]
+      [ verifier, challenge ]
     end
 
     def authorize_url(server, redirect_uri:, state:, code_challenge:)
@@ -52,7 +52,7 @@ module Mcp
         state:                 state,
         code_challenge:        code_challenge,
         code_challenge_method: "S256",
-        resource:              server.url, # RFC 8707 — bind the token to this MCP
+        resource:              server.url # RFC 8707 — bind the token to this MCP
       }
       "#{server.authorize_endpoint}?#{URI.encode_www_form(params.compact)}"
     end
@@ -64,7 +64,7 @@ module Mcp
         redirect_uri:  redirect_uri,
         client_id:     server.client_id,
         code_verifier: code_verifier,
-        resource:      server.url,
+        resource:      server.url
       })
     end
 
@@ -76,7 +76,7 @@ module Mcp
         grant_type:    "refresh_token",
         refresh_token: server.refresh_token,
         client_id:     server.client_id,
-        resource:      server.url,
+        resource:      server.url
       })
     end
 

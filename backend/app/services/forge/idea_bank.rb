@@ -304,7 +304,7 @@ module Forge
         notes: "Reports to growth-marketer or marketing-lead. Different from channel-partner (B2B integration partners). Affiliate manager runs the affiliate program: recruit, onboard, track conversions, payout monthly, fraud watch." },
       { slug: "trademark-watch", name: "Trademark Watch", role: "IP Watch", category: "ops",
         description: "Monitors USPTO + global IP for conflicts with the brand. Drafts cease-and-desist.",
-        notes: "Reports to legal counsel. NEVER files or sends C&D without attorney approval. Monitors USPTO new applications, monthly global trademark databases, drafts notification + C&D from attorney's template for human review." },
+        notes: "Reports to legal counsel. NEVER files or sends C&D without attorney approval. Monitors USPTO new applications, monthly global trademark databases, drafts notification + C&D from attorney's template for human review." }
     ].freeze
 
     ALL = (RoleBriefs::ALL + EXTRA).uniq { |b| b[:slug] }
