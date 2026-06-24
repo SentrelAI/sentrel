@@ -809,22 +809,24 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
 
       {/* ═══ Content ═══ */}
       <div className="flex overflow-hidden -mx-6" style={{ height: "calc(100vh - 140px)" }}>
-        {/* Chat */}
-        {section === "chat" && (
-          <div className="flex-1 overflow-hidden">
-            <AgentChat
-              agentId={agent.id}
-              agentName={agent.name}
-              agentEmail={agentPrimaryEmail}
-              agentStatus={agent.status}
-              currentUser={currentUser}
-              initialMessages={chat_messages as any}
-              agentThinking={agent_thinking}
-              approvalsByMessage={approvals_by_message}
-              pendingActionApprovals={pending_action_approvals}
-            />
-          </div>
-        )}
+        {/* Chat — kept mounted across section switches so optimistic + cable-
+            delivered messages survive navigating to the inbox and back. The
+            initialMessages prop is captured at page load, so unmounting here
+            would drop any message sent since (until a full reload). Hidden via
+            CSS instead of conditional render. */}
+        <div className={section === "chat" ? "flex-1 overflow-hidden" : "hidden"}>
+          <AgentChat
+            agentId={agent.id}
+            agentName={agent.name}
+            agentEmail={agentPrimaryEmail}
+            agentStatus={agent.status}
+            currentUser={currentUser}
+            initialMessages={chat_messages as any}
+            agentThinking={agent_thinking}
+            approvalsByMessage={approvals_by_message}
+            pendingActionApprovals={pending_action_approvals}
+          />
+        </div>
 
         {/* Inbox — split pane */}
         {section === "inbox" && (
