@@ -59,21 +59,19 @@ Rails.application.configure do
   # Redis cache store (same Redis as Sidekiq, ActionCable, and engine queue)
   config.cache_store = :redis_cache_store, { url: ENV.fetch("REDIS_URL", "redis://localhost:6379/1") }
 
-  # Ignore bad email addresses and do not raise email delivery errors.
-  # Set this to true and configure the email server for immediate delivery to raise delivery errors.
-  # config.action_mailer.raise_delivery_errors = false
+  # Deliver mail through AWS SES (see config/initializers/action_mailer_ses.rb),
+  # reusing the same AWS credentials as the agent email channel.
+  config.action_mailer.delivery_method = :ses
+  config.action_mailer.perform_deliveries = true
+  # Raise on delivery failure so the Sidekiq job (deliver_later) retries
+  # transient SES errors instead of silently dropping the message.
+  config.action_mailer.raise_delivery_errors = true
 
-  # Set host to be used by links generated in mailer templates.
-  config.action_mailer.default_url_options = { host: "example.com" }
-
-  # Specify outgoing SMTP server. Remember to add smtp/* credentials via bin/rails credentials:edit.
-  # config.action_mailer.smtp_settings = {
-  #   user_name: Rails.application.credentials.dig(:smtp, :user_name),
-  #   password: Rails.application.credentials.dig(:smtp, :password),
-  #   address: "smtp.example.com",
-  #   port: 587,
-  #   authentication: :plain
-  # }
+  # Host used by links generated in mailer templates (invitation accept links, etc.).
+  config.action_mailer.default_url_options = {
+    host: ENV.fetch("APP_HOST", "sentrel.ai"),
+    protocol: "https"
+  }
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
   # the I18n.default_locale when a translation cannot be found).

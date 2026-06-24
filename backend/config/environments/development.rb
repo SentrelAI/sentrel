@@ -37,6 +37,10 @@ Rails.application.configure do
   # Make template changes take effect immediately.
   config.action_mailer.perform_caching = false
 
+  # Send real mail via SES when AWS creds are configured locally; otherwise
+  # capture into ActionMailer::Base.deliveries so dev never errors on send.
+  config.action_mailer.delivery_method = ENV["AWS_ACCESS_KEY_ID"].present? ? :ses : :test
+
   # Set localhost to be used by links generated in mailer templates.
   config.action_mailer.default_url_options = { host: "localhost", port: 3200 }
 
