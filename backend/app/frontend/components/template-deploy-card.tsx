@@ -1,5 +1,5 @@
 import { Link } from "@inertiajs/react"
-import { Rocket, Sparkles, Users } from "lucide-react"
+import { Rocket, Sparkles, Star, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,8 @@ export interface DeployTemplate {
   icon?: string | null
   category?: string | null
   system_template: boolean
+  featured?: boolean
+  featured_position?: number | null
   author_name?: string
   install_count?: number
 }
@@ -34,7 +36,19 @@ export function viewHref(slug: string): string {
 
 export function TemplateDeployCard({ t }: { t: DeployTemplate }) {
   return (
-    <Card className="relative flex h-full flex-col transition-colors hover:border-foreground/40">
+    <Card
+      className={`relative flex h-full flex-col transition-colors hover:border-foreground/40${
+        t.featured ? " border-[var(--color-indigo)]/50 ring-1 ring-[var(--color-indigo)]/20" : ""
+      }`}
+    >
+      {t.featured && (
+        <Badge
+          className="absolute left-3 top-3 z-10 gap-1 border-transparent bg-[var(--color-indigo)] text-[10px] text-white"
+        >
+          <Star className="size-3 fill-current" />
+          Featured
+        </Badge>
+      )}
       <Badge
         variant={t.system_template ? "secondary" : "outline"}
         className="absolute right-3 top-3 z-10 gap-1 text-[10px]"

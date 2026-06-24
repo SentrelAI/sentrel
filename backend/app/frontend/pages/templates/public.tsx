@@ -1,6 +1,6 @@
 import { Head } from "@inertiajs/react"
 import { useMemo, useState } from "react"
-import { Search } from "lucide-react"
+import { Search, Star } from "lucide-react"
 
 import { Overline } from "@/components/brand"
 import { Input } from "@/components/ui/input"
@@ -34,6 +34,18 @@ export default function TemplatesPublic({ templates, categories }: Props) {
       [t.name, t.role, t.description || ""].join(" ").toLowerCase().includes(q),
     )
   }, [templates, query])
+
+  // Curated highlights, shown in their own row above the category groups.
+  // Ordered by featured_position (nulls last), then name. Respects search.
+  const featured = useMemo(() => {
+    return filtered
+      .filter((t) => t.featured)
+      .sort((a, b) => {
+        const pa = a.featured_position ?? Number.MAX_SAFE_INTEGER
+        const pb = b.featured_position ?? Number.MAX_SAFE_INTEGER
+        return pa - pb || a.name.localeCompare(b.name)
+      })
+  }, [filtered])
 
   // Group by category, rendered in the canonical category order.
   const grouped = useMemo(() => {
@@ -95,6 +107,19 @@ export default function TemplatesPublic({ templates, categories }: Props) {
           </div>
         ) : (
           <div className="space-y-10">
+            {featured.length > 0 && (
+              <section>
+                <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--color-indigo)]">
+                  <Star className="size-3.5 fill-current" />
+                  Featured
+                </h2>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {featured.map((t) => (
+                    <TemplateDeployCard key={`featured-${t.slug}`} t={t} />
+                  ))}
+                </div>
+              </section>
+            )}
             {categories.map((cat) => {
               const items = grouped[cat]
               if (!items || items.length === 0) return null
