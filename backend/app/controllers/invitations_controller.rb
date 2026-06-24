@@ -1,6 +1,6 @@
 class InvitationsController < ApplicationController
   before_action :authenticate_user!, except: [ :show, :accept ]
-  before_action :require_admin!, only: [ :index, :create, :destroy ]
+  before_action :require_admin!, only: [ :index, :create, :destroy, :resend ]
 
   # GET /invitations
   def index
@@ -35,6 +35,19 @@ class InvitationsController < ApplicationController
     else
       render json: { ok: false, errors: inv.errors.full_messages }, status: :unprocessable_entity
     end
+  end
+
+  # POST /invitations/:id/resend — re-send the email to someone who hasn't
+  # accepted yet. Refreshes the expiry first if it had lapsed so the link works.
+  def resend
+    inv = current_tenant.invitations.find(params[:id])
+    if inv.accepted_at.present?
+      return render json: { ok: false, errors: [ "Invitation already accepted" ] }, status: :unprocessable_entity
+    end
+
+    inv.refresh_expiry! if inv.expired?
+    InvitationMailer.invite(inv).deliver_later
+    render json: { ok: true, invitation: invite_json(inv) }
   end
 
   # DELETE /invitations/:id

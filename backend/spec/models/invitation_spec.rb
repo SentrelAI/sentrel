@@ -17,6 +17,20 @@ RSpec.describe Invitation, type: :model do
     inv
   end
 
+  describe "#refresh_expiry!" do
+    it "pushes a lapsed invitation's expiry back into the future so the link works again" do
+      invitation = invite_to(other_org, email: user.email)
+      invitation.update_column(:expires_at, 2.days.ago)
+      expect(invitation.expired?).to be(true)
+
+      invitation.refresh_expiry!
+
+      expect(invitation.reload.expired?).to be(false)
+      expect(invitation.pending?).to be(true)
+      expect(invitation.expires_at).to be > Time.current
+    end
+  end
+
   describe "#accept!" do
     it "adds the user to the org WITHOUT removing their existing membership" do
       invitation = invite_to(other_org, email: user.email, role: "member")

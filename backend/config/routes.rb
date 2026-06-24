@@ -321,7 +321,9 @@ Rails.application.routes.draw do
     post "ops/roll_engine", to: "ops#roll_engine", as: :ops_roll_engine
 
     # Team management — invite teammates, manage roles.
-    resources :invitations, only: [ :index, :create, :destroy ]
+    resources :invitations, only: [ :index, :create, :destroy ] do
+      member { post :resend }
+    end
     get  "invite/:token",        to: "invitations#show",   as: :invitation_link
     post "invite/:token/accept", to: "invitations#accept", as: :accept_invitation
     resources :reports, only: [ :index ]

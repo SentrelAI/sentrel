@@ -1,7 +1,7 @@
 import { Head, router } from "@inertiajs/react"
 import { useState } from "react"
 import { toast } from "sonner"
-import { Mail, Trash2, Users, Plus } from "lucide-react"
+import { Mail, Trash2, Users, Plus, Send } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { PageHeader } from "@/components/page-header"
@@ -57,6 +57,7 @@ export default function InvitationsIndex({ invitations, members, current_role }:
   const [email, setEmail] = useState("")
   const [role, setRole] = useState("member")
   const [sending, setSending] = useState(false)
+  const [resendingId, setResendingId] = useState<number | null>(null)
   const canManage = current_role === "owner" || current_role === "admin"
 
   async function invite() {
@@ -79,6 +80,26 @@ export default function InvitationsIndex({ invitations, members, current_role }:
       }
     } finally {
       setSending(false)
+    }
+  }
+
+  async function resend(inv: Invitation) {
+    setResendingId(inv.id)
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    try {
+      const res = await fetch(`/invitations/${inv.id}/resend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      })
+      const data = await res.json()
+      if (data.ok) {
+        toast.success(`Invitation re-sent to ${inv.email}`)
+        router.reload()
+      } else {
+        toast.error((data.errors || ["Resend failed"]).join(", "))
+      }
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -201,14 +222,24 @@ export default function InvitationsIndex({ invitations, members, current_role }:
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{inv.invited_by ?? "—"}</td>
                   <td className="px-4 py-2 text-right">
-                    {inv.status === "pending" && canManage && (
-                      <button
-                        onClick={() => revoke(inv.id)}
-                        className="p-1 rounded hover:bg-red-500/10 text-red-500"
-                        title="Revoke invitation"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
+                    {inv.status !== "accepted" && canManage && (
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => resend(inv)}
+                          disabled={resendingId === inv.id}
+                          className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          title={inv.status === "expired" ? "Renew & resend invitation" : "Resend invitation"}
+                        >
+                          <Send className="size-3.5" />
+                        </button>
+                        <button
+                          onClick={() => revoke(inv.id)}
+                          className="p-1 rounded hover:bg-red-500/10 text-red-500"
+                          title="Revoke invitation"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

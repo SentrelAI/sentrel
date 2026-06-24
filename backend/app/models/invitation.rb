@@ -3,6 +3,7 @@ class Invitation < ApplicationRecord
   belongs_to :invited_by, class_name: "User"
 
   ROLES = %w[admin member viewer].freeze
+  EXPIRES_IN = 7.days
 
   validates :email, presence: true, format: URI::MailTo::EMAIL_REGEXP
   validates :role, inclusion: { in: ROLES }
@@ -23,6 +24,12 @@ class Invitation < ApplicationRecord
     accepted_at.nil? && expires_at <= Time.current
   end
 
+  # Push the expiry back out so a re-sent invitation link is valid again.
+  # No-op safety for accepted invitations is enforced by the caller.
+  def refresh_expiry!
+    update!(expires_at: EXPIRES_IN.from_now)
+  end
+
   # Add the user to this org (without removing them from any org they already
   # belong to) and make it their active org so they land in the workspace they
   # just joined. Idempotent on the membership so re-accepts don't blow up.
@@ -41,6 +48,6 @@ class Invitation < ApplicationRecord
 
   def generate_token_and_expiry
     self.token ||= SecureRandom.urlsafe_base64(32)
-    self.expires_at ||= 7.days.from_now
+    self.expires_at ||= EXPIRES_IN.from_now
   end
 end
