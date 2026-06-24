@@ -15,6 +15,9 @@ class AgentTemplate < ApplicationRecord
 
   scope :system,         -> { where(system_template: true) }
   scope :user_published, -> { where(system_template: false, published: true) }
+  # Curated highlights for the public /templates gallery. Ordered by
+  # featured_position (NULLS last), then name.
+  scope :featured, -> { where(featured: true).order(Arel.sql("featured_position ASC NULLS LAST"), :name) }
 
   # The curated public catalog: official (system) templates published AND backed
   # by a GitHub bundle (source_url present). This is the ONLY set /templates
@@ -114,6 +117,8 @@ class AgentTemplate < ApplicationRecord
       icon: icon,
       category: category,
       system_template: system_template,
+      featured: featured,
+      featured_position: featured_position,
       install_count: install_count,
       author_name: system_template ? "Sentrel" : (created_by_user&.name.presence || "Workspace member"),
       source_url: source_url # GitHub bundle source for official templates; nil otherwise

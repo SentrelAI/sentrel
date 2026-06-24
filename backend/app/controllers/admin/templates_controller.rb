@@ -35,6 +35,7 @@ module Admin
       ActsAsTenant.without_tenant do
         template = AgentTemplate.find(params[:id])
         attrs = params.permit(:name, :description, :category, :published, :icon,
+                              :featured, :featured_position,
                               :identity_md, :personality_md, :instructions_md,
                               :email_signature_md, :suggested_model, :suggested_provider)
         template.update!(attrs)
@@ -148,6 +149,7 @@ module Admin
       {
         id: t.id, slug: t.slug, name: t.name, role: t.role, category: t.category,
         description: t.description, icon: t.icon, published: t.published,
+        featured: t.featured, featured_position: t.featured_position,
         install_count: t.install_count, system_template: t.system_template,
         organization_id: t.organization_id,
         suggested_model: t.suggested_model, suggested_provider: t.suggested_provider,
