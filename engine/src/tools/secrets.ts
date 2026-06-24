@@ -81,6 +81,22 @@ function titleCaseLocal(s: string): string {
   return s.split(/[-_\s]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
+// Connected integration providers for this agent, lowercased. Used by the
+// secrets guard to avoid showing an "add API key" card for an app that's
+// already connected (the agent should use nango_request instead). Provider-
+// agnostic — reads the same /api/integrations list the engine uses for
+// nango_request, with no Composio coupling.
+async function fetchConnectedProviders(agentId: number): Promise<Set<string>> {
+  const secret = process.env.ENGINE_API_SECRET;
+  if (!secret) return new Set();
+  const res = await fetch(`${railsInternalUrl()}/api/integrations?agent_id=${agentId}`, {
+    headers: { "X-Engine-Secret": secret, Accept: "application/json" },
+  });
+  if (!res.ok) return new Set();
+  const data = (await res.json()) as { integrations?: Array<{ provider?: string }> };
+  return new Set((data.integrations ?? []).map((i) => (i.provider ?? "").toLowerCase()).filter(Boolean));
+}
+
 interface SecretsContext {
   agentId: number;
   orgId: number;
@@ -149,32 +165,30 @@ export function buildSecretsMcpServer(ctx: SecretsContext) {
             .replace(/[_-]?(api[_-]?key|access[_-]?token|secret[_-]?key|auth[_-]?token|token|key|secret)$/i, "")
             .replace(/[_-]+$/, "");
 
-          // CRITICAL guard: if this provider is already wired up via
-          // Composio, an "Add API key" card is wrong — Apollo IS
-          // connected, the agent just needs to use the Composio
-          // APOLLO_* tools instead of asking for a raw key. Return a
-          // pointed error that tells the model to retry with the
-          // toolkit, not surface another credential prompt to the user.
+          // CRITICAL guard: if this provider is already connected as an
+          // integration, an "Add API key" card is wrong — the app IS
+          // connected, the agent just needs to call it via nango_request
+          // instead of asking for a raw key. Return a pointed error that
+          // tells the model to use the integration, not surface a credential
+          // prompt. Drives off the connected-integrations list from Rails
+          // (provider-agnostic — no Composio dependency on the always-on path).
           try {
-            const { getActiveToolkits } = await import("../integrations/composio.js");
-            const active = await getActiveToolkits(orgId, null).catch(() => [] as string[]);
-            const activeSet = new Set(active.map((s) => s.toLowerCase()));
-            if (activeSet.has(normalizedProvider) || activeSet.has(rawProvider)) {
+            const connected = await fetchConnectedProviders(agentId);
+            if (connected.has(normalizedProvider) || connected.has(rawProvider)) {
               const label = titleCaseLocal(normalizedProvider);
-              const upper = normalizedProvider.toUpperCase();
               return {
                 content: [{
                   type: "text",
-                  text: `${label} is already connected via Composio (org-level OAuth). DO NOT propose an API-key card to the user — they'll be confused since the integration shows as connected. Use the Composio ${upper}_* tools directly (e.g. ${upper}_PEOPLE_SEARCH for Apollo, ${upper}_LIST_CONVERSATIONS for Intercom). If those returned 422 / "Parameters misconfigured", the toolkit rejected your args — most often because you sent placeholder strings like "placeholder", "test", or "example" for ID fields. Pull real values from a prior tool call or ask the user for them.`,
+                  text: `${label} is already connected as an integration. DO NOT propose an API-key card — the user would be confused since it shows as connected. Call it with \`nango_request({ provider: "${normalizedProvider}", method, path })\` instead. Read the ${label} skill for its endpoints.`,
                 }],
                 isError: true,
               };
             }
           } catch (err) {
-            logger.warn("secrets.get composio check failed (continuing with credential card)", { error: (err as Error).message });
+            logger.warn("secrets.get connected-integrations check failed (continuing with credential card)", { error: (err as Error).message });
           }
 
-          // No Composio integration for this provider → fall through to
+          // No integration for this provider → fall through to
           // the credential card. ONE flow for all external access
           // (OAuth + API tokens + org secrets).
           await postProposal({

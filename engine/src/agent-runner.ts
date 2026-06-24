@@ -22,6 +22,7 @@ import { buildIntegrationSearchMcpServer, createQueryState, type QueryState } fr
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
 import { buildFilesMcpServer } from "./tools/files.js";
 import { buildSecretsMcpServer } from "./tools/secrets.js";
+import { buildNangoMcpServer } from "./tools/nango.js";
 import { buildSkillsCreatorMcpServer } from "./tools/skills-create.js";
 import { buildShareFileMcpServer } from "./tools/share-file.js";
 import { createSlackChannelMcpServer } from "./tools/slack-channel.js";
@@ -1478,6 +1479,18 @@ async function buildQueryOptions(
   mcpServers.secrets = secretsServer;
   baseMcpServers.secrets = secretsServer;
 
+  // nango — generic gateway to Nango-connected apps (the long-tail integration
+  // surface, replacing Composio toolkits). One tool, every provider; Rails
+  // injects the token + enforces per-agent ACL + the approval gate. Always-on
+  // AND in baseMcpServers so a mid-session setMcpServers() swap can't drop it.
+  const nangoServer = buildNangoMcpServer({
+    agentId: agent.id,
+    orgId: agent.organization_id,
+    origin: taskOrigin,
+  });
+  mcpServers.nango = nangoServer;
+  baseMcpServers.nango = nangoServer;
+
   // Self-authoring skills MCP — agents can compose new SKILL.md bundles and
   // install them on themselves via skills.create + skills.install_on_me.
   // Always-on; org scoping flows from agent.id → agent.organization_id on
@@ -1742,6 +1755,8 @@ async function buildQueryOptions(
         "mcp__integrations__search_integrations",
         // Composio tools: explicit list (wildcards may not match)
         ...composioToolNames.map((name) => `mcp__composio__${name}`),
+        // Nango generic proxy tool — the long-tail integration surface.
+        "mcp__nango__request",
       ] : []),
       ...(caps.knowledge_base.enabled && profile.knowledge ? [
         "mcp__knowledge__search_knowledge",
