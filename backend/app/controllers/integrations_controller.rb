@@ -437,8 +437,30 @@ class IntegrationsController < ApplicationController
 
     scope = params[:scope].to_s == "user" ? "user" : "org"
     mode  = OrgIntegrationConfig.mode_for(current_tenant.id, entry[:slug]) == "byo_oauth" ? "byo_oauth" : "managed"
+
+    # Capture the connection this row pointed at BEFORE we repoint it. The Connect
+    # UI mints a fresh connection on every (re)connect, so without revoking the
+    # old one we accumulate orphans in Nango and the row's pointer drifts. We
+    # enforce a strict 1:1 map: one Integration row ↔ exactly one live Nango
+    # connection. Revoke happens AFTER the new one is stored, so a failed reconnect
+    # never leaves the row pointing at nothing.
+    owner_user_id = scope == "user" ? current_user.id : nil
+    prior_connection_id = current_tenant.integrations
+      .where(service_name: entry[:slug], scope: scope, owner_user_id: owner_user_id)
+      .pick(:nango_connection_id)
+
     row = upsert_integration(entry[:slug], scope: scope, connect_mode: mode,
                              nango_connection_id: connection_id, provider_config_key: entry[:provider_config_key])
+
+    if prior_connection_id.present? && prior_connection_id != connection_id
+      begin
+        Nango::Client.delete_connection(prior_connection_id, entry[:provider_config_key])
+        Rails.logger.info "nango_finalize: revoked superseded connection #{prior_connection_id} for #{entry[:slug]}"
+      rescue Nango::Client::Error => e
+        Rails.logger.warn "nango_finalize: couldn't revoke prior connection #{prior_connection_id}: #{e.message}"
+      end
+    end
+
     after_connect(row)
     render json: { ok: true, id: row.id }
   end
