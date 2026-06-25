@@ -115,6 +115,21 @@ vercel:
   tool: proxy
   review: none
 
+# Stripe via Nango's api_key integration (unique_key `stripe-api-key`) — the
+# user pastes a Stripe secret key in the Connect UI and Nango injects it.
+stripe:
+  logo: /integration-logos/stripe.svg
+  label: Stripe
+  category: Finance
+  provider_config_key: stripe-api-key
+  auth_type: api_key
+  api_base_url: https://api.stripe.com
+  docs_url: https://stripe.com/docs/api
+  scopes: []
+  modes: [managed]
+  tool: proxy
+  review: none
+
 # Google 🟡 (managed requires Google OAuth verification) -----------------------
 
 gmail:
