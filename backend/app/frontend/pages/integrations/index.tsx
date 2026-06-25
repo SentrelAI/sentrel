@@ -17,15 +17,6 @@ import {
 } from "@/components/ui/dialog"
 import { ConnectModal, type CatalogApp, type ConnectMode } from "@/components/integrations/connect-modal"
 
-interface SupportedService {
-  slug: string
-  label: string
-  category: string
-  description: string | null
-  available: boolean
-  logo: string | null
-}
-
 interface CatalogEntry {
   slug: string
   label: string
@@ -65,9 +56,17 @@ interface McpServerRow {
   connected: boolean
 }
 
+interface ServiceCard {
+  slug: string
+  label: string
+  category: string
+  description: string | null
+  available: boolean
+  logo: string | null
+}
+
 interface Props {
   integrations: Integration[]
-  supported_services: SupportedService[]
   catalog?: CatalogEntry[]
   org_integration_configs?: OrgIntegrationConfig[]
   nango_connect_base_url?: string | null
@@ -77,7 +76,6 @@ interface Props {
 
 export default function IntegrationsIndex({
   integrations,
-  supported_services = [],
   catalog = [],
   org_integration_configs = [],
   nango_connect_base_url = null,
@@ -85,11 +83,10 @@ export default function IntegrationsIndex({
   mcp_servers = [],
 }: Props) {
   const requestedSet = new Set(requested_services)
-  // Prefer the static catalog (Nango) when present; fall back to the legacy
-  // Composio supported list during the transition.
-  const services: SupportedService[] = catalog.length
-    ? catalog.map((c) => ({ slug: c.slug, label: c.label, category: c.category, description: c.description, available: c.available, logo: c.logo }))
-    : supported_services
+  // The static catalog (Nango directory) is always present now.
+  const services: ServiceCard[] = catalog.map((c) => ({
+    slug: c.slug, label: c.label, category: c.category, description: c.description, available: c.available, logo: c.logo,
+  }))
   const catalogBySlug = new Map(catalog.map((c) => [c.slug, c]))
   const orgConfigBySlug = new Map(org_integration_configs.map((c) => [c.provider, c]))
 
@@ -105,38 +102,13 @@ export default function IntegrationsIndex({
   const [connectApp, setConnectApp] = useState<CatalogApp | null>(null)
 
   // Catalog apps open the 3-mode modal (Managed / BYO-OAuth / Paste-token).
-  // Legacy Composio entries (no catalog row) keep the old direct popup flow.
-  function connect(serviceName: string, scope: "org" | "user" = "org") {
+  function connect(serviceName: string, _scope: "org" | "user" = "org") {
     const entry = catalogBySlug.get(serviceName)
-    if (entry) {
-      setConnectApp({
-        slug: entry.slug, label: entry.label, category: entry.category, description: entry.description,
-        logo: entry.logo, auth_type: entry.auth_type, modes: entry.modes, review: entry.review,
-      })
-      return
-    }
-    legacyComposioConnect(serviceName, scope)
-  }
-
-  async function legacyComposioConnect(serviceName: string, scope: "org" | "user") {
-    const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
-    const res = await fetch(`/integrations/${serviceName}/connect`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrfToken },
-      body: JSON.stringify({ scope }),
+    if (!entry) return
+    setConnectApp({
+      slug: entry.slug, label: entry.label, category: entry.category, description: entry.description,
+      logo: entry.logo, auth_type: entry.auth_type, modes: entry.modes, review: entry.review,
     })
-    const data = await res.json()
-    if (data.redirect_url) {
-      const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100")
-      const timer = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(timer)
-          router.reload()
-        }
-      }, 500)
-    } else if (data.error) {
-      alert(data.error)
-    }
   }
 
   function disconnect(id: number) {
@@ -181,7 +153,7 @@ export default function IntegrationsIndex({
   // Sidebar-driven layout. "All" first, then ordered categories. Counts
   // reflect the active search query so users see how many matches each
   // category has as they type. Right pane is the only scroll surface.
-  const matchesQuery = (s: SupportedService) => {
+  const matchesQuery = (s: ServiceCard) => {
     if (!query) return true
     const q = query.toLowerCase()
     return s.slug.toLowerCase().includes(q) || s.label.toLowerCase().includes(q)
@@ -190,10 +162,9 @@ export default function IntegrationsIndex({
     .filter(matchesQuery)
     .sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1))
 
-  // Categories come from Composio's own per-toolkit categorization (read in
-  // the refresh job from /api/v3/toolkits). We don't pin a hardcoded order
-  // anymore — most-populated categories first so the user lands on busy
-  // buckets, "Other" pinned last as a catch-all.
+  // Categories come from the catalog's own per-app categorization. We don't
+  // pin a hardcoded order — most-populated categories first so the user lands
+  // on busy buckets, "Other" pinned last as a catch-all.
   const categoryCounts = allFiltered.reduce<Record<string, number>>((acc, s) => {
     acc[s.category] = (acc[s.category] || 0) + 1
     return acc
@@ -264,7 +235,7 @@ export default function IntegrationsIndex({
       </p>
 
       {/* Direct connections — OAuth straight to the provider's MCP server
-          (Meta Ads, etc.), no Composio broker. Connect is a full-page OAuth
+          (Meta Ads, etc.), no broker. Connect is a full-page OAuth
           redirect; the callback brings the user back here connected. */}
       {scopeView === "org" && mcp_servers.length > 0 && (
         <div className="mb-6">

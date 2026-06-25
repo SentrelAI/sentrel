@@ -28,7 +28,7 @@ interface ResolvedSkill {
   via: string
   exists_in_db: boolean
   would_create: boolean
-  composio_toolkit: string | null
+  service_slug: string | null
 }
 
 interface PreviewPayload {
@@ -48,7 +48,7 @@ interface PreviewPayload {
     suggested_model: string
     suggested_provider: string
   }
-  requirements: Array<{ capability: string; query: string; priority: string; composio_toolkit: string | null }>
+  requirements: Array<{ capability: string; query: string; priority: string; service_slug: string | null }>
   resolved_skills: ResolvedSkill[]
   unresolved_capabilities: string[]
   lint: { pass: boolean; score: number; warnings: Array<{ rule: string; message: string }> }
@@ -366,7 +366,7 @@ function SkillResolutionTable({ resolved, unresolved }: { resolved: ResolvedSkil
             <th className="pb-2 pr-2">Status</th>
             <th className="pb-2 pr-2">Capability</th>
             <th className="pb-2 pr-2">Skill slug</th>
-            <th className="pb-2 pr-2">Composio</th>
+            <th className="pb-2 pr-2">Service</th>
           </tr>
         </thead>
         <tbody>
@@ -387,7 +387,7 @@ function SkillResolutionTable({ resolved, unresolved }: { resolved: ResolvedSkil
               </td>
               <td className="py-1.5 pr-2">{r.capability}</td>
               <td className="py-1.5 pr-2 font-mono">{r.slug}</td>
-              <td className="py-1.5 pr-2 text-muted-foreground">{r.composio_toolkit || "—"}</td>
+              <td className="py-1.5 pr-2 text-muted-foreground">{r.service_slug || "—"}</td>
             </tr>
           ))}
           {unresolved.map((c, i) => (

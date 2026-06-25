@@ -2772,7 +2772,7 @@ function RunDetail({ run }: { run: ScheduledTaskRun }) {
 
 // ── Recommended-integrations callout ─────────────────────────────────
 // Shown above the section tabs when the agent has enabled skills that
-// require Composio toolkits the org hasn't connected yet. Linking
+// require connected apps the org hasn't connected yet. Linking
 // straight to /integrations with the toolkit pre-selected via the hash
 // fragment so the user lands directly on the right OAuth button.
 function MissingIntegrationsCallout({

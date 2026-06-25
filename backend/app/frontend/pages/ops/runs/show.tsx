@@ -75,7 +75,7 @@ function fmtTokens(n: number | null): string {
 
 // Color-code span names by category for the waterfall
 function spanColor(name: string): string {
-  if (name.startsWith("tool_use:mcp__composio__")) return "bg-purple-500"
+  if (name.startsWith("tool_use:mcp__apps__") || name.startsWith("tool_use:mcp__composio__")) return "bg-purple-500"
   if (name.startsWith("tool_use:WebSearch") || name.startsWith("tool_use:WebFetch")) return "bg-blue-500"
   if (name.startsWith("tool_use:")) return "bg-indigo-500"
   if (name === "agent_loop") return "bg-emerald-500"
@@ -88,6 +88,7 @@ function spanColor(name: string): string {
 
 function spanLabel(name: string): string {
   return name
+    .replace("tool_use:mcp__apps__", "🔗 ")
     .replace("tool_use:mcp__composio__", "🔗 ")
     .replace("tool_use:mcp__", "🔧 ")
     .replace("tool_use:", "🔨 ")

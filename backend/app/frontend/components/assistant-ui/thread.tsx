@@ -101,15 +101,15 @@ export const ActionApprovalProvider = ActionApprovalContext.Provider;
 
 // Item 5 — propose_connection: agent asks the user to wire up external
 // access. ONE card type handles both kinds:
-//   composio_oauth → POST /integrations/:slug/connect → OAuth popup
+//   connect → send the user to the /integrations directory to connect
 //   api_credential → open /settings/credentials?provider=:slug in new tab
-// Missing kind defaults to composio_oauth for back-compat with rows
+// Missing kind defaults to "connect" for back-compat with rows
 // persisted before the unified flow.
 type ConnectionProposalData = {
   service: string
   label: string
   why: string
-  kind?: "composio_oauth" | "api_credential" | "org_credential"
+  kind?: "connect" | "api_credential" | "org_credential"
   dismiss: () => void
 } | null
 
@@ -512,32 +512,11 @@ const InlineConnectionProposal: FC = () => {
         window.open(url, "_blank", "noopener,noreferrer");
         proposal.dismiss();
       } else {
-        // Composio OAuth: POST to /integrations/:slug/connect, get a
-        // redirect_url, open it as a popup, reload chat on close so the
-        // agent picks up the new connection.
-        const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
-        const res = await fetch(`/integrations/${proposal.service}/connect`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf },
-        });
-        const ct = res.headers.get("content-type") || "";
-        if (!ct.includes("application/json")) {
-          setError(`Couldn't reach Composio for ${proposal.label}. Check the integration is set up at composio.dev → Auth configs.`);
-          return;
-        }
-        const data = await res.json().catch(() => ({} as { redirect_url?: string; error?: string }));
-        if (data.redirect_url) {
-          const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100");
-          const timer = setInterval(() => {
-            if (popup?.closed) {
-              clearInterval(timer);
-              proposal.dismiss();
-              setTimeout(() => window.location.reload(), 500);
-            }
-          }, 500);
-        } else {
-          setError(data.error || `Composio rejected the ${proposal.label} connect request.`);
-        }
+        // Send the user to the /integrations directory to connect this
+        // service there (3-mode connect modal). The agent picks up the new
+        // connection on their next message.
+        proposal.dismiss();
+        window.location.href = "/integrations";
       }
     } catch (err) {
       setError(`Network error: ${(err as Error).message}`);
@@ -956,7 +935,7 @@ type ToolStep = {
 };
 
 // Per-tool icon — keeps each step instantly recognizable in a long stack.
-// Brand icons for the well-known Composio / MCP toolkits; generic Plug2
+// Brand icons for the well-known MCP toolkits; generic Plug2
 // for anything we don't have a custom mapping for.
 function iconForTool(tool: string) {
   if (tool === "WebSearch" || tool === "Grep" || tool === "Glob") return SearchIcon;
@@ -969,11 +948,12 @@ function iconForTool(tool: string) {
   if (tool === "Agent") return BotIcon;
   if (tool === "Folder" || tool === "LS") return FolderIcon;
 
-  // Composio MCP tools: mcp__composio__GMAIL_… / LINKEDIN_… / etc.
-  // Match the toolkit segment (between mcp__composio__ and the first _).
-  const composioMatch = tool.match(/^mcp__composio__(\w+?)_/);
-  if (composioMatch) {
-    const toolkit = composioMatch[1].toLowerCase();
+  // MCP app tools: mcp__apps__GMAIL_… / LINKEDIN_… / etc. (legacy
+  // mcp__composio__ names match too). Match the toolkit segment
+  // (between the prefix and the first _).
+  const toolkitMatch = tool.match(/^mcp__(?:apps|composio)__(\w+?)_/);
+  if (toolkitMatch) {
+    const toolkit = toolkitMatch[1].toLowerCase();
     if (toolkit === "gmail") return GmailIcon;
     if (toolkit === "googledrive" || toolkit === "drive") return HardDriveIcon;
     if (toolkit === "googledocs" || toolkit === "googlesheets" || toolkit === "sheets" || toolkit === "docs") return TableIcon;

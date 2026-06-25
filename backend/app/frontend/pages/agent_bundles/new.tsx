@@ -46,7 +46,7 @@ interface Preview {
   inputs: Array<{ key: string; label: string; description: string | null; placeholder: string | null; default: string | null; required: boolean }>
   webhooks: Array<{ name: string; source: string; instruction: string; why: string | null }>
   integrations: Array<
-    | { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null; options?: never }
+    | { service: string; kind: "service" | "mcp"; required?: boolean; why: string | null; options?: never }
     | { kind: "choice"; options: string[]; multi?: boolean; required?: boolean; why: string | null; service?: never }
   >
   secrets: string[]
@@ -107,8 +107,8 @@ function csrfToken(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
 }
 
-// Service-name comparisons must survive naming drift between Composio
-// toolkit slugs ("googlecalendar") and stored service_names
+// Service-name comparisons must survive naming drift between catalog
+// slugs ("googlecalendar") and stored service_names
 // ("google_calendar", "GOOGLECALENDAR") — normalize to lowercase
 // alphanumerics before comparing, mirroring Deployer#normalize_service.
 const normSvc = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
@@ -174,7 +174,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // the bundle — plain services plus the chosen alternative from each
   // any_of group. Changing a choice swaps the auto-ticked skills for
   // that group's options without touching manual picks elsewhere.
-  const plainServices = (preview?.integrations || []).filter((i) => i.kind === "composio").map((i) => normSvc(i.service))
+  const plainServices = (preview?.integrations || []).filter((i) => i.kind === "service").map((i) => normSvc(i.service))
   const effectiveServices = new Set([...plainServices, ...integrationChoices.map(normSvc)])
   const [pickedPlatformSkills, setPickedPlatformSkills] = useState<Set<string>>(
     new Set(
@@ -231,37 +231,17 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [connectBusy, setConnectBusy] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
 
-  // Composio OAuth in a popup — same flow the inline chat card uses.
-  async function connectIntegration(service: string) {
+  // Send the user to the /integrations directory to connect this service
+  // there (3-mode connect modal) — same destination the inline chat card uses.
+  function connectIntegration(service: string) {
     setConnectBusy(service)
     setConnectError(null)
-    try {
-      const res = await fetch(`/integrations/${service}/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken() },
-      })
-      const data = await res.json().catch(() => ({} as { redirect_url?: string; error?: string }))
-      if (data.redirect_url) {
-        const popup = window.open(data.redirect_url, "composio-connect", "width=600,height=700,left=200,top=100")
-        const timer = setInterval(() => {
-          if (popup?.closed) {
-            clearInterval(timer)
-            setConnected((prev) => new Set([...prev, normSvc(service)]))
-          }
-        }, 500)
-      } else {
-        setConnectError(data.error || `Couldn't start the ${service} OAuth flow.`)
-      }
-    } catch (err) {
-      setConnectError(`Network error: ${(err as Error).message}`)
-    } finally {
-      setConnectBusy(null)
-    }
+    window.location.href = "/integrations"
   }
 
   // Save a secret as an org-level generic credential. Provider derives
   // from the secret name so the agent's secrets.get resolves it later.
-  // base_url + usage_md ride along in meta so self-hosted / non-Composio
+  // base_url + usage_md ride along in meta so self-hosted / custom
   // APIs (Listmonk, custom services) are fully usable from secrets.get —
   // the agent gets the token AND where to call it, without leaving the
   // wizard for the Settings → Credentials page.
@@ -310,7 +290,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // else stays connect-now-or-later.
   const missingRequired = [
     ...(preview?.integrations || [])
-      .filter((i): i is { service: string; kind: "composio"; required?: boolean; why: string | null } => i.kind === "composio" && !!i.required)
+      .filter((i): i is { service: string; kind: "service"; required?: boolean; why: string | null } => i.kind === "service" && !!i.required)
       .map((i) => i.service)
       .filter((s) => !connected.has(normSvc(s))),
     ...choiceGroups.flatMap((g, gi) => {
@@ -813,9 +793,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
               </section>
             )}
 
-            {/* Connections — actionable right here: OAuth popups for Composio
-                integrations, inline paste-and-save for secrets. Everything is
-                org-level, so connecting before the agent exists is fine. */}
+            {/* Connections — actionable right here: a jump to the /integrations
+                directory for service integrations, inline paste-and-save for
+                secrets. Everything is org-level, so connecting before the agent
+                exists is fine. */}
             {(preview.integrations.length > 0 || preview.secrets.length > 0 || preview.channels.length > 0) && (
               <section>
                 <Overline className="mb-3">Connections</Overline>
@@ -832,7 +813,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                     </div>
                   ))}
                   {preview.integrations
-                    .filter((i): i is { service: string; kind: "composio" | "mcp"; required?: boolean; why: string | null } => i.kind !== "choice")
+                    .filter((i): i is { service: string; kind: "service" | "mcp"; required?: boolean; why: string | null } => i.kind !== "choice")
                     .map((i) => {
                       const isConnected = connected.has(normSvc(i.service))
                       return (

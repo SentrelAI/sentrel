@@ -263,7 +263,7 @@ type ToolSource = {
 
 type ToolStep = {
   id: string         // tool_call signature: tool + first 16 chars of input
-  tool: string       // raw tool name (WebSearch, mcp__composio__…)
+  tool: string       // raw tool name (WebSearch, mcp__apps__…)
   label: string      // humanized label ("Searching the web: 'X'") — emoji stripped client-side
   result?: string    // short snippet (engine truncates to 500)
   startedAt: number
@@ -540,7 +540,7 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
       service: String(payload.service || ""),
       label: String(payload.label || seed.payload_type),
       why: String(payload.why || ""),
-      kind: kind || "composio_oauth",
+      kind: kind || "connect",
       dismiss: () => setConnectionProposal(null),
     }
   })()
@@ -822,15 +822,14 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
     }
 
     // Item 5 — agent surfaces a 'Connect <service>' card when an action
-    // requires an unconnected toolkit. Click opens the existing
-    // /integrations/:service/connect Composio OAuth popup; on close,
-    // refresh the page so the connected list updates.
+    // requires an unconnected app. Click sends the user to the /integrations
+    // directory to connect there.
     const handleConnectionProposal = (data: any) => {
       setConnectionProposal({
         service: data.service,
         label: data.label || data.service,
         why: data.why || "",
-        kind: data.kind || "composio_oauth",
+        kind: data.kind || "connect",
         dismiss: () => setConnectionProposal(null),
       })
     }
