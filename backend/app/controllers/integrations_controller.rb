@@ -86,7 +86,7 @@ class IntegrationsController < ApplicationController
       # NEW: static integration catalog (config/integrations.yml) — replaces the
       # live Composio toolkit list. Runs alongside supported_services during the
       # transition; the frontend prefers `catalog` when present.
-      catalog: IntegrationCatalog.list(current_tenant.id),
+      catalog: IntegrationCatalog.list(current_tenant.id, configured_keys: Nango::Client.configured_provider_keys),
       org_integration_configs: org_configs,
       nango_connect_base_url: ENV["NANGO_CONNECT_BASE_URL"],
       # Single source of truth — durable per-org cache populated by

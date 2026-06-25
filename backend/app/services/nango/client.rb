@@ -49,6 +49,30 @@ module Nango
       post_json("/connect/sessions", body)
     end
 
+    # The integrations (provider configs) set up in this Nango environment. Each
+    # one's `unique_key` is what we store as provider_config_key. This is the
+    # source of truth for "which apps can actually be connected via managed
+    # OAuth" — an app in our catalog is only one-click-connectable if its
+    # provider_config_key has a matching Nango integration here.
+    def list_integrations
+      Array(get_json("/integrations")["data"])
+    rescue Error
+      []
+    end
+
+    # Just the configured provider_config_keys, cached briefly so the
+    # Integrations page can sync its "available" state without hitting Nango on
+    # every render. Empty on failure → the UI degrades gracefully (still shows
+    # the catalog; connect attempts surface the "not set up yet" message).
+    def configured_provider_keys
+      return [] unless configured?
+      Rails.cache.fetch("nango:provider_keys", expires_in: 2.minutes) do
+        list_integrations.filter_map { |i| i["unique_key"] }
+      end
+    rescue StandardError
+      []
+    end
+
     # Connection details (status, provider, metadata). Used after the callback
     # to confirm the connection is live before we mark the Integration connected.
     def get_connection(connection_id, provider_config_key)

@@ -23,13 +23,35 @@ class IntegrationCatalog
       load_catalog.key?(slug.to_s)
     end
 
-    # Integrations-page list. Every catalog app is connectable (at minimum via
-    # paste-token), so `available` is always true — the page distinguishes
-    # connected vs not from the Integration rows, not availability.
-    # Returns: [{ slug, label, category, description, logo, available, modes,
-    #             auth_type, review, tool, docs_url }]
-    def list(_organization_id = nil)
-      all.map { |e| e.merge(available: true) }
+    # Integrations-page list, synced with what's actually configured in Nango.
+    #
+    # `configured_keys` = the provider_config_keys that have a Nango integration
+    # set up (from Nango::Client.configured_provider_keys). An app's OAuth modes
+    # (managed / byo_oauth) only work if its key is wired in Nango, so:
+    #   - oauth_ready  : the app's provider_config_key is configured in Nango
+    #   - modes        : OAuth modes are dropped unless oauth_ready (paste-token
+    #                    never needs Nango, so it stays)
+    #   - available    : connectable now — oauth_ready, OR a paste-token/api_key
+    #                    app, OR a dedicated MCP. Otherwise the UI shows "Request"
+    #                    (greyed) instead of a Connect button.
+    #
+    # If `configured_keys` is blank (Nango unreachable / nothing configured), we
+    # degrade gracefully: every app stays available, so a transient Nango blip
+    # never makes the whole grid look broken.
+    # Returns: [{ slug, label, category, description, logo, available, oauth_ready,
+    #             modes, auth_type, review, tool, docs_url }]
+    def list(_organization_id = nil, configured_keys: nil)
+      keys = configured_keys
+      all.map do |e|
+        if keys.blank?
+          e.merge(available: true, oauth_ready: nil)
+        else
+          oauth_ready = e[:provider_config_key].present? && keys.include?(e[:provider_config_key])
+          modes = e[:modes].reject { |m| %w[managed byo_oauth].include?(m) && !oauth_ready }
+          available = oauth_ready || e[:tool] == "mcp" || (e[:auth_type] == "api_key" && modes.include?("byo_token"))
+          e.merge(available: available, oauth_ready: oauth_ready, modes: modes)
+        end
+      end
     end
 
     # Slim list for the engine — slug + label + api_base_url so nango_request
