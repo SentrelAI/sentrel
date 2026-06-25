@@ -82,7 +82,7 @@ class AgentTemplate < ApplicationRecord
 
   # Integration service names this template expects to be connected. The
   # new-agent flow can surface these as a "Connect these to fully enable this
-  # agent" hint after creation — we don't auto-connect because Composio
+  # agent" hint after creation — we don't auto-connect because connecting
   # requires user-driven OAuth.
   def missing_integrations_for(org)
     return [] if suggested_integrations.blank?

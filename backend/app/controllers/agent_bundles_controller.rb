@@ -41,17 +41,6 @@ class AgentBundlesController < ApplicationController
     # all) so Devise lands them right back here after sign-in.
     store_location_for(:user, request.fullpath) unless user_signed_in?
 
-    # Heal connection statuses before rendering — same debounced sync as
-    # /integrations, so the wizard's Connected badges and required-gating
-    # reflect Composio's live state, not a stale local snapshot.
-    if user_signed_in?
-      sync_key = "composio:sync:org_#{current_tenant.id}:user_#{current_user.id}"
-      if ENV["COMPOSIO_API_KEY"].present? && Rails.cache.read(sync_key).blank?
-        Rails.cache.write(sync_key, Time.current, expires_in: 60.seconds)
-        ComposioConnectionSync.call(organization: current_tenant, user: current_user)
-      end
-    end
-
     source = params[:source].to_s.strip
     upload_id = params[:upload].to_s.strip
     preview = nil
@@ -94,7 +83,7 @@ class AgentBundlesController < ApplicationController
       # shows a sign-in overlay and gates Deploy/Connect behind it.
       authenticated: user_signed_in?,
       # Org state so the wizard renders live status on the bundle's
-      # requirements: which Composio services are already connected, and
+      # requirements: which services are already connected, and
       # which credential providers already have a stored secret.
       connected_services: user_signed_in? ? current_tenant.integrations.where(status: "connected").pluck(:service_name).uniq : [],
       credential_providers: user_signed_in? ? current_tenant.credentials.pluck(:provider).uniq : [],
@@ -316,7 +305,7 @@ class AgentBundlesController < ApplicationController
           # required: blocks Deploy until the chosen one is connected.
           { kind: "choice", options: i["any_of"].map(&:to_s), multi: i["multi"] == true, required: i["required"] == true, why: i["why"] }
         else
-          { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "composio", required: i["required"] == true, why: i["why"] }
+          { service: i["service"] || i["name"], kind: i["type"] == "mcp" ? "mcp" : "integration", required: i["required"] == true, why: i["why"] }
         end
       },
       secrets: manifest.secret_names,

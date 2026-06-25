@@ -92,7 +92,7 @@ Rails.application.routes.draw do
     get "action_approvals/by_token", to: "action_approvals#by_token"
     # cloud-init callback: engine posts when its container is up + healthy.
     post "agent_instances/ready", to: "agent_instances#ready"
-    # Engine fetches the canonical supported-integrations list from Composio
+    # Engine fetches the canonical supported-integrations list (IntegrationCatalog)
     # at boot + every 30 min. Source of truth — no hard-coded list to drift.
     get "integrations/supported", to: "integrations#supported"
     # Engine fetches the agent's CONNECTED Nango providers (for nango_request).
@@ -333,9 +333,6 @@ Rails.application.routes.draw do
 
     resources :integrations, only: [ :index, :destroy ] do
       collection do
-        post ":service_name/connect", action: :connect, as: :connect
-        get :callback
-        post :refresh
         # Catalog entries we don't have an auth_config for yet — users click
         # "Request" and we record demand here, surfacing aggregate counts to
         # ops so prioritisation is data-driven.
@@ -379,7 +376,7 @@ Rails.application.routes.draw do
   # Slack-as-channel OAuth install. Agent-scoped: /slack/install?agent_id=AGT
   # → consent screen → /slack/oauth/callback exchanges code and persists a
   # ChannelConfig + encrypted bot_token. Distinct from Slack-as-integration
-  # (Composio path), which gives agents Slack tool calls instead of making
+  # (Nango path), which gives agents Slack tool calls instead of making
   # them the bot user.
   authenticate :user do
     get    "slack/install",            to: "slack_oauth#install",    as: :slack_install

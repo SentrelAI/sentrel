@@ -56,7 +56,7 @@ module Forge
               via: res.via,
               exists_in_db: true,
               would_create: false,
-              composio_toolkit: req.composio_toolkit
+              service_slug: req.service_slug
             }
           elsif res.would_generate
             placeholder_slug = req.query.to_s.downcase.gsub(/[^a-z0-9]+/, "-").squeeze("-").gsub(/\A-|-\z/, "")
@@ -68,7 +68,7 @@ module Forge
               via: "would_generate",
               exists_in_db: false,
               would_create: true,
-              composio_toolkit: req.composio_toolkit
+              service_slug: req.service_slug
             }
           end
         else
@@ -94,7 +94,7 @@ module Forge
       # integrations we resolved.
       attrs = tres.template.to_h.stringify_keys
       attrs["suggested_skill_slugs"] = all_slugs
-      attrs["suggested_integrations"] = resolved.flat_map { |r| r[:composio_toolkit] }.compact.uniq
+      attrs["suggested_integrations"] = resolved.flat_map { |r| r[:service_slug] }.compact.uniq
 
       # 4. Quality lint on the proposed template. QualityLint operates
       # on a record-like object — we wrap the attrs in a lightweight

@@ -203,11 +203,10 @@ module AgentProvisioner
         # BYO LLM keys — Credential.find_for(agent, …) prefers the org's
         # stored key over the platform-wide ENV fallback so customers can
         # bill against their own account. Same lookup for openai (for
-        # transcribe / embed) + composio.
-        "COMPOSIO_API_KEY"    => byo_key(agent, "composio", ENV["COMPOSIO_API_KEY"]),
+        # transcribe / embed).
         "OPENAI_API_KEY"      => byo_key(agent, "openai", ENV["OPENAI_API_KEY"]),
         "SENTRY_DSN"          => ENV["SENTRY_DSN"].to_s,
-        # "all" loads every connected Composio toolkit into allowedTools
+        # "all" loads every connected integration's tools into allowedTools
         # at session start, so tools discovered via search_integrations
         # actually execute. "smart" (the old default) silently dropped
         # dynamically-loaded tool calls because allowedTools didn't grow
@@ -389,7 +388,6 @@ module AgentProvisioner
         "${ANTHROPIC_API_KEY}" => ENV["ANTHROPIC_API_KEY"].to_s,
         "${ENGINE_API_SECRET}" => ENV["ENGINE_API_SECRET"].to_s,
         "${RAILS_INTERNAL_URL}"=> ENV["RAILS_INTERNAL_URL"].to_s,
-        "${COMPOSIO_API_KEY:-}"=> ENV["COMPOSIO_API_KEY"].to_s,
         "${OPENAI_API_KEY:-}"  => ENV["OPENAI_API_KEY"].to_s
       }
       subs.each { |k, v| template = template.gsub(k, v) }

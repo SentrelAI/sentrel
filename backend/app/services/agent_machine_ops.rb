@@ -43,7 +43,7 @@ module AgentMachineOps
 
   # Tell the engine to reload its in-memory config AND push fresh env
   # vars into the Fly Machine (so rotated API keys, switched provider,
-  # new Composio key, etc. actually apply). The Fly API replaces env
+  # etc. actually apply). The Fly API replaces env
   # on machine update; the next boot reads the new values. Triggers a
   # Machine-level restart — no /data loss.
   def reload(agent)

@@ -292,7 +292,7 @@ class AgentsController < ApplicationController
 
   # Build a UI-friendly payload for the missing-integrations card on the
   # agent show page. Cross-references agent.missing_integration_slugs
-  # against Composio's toolkit catalog (label, logo, category) so the
+  # against the integration catalog (label, logo, category) so the
   # client doesn't have to look those up itself.
   def missing_integrations_for(agent)
     slugs = agent.missing_integration_slugs

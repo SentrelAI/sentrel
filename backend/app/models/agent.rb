@@ -75,7 +75,7 @@ class Agent < ApplicationRecord
     effective_capabilities.dig(key.to_s, "enabled") == true
   end
 
-  # Composio toolkit slugs the agent's CURRENTLY-ENABLED skills depend on.
+  # Integration slugs the agent's CURRENTLY-ENABLED skills depend on.
   # Driven by SkillDefinition.requires_connections so it stays correct as
   # the user toggles skills on/off — no template lookup needed.
   def required_integration_slugs

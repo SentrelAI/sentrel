@@ -1,18 +1,18 @@
 require "net/http"
 require "json"
 
-# Single source of truth for which integrations are usable: queries Composio's
-# /api/v3/auth_configs and returns the list of toolkit slugs + display labels
-# that have an auth_config wired up. The engine fetches this at boot + every
-# 30 min so propose_connection only ever surfaces Connect cards for things
-# that will actually work.
+# Single source of truth for which integrations are usable: returns the static
+# IntegrationCatalog (config/integrations.yml) — the list of slugs + display
+# labels that can be connected. The engine fetches this at boot + every 30 min
+# so propose_connection only ever surfaces Connect cards for things that will
+# actually work.
 class Api::IntegrationsController < ActionController::API
   before_action :authenticate_engine!
 
   # GET /api/integrations/supported?organization_id=N
   # The connectable-app catalog the engine advertises for propose_connection.
-  # Now the static IntegrationCatalog (config/integrations.yml), not a live
-  # Composio fetch — org_id is accepted for back-compat but unused.
+  # The static IntegrationCatalog (config/integrations.yml) — org_id is accepted
+  # for back-compat but unused.
   def supported
     render json: { items: IntegrationCatalog.list_for_engine }
   rescue => e

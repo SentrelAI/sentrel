@@ -37,7 +37,7 @@ class SkillDefinition < ApplicationRecord
   end
 
   # Returns which required pieces are missing, given an agent's current
-  # capabilities + the org's connected Composio toolkits. UI uses this to
+  # capabilities + the org's connected integrations. UI uses this to
   # gray out skills whose requirements aren't met.
   def dependencies_missing_for(agent, available_integration_slugs = [])
     caps_missing = (required_capabilities || []).reject { |k| agent.capability_enabled?(k) }

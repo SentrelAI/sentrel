@@ -1,7 +1,7 @@
 # Auto-installs the skills that depend on a newly-connected integration
 # onto every agent in the org that can plausibly use them.
 #
-# Example: user connects Apollo via Composio →
+# Example: user connects Apollo →
 #   - finds SkillDefinition.where("requires_connections @> ['apollo']")
 #     → [apollo-prospecting]
 #   - for each Agent in the org with capabilities.integrations.enabled

@@ -21,7 +21,7 @@ class Credential < ApplicationRecord
   # unique key, not a check constraint) — extend here as we add more.
   LLM_PROVIDERS    = %w[anthropic openai openrouter google_ai groq mistral together xai].freeze
   CLOUD_PROVIDERS  = %w[aws gcp azure heroku hetzner vercel digitalocean fly cloudflare].freeze
-  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun composio resend slack notion github gitlab linear browserbase replicate fal google_ai elevenlabs deepgram tavily exa perplexity llamaparse reducto mistral_ocr luma runway e2b modal].freeze
+  GENERIC_HINTS    = %w[stripe twilio sendgrid mailgun resend slack notion github gitlab linear browserbase replicate fal google_ai elevenlabs deepgram tavily exa perplexity llamaparse reducto mistral_ocr luma runway e2b modal].freeze
 
   # Per-provider field schema. The UI uses this to render the right form
   # inputs; secrets.get returns the full fields map; AgentProvisioner reads

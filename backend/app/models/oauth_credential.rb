@@ -6,9 +6,7 @@
 #   engine to the LLM provider — they are NEVER exposed to agents as MCP tools.
 #
 # kind = "tool" (future):
-#   For OAuth-based tool integrations not covered by Composio.
-#
-# Composio toolkits stay in their own table (out of scope for this model).
+#   For OAuth-based tool integrations.
 class OauthCredential < ApplicationRecord
   PROVIDERS = %w[anthropic openai].freeze
   KINDS     = %w[ai_provider tool].freeze

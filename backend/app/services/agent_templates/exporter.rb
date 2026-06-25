@@ -186,7 +186,7 @@ module AgentTemplates
     end
 
     # Distinct integrations any embedded skill depends on — recipient
-    # connects these post-install. Names match Composio toolkit slugs.
+    # connects these post-install. Names match integration catalog slugs.
     def integrations_required
       slugs = @agent.skill_definitions
                     .flat_map { |s| Array(s.requires_connections) }

@@ -11,7 +11,7 @@ module Forge
   # constrained to a known set of real slugs before TemplateGenerator
   # writes its suggested_skill_slugs.
   class SkillRequirementsAnalyzer
-    Requirement = Struct.new(:capability, :query, :priority, :rationale, :composio_toolkit, keyword_init: true)
+    Requirement = Struct.new(:capability, :query, :priority, :rationale, :service_slug, keyword_init: true)
 
     # Well-known integration slugs from the static catalog, shown as examples
     # in the prompt to anchor Claude on the common cases (gmail, slack, …).
@@ -53,14 +53,14 @@ module Forge
     def build_requirement(r)
       capability = r["capability"].to_s.strip
       return nil if capability.empty?
-      toolkit = r["composio_toolkit"].to_s.downcase.presence
-      toolkit = nil unless toolkit.nil? || self.class.valid_toolkit_set.include?(toolkit)
+      slug = r["service_slug"].to_s.downcase.presence
+      slug = nil unless slug.nil? || self.class.valid_toolkit_set.include?(slug)
       Requirement.new(
         capability: capability,
         query: (r["query"].presence || capability.downcase.tr("^a-z0-9 ", " ").squeeze(" ")).strip,
         priority: %w[required nice_to_have].include?(r["priority"].to_s) ? r["priority"] : "required",
         rationale: r["rationale"].to_s,
-        composio_toolkit: toolkit,
+        service_slug: slug,
       )
     end
 
@@ -75,10 +75,10 @@ module Forge
         - DO NOT name skill slugs. Just describe the capability.
         - For each, provide a short search query (3-6 words) the resolver will use to find an existing SKILL.md.
         - Mark priority: "required" or "nice_to_have".
-        - Map each capability to a Composio toolkit slug when it talks to an external SaaS (Gmail, Slack, Salesforce, etc.). Use null when the capability is local/internal (e.g. "summarize a transcript", "render PDF") OR uses a non-Composio service.
-        - Composio publishes 1000+ toolkit slugs. Common examples (exact spelling required):
+        - Map each capability to a service slug (the catalog slug of the SaaS it connects to, e.g. gmail, slack, salesforce) when it talks to an external SaaS. Use null when the capability is local/internal (e.g. "summarize a transcript", "render PDF") OR uses a service that isn't in the catalog.
+        - Common catalog slugs (exact spelling required):
           #{EXAMPLE_TOOLKITS.each_slice(8).map { |s| s.join(", ") }.join("\n          ")}
-        - For less common SaaS (convertkit, beehiiv, square, etc.) you may use any Composio toolkit slug you're confident exists — we validate against the live catalog and silently set it to null if the slug doesn't exist.
+        - For less common SaaS (convertkit, beehiiv, square, etc.) you may use any service slug you're confident exists — we validate against the catalog and silently set it to null if the slug doesn't exist.
         - Return ONLY a JSON object, no fences.
       SYS
     end
@@ -100,14 +100,14 @@ module Forge
               "capability": "send and reply to email via Gmail",
               "query": "send gmail email",
               "priority": "required",
-              "composio_toolkit": "gmail",
+              "service_slug": "gmail",
               "rationale": "Most of this role's day-to-day output ships via email."
             },
             {
               "capability": "summarize a meeting transcript into action items",
               "query": "meeting summary action items",
               "priority": "required",
-              "composio_toolkit": null,
+              "service_slug": null,
               "rationale": "Local processing — no external SaaS involved."
             },
             ...up to #{@max_count} entries

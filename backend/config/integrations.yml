@@ -1,4 +1,4 @@
-# Static integration catalog — replaces the live Composio toolkit catalog.
+# Static integration catalog.
 #
 # Each entry is one connectable app. Keyed by `service_name` (our internal
 # slug, also what SkillDefinition.requires_connections must match). Loaded by

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_24_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_25_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -280,6 +280,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_000000) do
     t.index ["was_resume"], name: "index_audit_logs_on_was_resume"
   end
 
+  create_table "catalog_apps", force: :cascade do |t|
+    t.string "api_base_url"
+    t.string "auth_mode"
+    t.jsonb "categories", default: [], null: false
+    t.string "category"
+    t.datetime "created_at", null: false
+    t.string "display_name"
+    t.string "docs_url"
+    t.boolean "featured", default: false, null: false
+    t.string "label", null: false
+    t.string "logo"
+    t.jsonb "modes", default: ["managed"], null: false
+    t.integer "position", default: 0, null: false
+    t.boolean "published", default: true, null: false
+    t.string "review", default: "none", null: false
+    t.jsonb "scopes", default: [], null: false
+    t.string "slug", null: false
+    t.string "tool", default: "proxy", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category"], name: "index_catalog_apps_on_category"
+    t.index ["published"], name: "index_catalog_apps_on_published"
+    t.index ["slug"], name: "index_catalog_apps_on_slug", unique: true
+  end
+
   create_table "channel_configs", force: :cascade do |t|
     t.bigint "agent_id", null: false
     t.string "channel_type", null: false
@@ -292,22 +316,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_000000) do
     t.index "((config ->> 'team_id'::text)) text_pattern_ops", name: "idx_channel_configs_slack_team_id", where: "((channel_type)::text = 'slack'::text)"
     t.index ["agent_id", "channel_type"], name: "index_channel_configs_on_agent_id_and_channel_type", unique: true
     t.index ["agent_id"], name: "index_channel_configs_on_agent_id"
-  end
-
-  create_table "composio_toolkit_caches", force: :cascade do |t|
-    t.boolean "available", default: false, null: false
-    t.string "category"
-    t.datetime "created_at", null: false
-    t.text "description"
-    t.string "label"
-    t.string "logo"
-    t.bigint "organization_id", null: false
-    t.datetime "refreshed_at", null: false
-    t.string "slug", null: false
-    t.datetime "updated_at", null: false
-    t.index ["organization_id", "available"], name: "index_composio_toolkit_caches_on_organization_id_and_available"
-    t.index ["organization_id", "slug"], name: "idx_composio_toolkit_caches_org_slug", unique: true
-    t.index ["organization_id"], name: "index_composio_toolkit_caches_on_organization_id"
   end
 
   create_table "conversations", force: :cascade do |t|
@@ -425,7 +433,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_000000) do
   end
 
   create_table "integrations", force: :cascade do |t|
-    t.string "composio_connection_id"
     t.string "connect_mode", default: "managed", null: false
     t.datetime "created_at", null: false
     t.string "nango_connection_id"
@@ -565,7 +572,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_000000) do
 
   create_table "organizations", force: :cascade do |t|
     t.text "company_summary"
-    t.text "composio_api_key_encrypted"
     t.text "context_md"
     t.datetime "created_at", null: false
     t.bigint "default_slack_agent_id"
@@ -783,7 +789,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_000000) do
   add_foreign_key "audit_logs", "tasks"
   add_foreign_key "audit_logs", "users", column: "acting_user_id", validate: false
   add_foreign_key "channel_configs", "agents"
-  add_foreign_key "composio_toolkit_caches", "organizations"
   add_foreign_key "conversations", "agents"
   add_foreign_key "conversations", "conversations", column: "unified_conversation_id"
   add_foreign_key "conversations", "organizations"

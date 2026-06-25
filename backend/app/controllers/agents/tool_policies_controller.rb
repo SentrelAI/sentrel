@@ -10,34 +10,24 @@ class Agents::ToolPoliciesController < ApplicationController
     policies = @agent.agent_tool_policies.includes(:agent).index_by(&:toolkit_slug)
 
     # Source of truth = current_tenant.integrations (the local table that
-    # /integrations also renders from). Same data, no Composio HTTP, no
-    # dependency on the new toolkit cache being warm.
+    # /integrations also renders from).
     visible = current_tenant.integrations
       .where(status: "connected")
       .where("scope = 'org' OR (scope = 'user' AND owner_user_id = ?)", current_user.id)
       .pluck(:service_name)
       .uniq
 
-    # Look up labels from the toolkit cache when available; fall back to a
-    # title-cased slug when the cache is cold OR the table doesn't exist
-    # (db:migrate hasn't run yet on this environment).
-    labels = begin
-      if ActiveRecord::Base.connection.table_exists?("composio_toolkit_caches")
-        ComposioToolkitCache.where(organization_id: @agent.organization_id, slug: visible).pluck(:slug, :label).to_h
-      else
-        {}
-      end
-    rescue StandardError => e
-      Rails.logger.warn "ToolPolicies labels lookup skipped: #{e.class}: #{e.message}"
-      {}
-    end
+    # Look up labels from the integration catalog; fall back to a
+    # title-cased slug when the catalog has no entry for the slug.
+    labels = IntegrationCatalog.list(@agent.organization_id)
+      .index_by { |e| e[:slug] }
 
     render json: {
       policies: visible.map { |slug|
         p = policies[slug]
         {
           toolkit_slug: slug,
-          label: labels[slug] || ComposioSupported.prettify_label(slug.titleize),
+          label: labels.dig(slug, :label) || slug.titleize,
           preset: p&.preset || "read_write",
           allowed_tools: p&.allowed_tools || [],
           denied_tools: p&.denied_tools || [],
@@ -70,11 +60,12 @@ class Agents::ToolPoliciesController < ApplicationController
   end
 
   # GET /agents/:agent_id/tool_policies/tools/:toolkit_slug — used by the
-  # Permissions tab to render checkboxes per individual tool. Pulls from
-  # ComposioSupported.tools_for which is cached for 1h.
+  # Permissions tab to render checkboxes per individual tool. Nango-backed
+  # integrations expose a proxy surface rather than a fixed, enumerable tool
+  # list, so there are no per-tool entries to choose from; policies are set
+  # at the preset (read/read_write) level instead.
   def tools
-    slug = params[:toolkit_slug].to_s
-    render json: { items: ComposioSupported.tools_for(slug) }
+    render json: { items: [] }
   end
 
   private

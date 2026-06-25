@@ -23,17 +23,6 @@ class Integration < ApplicationRecord
     connect_mode == "byo_token"
   end
 
-  # Composio's user_id partitions connections by tenant. We've used
-  # "org_<id>" for the workspace-wide bucket; user-scoped integrations get
-  # their own bucket so personal Gmail isn't visible to teammates.
-  def composio_user_id
-    if scope == "user" && owner_user_id.present?
-      "user_#{owner_user_id}"
-    else
-      "org_#{organization_id}"
-    end
-  end
-
   private
 
   def owner_user_consistent_with_scope

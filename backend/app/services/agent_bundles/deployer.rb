@@ -368,7 +368,7 @@ module AgentBundles
         end
       end
       # Don't nag about services the org already has connected. Compare on
-      # a normalized form — Composio slugs ("googlecalendar") and stored
+      # a normalized form — integration slugs ("googlecalendar") and stored
       # service_names ("google_calendar", "GOOGLECALENDAR") drift in
       # casing/separators depending on which surface created the row.
       connected = @org.integrations.where(status: "connected")

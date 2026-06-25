@@ -4,8 +4,7 @@ namespace :forge do
     rows = [
       [ "ANTHROPIC_API_KEY", ENV["ANTHROPIC_API_KEY"], true,  "required — no key, no generation" ],
       [ "SKILLS_SH_API_KEY", ENV["SKILLS_SH_API_KEY"], false, "optional — enables skills.sh API (8420 skills)" ],
-      [ "GH_TOKEN",      ENV["GH_TOKEN"],      false, "optional — enables GitHub search source" ],
-      [ "COMPOSIO_API_KEY",  ENV["COMPOSIO_API_KEY"],  false, "optional — for live toolkit catalog refresh" ]
+      [ "GH_TOKEN",      ENV["GH_TOKEN"],      false, "optional — enables GitHub search source" ]
     ]
     puts "Forge env-source health:"
     puts "─" * 90

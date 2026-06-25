@@ -184,7 +184,7 @@ module Forge
     # the minimum viable set, 6 max, only services we actually support.
     MAX_INTEGRATIONS = 6
     # Variants the AI tends to mix up — picks one canonical form. Right
-    # side must be a slug that exists in ComposioSupported.all_toolkit_slugs.
+    # side must be a slug that exists in IntegrationCatalog.slugs.
     INTEGRATION_ALIASES = {
       "google-docs"     => "googledocs",
       "google_docs"     => "googledocs",
@@ -200,7 +200,7 @@ module Forge
 
     def self.sanitize_integrations(raw)
       catalog = begin
-        ComposioSupported.all_toolkit_slugs.to_set
+        IntegrationCatalog.slugs.to_set
       rescue
         nil
       end

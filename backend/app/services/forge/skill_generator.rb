@@ -93,7 +93,7 @@ module Forge
 
         Output: a SINGLE JSON object with these keys:
           slug, name, description, category (one of: common, communication, content, engineering, finance, productivity, sales),
-          icon (lowercase lucide-react name), requires_connections (array of Composio service slugs the agent must connect first, may be []),
+          icon (lowercase lucide-react name), requires_connections (array of service slugs the agent must connect first, e.g. gmail/slack, may be []),
           required_capabilities (array of capability keys this skill needs enabled), skill_md (the full markdown body, NOT including frontmatter),
           additional_files (optional array of {path, content} — may be []).
 
@@ -119,7 +119,7 @@ module Forge
           "description": "One short sentence agents use to decide if this skill is relevant.",
           "category": "<one of CATEGORIES>",
           "icon": "lowercase-lucide-name",
-          "requires_connections": ["composio-service-slug"],
+          "requires_connections": ["service-slug"],
           "required_capabilities": [],
           "skill_md": "# Skill Name\\n\\nSummary...\\n\\n## When to Use\\n...",
           "additional_files": [

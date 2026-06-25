@@ -30,7 +30,7 @@ module Forge
       # dry_run = preview mode for the AI Template Creator. We still
       # consult the local DB + remote sources (read-only), but we skip:
       #   - SkillGenerator's Claude call (just report "would generate")
-      #   - ensure_composio_link! mutation
+      #   - ensure_connection_link! mutation
       # Cache is bypassed in dry_run so an earlier real-commit doesn't
       # mask what would happen on a fresh run.
       @dry_run = dry_run
@@ -77,11 +77,11 @@ module Forge
 
       return Result.new(requirement: @requirement, error: "no source produced a matching skill") unless skill
 
-      # Composio toolkit linkage: backfill the toolkit slug onto the resolved
+      # Connection linkage: backfill the service slug onto the resolved
       # skill so /integrations + AgentTemplate#missing_integrations_for see
       # the right "Connect X" hint. SKIPPED in dry_run to avoid mutating
       # real skill rows during a preview.
-      ensure_composio_link!(skill, @requirement.composio_toolkit) if @requirement.composio_toolkit.present? && !@dry_run
+      ensure_connection_link!(skill, @requirement.service_slug) if @requirement.service_slug.present? && !@dry_run
 
       Result.new(skill: skill, requirement: @requirement, via: via)
     rescue => e
@@ -100,10 +100,10 @@ module Forge
       @dry_run ? nil : try_github
     end
 
-    def ensure_composio_link!(skill, toolkit)
+    def ensure_connection_link!(skill, slug)
       current = Array(skill.requires_connections).map(&:to_s)
-      return if current.include?(toolkit)
-      skill.update!(requires_connections: current + [ toolkit ])
+      return if current.include?(slug)
+      skill.update!(requires_connections: current + [ slug ])
     end
 
     # ── 1. Local match ──────────────────────────────────────────────────

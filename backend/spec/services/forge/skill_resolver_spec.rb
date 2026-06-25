@@ -7,7 +7,7 @@ RSpec.describe Forge::SkillResolver do
       query: "send gmail email",
       priority: "required",
       rationale: "test",
-      composio_toolkit: "gmail",
+      service_slug: "gmail",
     )
   end
 
@@ -57,7 +57,7 @@ RSpec.describe Forge::SkillResolver do
     end
   end
 
-  describe "Composio toolkit backfill" do
+  describe "service slug backfill" do
     let!(:skill_without_gmail) do
       SkillDefinition.create!(
         slug: "spec-email-no-gmail",
@@ -90,7 +90,7 @@ RSpec.describe Forge::SkillResolver do
         query: "antarctic penguin space station nonexistent zzz",
         priority: "required",
         rationale: "test",
-        composio_toolkit: nil,
+        service_slug: nil,
       )
       result = described_class.new(requirement: lonely_req, allow_generate: false).call
       expect(result.ok?).to be false

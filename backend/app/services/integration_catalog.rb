@@ -1,7 +1,7 @@
 # Loads the static integration catalog (config/integrations.yml) and exposes
-# it in the shape the Integrations page + engine expect. Replaces the live
-# Composio toolkit catalog (ComposioSupported / ComposioToolkitCache) — the
-# catalog is now code, not a per-org API sync, so there's no cache/refresh job.
+# it in the shape the Integrations page + engine expect. The catalog is code
+# (plus the DB-backed catalog_apps directory), not a per-org API sync, so
+# there's no cache/refresh job.
 #
 # An entry is a plain Hash with indifferent-ish access via symbol keys.
 class IntegrationCatalog

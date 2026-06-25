@@ -13,7 +13,6 @@ Sidekiq.configure_server do |config|
       "WeeklyDigestJob"                  => { "cron" => "0 8 * * 1",   "class" => "WeeklyDigestJob" },                  # Mon 8am
       "ArchiveDormantConversationsJob"   => { "cron" => "0 3 * * *",   "class" => "ArchiveDormantConversationsJob" },   # daily 3am
       "RefreshOauthTokensJob"            => { "cron" => "*/30 * * * *", "class" => "RefreshOauthTokensJob" },           # every 30 min
-      "RefreshComposioCacheJob"          => { "cron" => "0 * * * *",   "class" => "RefreshComposioCacheJob" },          # hourly
       "IntegrationHealthJob"             => { "cron" => "*/30 * * * *", "class" => "IntegrationHealthJob" },            # every 30 min — Nango connection health
       "CatalogSyncJob"                   => { "cron" => "0 4 * * *",   "class" => "CatalogSyncJob" },                  # daily 4am — refresh app directory from Nango /providers
       # Wake stopped agent machines ~30s before their scheduled work is due.

@@ -44,7 +44,7 @@ RSpec.describe Forge::TemplatePack do
         query: "spec pack send email",
         priority: "required",
         rationale: "test",
-        composio_toolkit: "gmail",
+        service_slug: "gmail",
       )
     ])
 
@@ -86,7 +86,7 @@ RSpec.describe Forge::TemplatePack do
         query: "spec pack send email",
         priority: "required",
         rationale: "test",
-        composio_toolkit: nil,
+        service_slug: nil,
       )
     ])
 

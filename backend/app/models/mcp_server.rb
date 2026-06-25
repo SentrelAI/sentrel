@@ -1,7 +1,6 @@
 # An OAuth-connected external MCP server (e.g. Meta's official Ads MCP).
 #
-# Unlike Composio toolkits (brokered, fixed tool surface), this is a direct
-# connection to a remote MCP endpoint that speaks the MCP OAuth spec
+# This is a direct connection to a remote MCP endpoint that speaks the MCP OAuth spec
 # (RFC 9728 protected resource). We discover its authorization server, run a
 # PKCE authorization-code flow to mint a resource-bound access token, store
 # the access + refresh tokens encrypted, and hand the agent's engine a fresh
