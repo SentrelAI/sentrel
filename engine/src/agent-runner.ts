@@ -1754,10 +1754,12 @@ async function buildQueryOptions(
         "mcp__code__execute",
       ] : []),
       ...(caps.integrations.enabled && profile.integrations ? [
-        "mcp__integrations__search_integrations",
-        // Composio tools: explicit list (wildcards may not match)
-        ...composioToolNames.map((name) => `mcp__composio__${name}`),
-        // Generic connected-app proxy tool — the long-tail integration surface.
+        // Composio is retired: mcp__composio__* (crippled per-action tools) and
+        // mcp__integrations__search_integrations are NO LONGER allowlisted, so
+        // agents can't fall back to them (e.g. the free/busy-only
+        // GOOGLECALENDAR_EVENTS_LIST). All connected-app access goes through the
+        // Nango proxy. (composioToolNames is still computed above for routing
+        // context/logging; it's intentionally no longer surfaced to the agent.)
         "mcp__apps__request",
       ] : []),
       ...(caps.knowledge_base.enabled && profile.knowledge ? [
