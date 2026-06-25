@@ -165,6 +165,73 @@ google_sheets:
   tool: proxy
   review: google
 
+google_docs:
+  logo: /integration-logos/google_docs.svg
+  label: Google Docs
+  category: Productivity
+  provider_config_key: google-docs
+  auth_type: oauth2
+  api_base_url: https://docs.googleapis.com/v1
+  docs_url: https://developers.google.com/docs/api/reference/rest
+  scopes: [https://www.googleapis.com/auth/documents]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_slides:
+  logo: /integration-logos/google_slides.svg
+  label: Google Slides
+  category: Productivity
+  provider_config_key: google-slides
+  auth_type: oauth2
+  api_base_url: https://slides.googleapis.com/v1
+  docs_url: https://developers.google.com/slides/api/reference/rest
+  scopes: [https://www.googleapis.com/auth/presentations]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_forms:
+  logo: /integration-logos/google_forms.svg
+  label: Google Forms
+  category: Productivity
+  provider_config_key: google-forms
+  auth_type: oauth2
+  api_base_url: https://forms.googleapis.com/v1
+  docs_url: https://developers.google.com/forms/api/reference/rest
+  scopes:
+    - https://www.googleapis.com/auth/forms.body
+    - https://www.googleapis.com/auth/forms.responses.readonly
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_tasks:
+  logo: /integration-logos/google_tasks.svg
+  label: Google Tasks
+  category: Productivity
+  provider_config_key: google-tasks
+  auth_type: oauth2
+  api_base_url: https://tasks.googleapis.com/tasks/v1
+  docs_url: https://developers.google.com/tasks/reference/rest
+  scopes: [https://www.googleapis.com/auth/tasks]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
+google_contacts:
+  logo: /integration-logos/google_contacts.svg
+  label: Google Contacts
+  category: Productivity
+  provider_config_key: google-contacts
+  auth_type: oauth2
+  api_base_url: https://people.googleapis.com/v1
+  docs_url: https://developers.google.com/people/api/rest
+  scopes: [https://www.googleapis.com/auth/contacts]
+  modes: [managed, byo_oauth, byo_token]
+  tool: proxy
+  review: google
+
 # Gated 🔴 (Sentrel app review + business verification; paste-token bridges) ----
 
 # Meta Ads is served by the dedicated self-hosted MCP (services/meta-ads-mcp),
