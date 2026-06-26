@@ -1,62 +1,127 @@
 ---
 name: social-publishing
-description: Use when publishing a post to TikTok, Instagram, Facebook, YouTube, or LinkedIn, or when reading a post's reach/engagement. Covers the per-network tools, the async upload→publish→status flow, passing media as a public URL, and which networks need what.
+description: Use when publishing a post to LinkedIn, Instagram, Facebook, YouTube, or TikTok, or when reading a post's reach/engagement. Covers calling each network's REST API through the mcp__apps__request proxy, the async upload→publish→status flow, passing media as a public URL, and which networks need what.
 ---
 
 # Social publishing
 
-You publish natively to each connected network. The tools for a network
-load automatically once its account is connected in the workspace — you
-don't install them. Media is always passed as a **public URL** (from
-`share_file` in the creative-generation skill), never a local path.
+You publish natively to each connected network by calling its REST API
+through the **`request`** tool (server `apps`):
 
-Tool names below are the Composio tools for each network. If a tool errors
-with "not found", the account probably isn't connected — say so and ask the
-user to connect it on the agent's integrations page; don't guess at
-alternate names.
+```
+request({ provider, method, path, query?, body? })
+```
 
-## TikTok
+- `provider` is the network's app slug (`linkedin`, `instagram`,
+  `facebook`, `youtube`, `tiktok`). Each must be connected at /integrations
+  first.
+- **Auth is injected for you.** NEVER ask for, include, or echo a token.
+- Media is always passed as a **public URL** (from `share_file` in the
+  creative-generation skill), never a local path. The network fetches it
+  over the network.
+- The tool result is `{ status, body }`. Read `body` for the JSON payload.
 
-Async: upload the video, then publish, then poll status.
-
-1. `TIKTOK_UPLOAD_VIDEO` — upload the 9:16 video by its public URL.
-2. `TIKTOK_PUBLISH_VIDEO` — publish it with caption + hashtags.
-3. `TIKTOK_FETCH_PUBLISH_STATUS` — poll until it reports published (TikTok
-   processing is not instant). Photos use `TIKTOK_POST_PHOTO`.
-
-## Instagram
-
-Two-step container model (this is the Instagram Graph API pattern):
-
-1. `INSTAGRAM_CREATE_MEDIA_CONTAINER` — create a container from the media
-   URL + caption. For multi-image carousels use
-   `INSTAGRAM_CREATE_CAROUSEL_CONTAINER`.
-2. `INSTAGRAM_CREATE_POST` — publish the container.
-3. `INSTAGRAM_GET_POST_STATUS` — confirm it went live.
-   Reach/engagement: `INSTAGRAM_GET_POST_INSIGHTS`,
-   `INSTAGRAM_GET_USER_INSIGHTS`.
-
-## Facebook
-
-Mostly single-step against the Page:
-
-- Text/link: `FACEBOOK_CREATE_POST`
-- Photo: `FACEBOOK_UPLOAD_PHOTO` then `FACEBOOK_CREATE_PHOTO_POST`
-- Video: `FACEBOOK_UPLOAD_VIDEO` then `FACEBOOK_CREATE_VIDEO_POST`
-- Insights: `FACEBOOK_GET_PAGE_INSIGHTS`, `FACEBOOK_GET_POST_INSIGHTS`
-
-## YouTube
-
-- `YOUTUBE_UPLOAD_VIDEO` — upload the 16:9 video with title + description +
-  tags. Shorts are just a 9:16 video under 60s with #Shorts in the title.
-- `YOUTUBE_UPDATE_THUMBNAIL` — set the custom thumbnail (generate a bold
-  16:9 thumbnail in the creative step).
-- Stats: `YOUTUBE_GET_CHANNEL_STATISTICS`, `YOUTUBE_VIDEO_DETAILS`.
+If a call returns 401/403 on a network, the account probably isn't
+connected (or the scope is missing) — say so and ask the user to connect it
+at /integrations. Don't guess at alternate endpoints.
 
 ## LinkedIn
 
-Simple: `LINKEDIN_CREATE_LINKED_IN_POST` with the text and (optional) media
-URL. Keep it more professional and less emoji-heavy than TikTok/IG.
+Single call against the UGC Posts API. **Base is `https://api.linkedin.com`.**
+
+1. The `author` is your member/org URN. Resolve it once:
+   `GET /v2/userinfo` → `body.sub` is the member id, so author is
+   `urn:li:person:<sub>` (use `urn:li:organization:<id>` to post as a Page).
+2. Publish the post:
+
+```
+request({ provider:"linkedin", method:"POST", path:"/v2/ugcPosts",
+  body:{
+    author:"urn:li:person:<sub>",
+    lifecycleState:"PUBLISHED",
+    specificContent:{
+      "com.linkedin.ugc.ShareContent":{
+        shareCommentary:{ text:"<caption in brand voice>" },
+        shareMediaCategory:"NONE"   // "IMAGE" or "VIDEO" with a media URN
+      }
+    },
+    visibility:{ "com.linkedin.ugc.MemberNetworkVisibility":"PUBLIC" }
+  } })
+// → body.id is the post URN (urn:li:share:...)
+```
+
+For an image post, first register + upload the asset
+(`POST /v2/assets?action=registerUpload`), then set
+`shareMediaCategory:"IMAGE"` and reference the returned asset URN in
+`media[].media`. Keep LinkedIn copy professional and light on emoji.
+
+## Instagram
+
+Two-step container model (Instagram Graph API).
+**Base is `https://graph.facebook.com`.** You need the IG business account
+id (`<ig-user-id>`).
+
+1. Create a media container from the public media URL + caption:
+   `POST /v18.0/<ig-user-id>/media` ·
+   `body:{ image_url:"<public url>", caption:"<text>" }` (use `video_url` +
+   `media_type:"REELS"` for Reels). For carousels create one child container
+   per image with `is_carousel_item:true`, then a parent with
+   `media_type:"CAROUSEL"` and `children:[<ids>]`. Returns a creation `id`.
+2. Publish it: `POST /v18.0/<ig-user-id>/media_publish` ·
+   `body:{ creation_id:"<id>" }`.
+3. Insights: `GET /v18.0/<media-id>/insights` ·
+   `query:{ metric:"reach,likes,comments,saved" }`.
+
+Video/Reels containers process asynchronously — poll
+`GET /v18.0/<creation-id>?fields=status_code` until `FINISHED` before
+publishing.
+
+## Facebook
+
+Mostly single-step against the Page (`<page-id>`).
+**Base is `https://graph.facebook.com`.**
+
+- Text/link: `POST /v18.0/<page-id>/feed` ·
+  `body:{ message:"<text>", link?:"<url>" }`
+- Photo: `POST /v18.0/<page-id>/photos` ·
+  `body:{ url:"<public image url>", caption:"<text>" }`
+- Video: `POST /v18.0/<page-id>/videos` ·
+  `body:{ file_url:"<public video url>", description:"<text>" }`
+- Insights: `GET /v18.0/<page-id>/insights` ·
+  `query:{ metric:"page_impressions,page_engaged_users" }`;
+  per-post: `GET /v18.0/<post-id>/insights`.
+
+## YouTube
+
+**Base is `https://www.googleapis.com`** (Data API v3).
+
+- Upload metadata + media:
+  `POST /upload/youtube/v3/videos` ·
+  `query:{ part:"snippet,status" }` ·
+  `body:{ snippet:{ title, description, tags:[...] },
+          status:{ privacyStatus:"public" } }` with the video file.
+  Shorts are just a 9:16 video under 60s with `#Shorts` in the title.
+- Set the custom thumbnail:
+  `POST /upload/youtube/v3/thumbnails/set` · `query:{ videoId:"<id>" }`
+  (generate a bold 16:9 thumbnail in the creative step).
+- Stats: `GET /youtube/v3/videos` ·
+  `query:{ part:"statistics", id:"<videoId>" }`;
+  channel: `GET /youtube/v3/channels` ·
+  `query:{ part:"statistics", mine:true }`.
+
+## TikTok
+
+Async via the Content Posting API.
+**Base is `https://open.tiktokapis.com`.**
+
+1. Initialize the upload from the public video URL:
+   `POST /v2/post/publish/video/init/` ·
+   `body:{ post_info:{ title:"<caption + #hashtags>", privacy_level:"PUBLIC_TO_EVERYONE" },
+           source_info:{ source:"PULL_FROM_URL", video_url:"<public url>" } }`.
+   Returns a `publish_id`.
+2. Poll status:
+   `POST /v2/post/publish/status/fetch/` · `body:{ publish_id:"<id>" }`
+   until `status` is `PUBLISH_COMPLETE` (TikTok processing is not instant).
 
 ## Rules
 
@@ -70,8 +135,8 @@ URL. Keep it more professional and less emoji-heavy than TikTok/IG.
    Put hashtags where the network expects them (heavy on TikTok/IG, light
    on LinkedIn).
 4. **Confirm, then log.** After publishing, confirm via the status/insights
-   tool, then record the live post (network, id, time) in the ledger so the
-   weekly report and any boost decision can find it.
-5. **Async means poll.** TikTok and Instagram don't publish instantly —
-   poll the status tool before reporting "published". A container or upload
-   id is not a live post.
+   endpoint, then record the live post (network, id, time) in the ledger so
+   the weekly report and any boost decision can find it.
+5. **Async means poll.** TikTok and Instagram video don't publish instantly
+   — poll the status endpoint before reporting "published". A container or
+   `publish_id` is not a live post.

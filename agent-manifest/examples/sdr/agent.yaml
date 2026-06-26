@@ -27,6 +27,11 @@ model:
   id: claude-sonnet-4-6
   temperature: 0.7
 
+# Connected apps are reached through ONE tool: mcp__apps__request
+# (server `apps`) — request({ provider, method, path, query?, body? }).
+# `provider` is the app slug (apollo, instantly, linkedin, …); the
+# runtime injects the auth token for the connected account and returns
+# { status, body }. Connect each app once at /integrations.
 skills:
   - ./skills/apollo-enrichment
   - ./skills/instantly-outreach
@@ -45,28 +50,19 @@ channels:
       address_hint: "sarah@{{company_domain}}"
     why: Primary identity for outreach; replies land here.
 
+# Connected apps, reached through mcp__apps__request with these provider
+# slugs. Connect each one at /integrations before the agent runs.
 integrations:
-  - service: apollo
+  - service: apollo            # provider slug: apollo
     why: Lead search and contact/company enrichment.
-  - service: instantly
+  - service: instantly         # provider slug: instantly (paste-token connect)
     why: Warm email sending — sequences, deliverability, inbox rotation.
-  - type: mcp
-    name: linkedin
-    transport: { kind: http, url: "https://mcp.linkedin.example/v1" }
-    why: Prospect research and social touches.
-  - type: mcp
-    name: perplexity
-    transport: { kind: http, url: "https://api.perplexity.ai/mcp" }
-    why: News research for timely, relevant personalization hooks.
+  - service: linkedin          # provider slug: linkedin
+    why: Prospect research and social touches (gated API — see skill).
 
-# Names only — values are provided at deploy time, never in the bundle.
-secrets:
-  - name: APOLLO_API_KEY
-    why: Apollo REST access for search + enrichment.
-  - name: INSTANTLY_API_KEY
-    why: Instantly v2 API for campaigns, leads, and warmup analytics.
-  - name: PERPLEXITY_API_KEY
-    why: News lookups for personalization.
+# Secrets are not declared here: the runtime injects each connected app's
+# token automatically when the agent calls mcp__apps__request. No API
+# keys live in this bundle. News research uses the built-in web search.
 
 permissions:
   send_email: ask            # every outbound email needs human approval

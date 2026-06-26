@@ -11,22 +11,26 @@ with human approval before anything posts publicly or spends money.
   **Higgsfield** when a `HIGGSFIELD_API_KEY` is set, otherwise falls back to
   the workspace's other generator (Flux/Runway/Luma/Veo). Assets become
   public URLs via `share_file` for posting/ads.
-- **Publishing** via Composio's native per-network tools — connect the
-  accounts the brand uses and Nova posts to each in its native format.
-- **Paid ads** via Composio's `metaads` — the full funnel (campaign → ad
-  set → ad → creative → insights), gated by a declared monthly budget
-  ceiling and hard approvals on anything that spends.
+- **Publishing** via the apps tool — Nova calls each network's REST API
+  through `mcp__apps__request({ provider, method, path, ... })`, where
+  `provider` is the network slug (`linkedin`, `instagram`, `facebook`,
+  `youtube`, `tiktok`). Connect the accounts the brand uses at /integrations
+  and Nova posts to each in its native format. OAuth tokens are injected by
+  Rails — no credentials in the agent.
+- **Paid ads** via the **Meta Ads MCP** (`mcp__meta_ads__*`) — the full
+  funnel (campaign → ad set → ad → creative → insights), gated by a declared
+  monthly budget ceiling and hard approvals on anything that spends. This is
+  the one app that does NOT go through the apps proxy.
 
-- **Email** via **Listmonk** (self-hosted newsletters) — not a Composio
-  integration; the agent reaches it over its REST API using a stored
-  `listmonk` credential (`secrets.get` + HTTP). This is the general
-  pattern for any API-key service that isn't on Composio.
+- **Email** via Gmail (`provider: google-mail`, the raw RFC822 send) for
+  low-volume mail, or a connected ESP (Mailchimp/SendGrid/etc.) via the apps
+  tool for bulk newsletters.
 
-The four skills (`creative-generation`, `social-publishing`, `meta-ads`,
-`email-newsletters`) are **knowledge** — they teach the agent how to use
-each platform's tools/API. Composio tools load when the integration is
-connected (no hard-coded tool names, so they can't drift); Listmonk loads
-from a stored API credential.
+The five skills (`creative-generation`, `social-publishing`, `meta-ads`,
+`email-newsletters`, `ugc-ads`) are **knowledge** — they teach the agent
+the real endpoints to call through the apps tool (or the Meta Ads MCP), in
+what order, and the gotchas. Nothing hard-codes credentials; auth is
+injected when the app is connected at /integrations.
 
 ## Deploy
 
@@ -40,8 +44,8 @@ be connected; Meta Ads + the Higgsfield key are optional.
 
 ## Scope notes
 
-- **Meta** is the supported paid-ads platform (Composio has the full
-  funnel). **Google Ads / LinkedIn Ads** campaign creation isn't available
-  through Composio — those would be a native-API add-on later.
+- **Meta** is the supported paid-ads platform (the Meta Ads MCP has the full
+  funnel). **Google Ads / LinkedIn Ads** campaign creation isn't wired up
+  yet — those would be a per-app add-on later.
 - Edit `knowledge/brand-and-safety-policy.md` to change voice, formats,
   autonomy, and budget rules without touching the persona.

@@ -9,6 +9,14 @@ The mechanic that makes the scheduler relentless without being annoying:
 every proposal sets a self-addressed reminder; every reminder firing
 decides ONE of four actions; two unanswered follow-ups end the chase.
 
+All calendar and email actions go through the **`request`** tool
+(server `apps`) — `request({ provider, method, path, query?, body? })`
+— with the platform injecting auth and returning `{ status, body }`.
+Use the bundled `calendar-booking` and `gmail-management` skills for the
+exact request shapes; the slugs are `provider:"google-calendar"` and
+`provider:"google-mail"`. The freshness re-check, the reply scan, and the
+follow-up sends below are all those `request(...)` calls — never an SDK.
+
 ## Scheduling the check
 
 Immediately after sending slot proposals in a thread, create a one-time
@@ -31,9 +39,15 @@ fires Monday.
    thread. The follow-up cycle is over.
 
 2. **No reply, follow_up_count = 0** → send follow-up #1:
-   - FIRST re-check the calendar. Any proposed slot now taken or in the
-     past → replace it. The follow-up always contains 3 currently-valid
-     slots.
+   - FIRST re-check the calendar with
+     `request({ provider:"google-calendar", method:"POST", path:"/freeBusy", body:{ timeMin, timeMax, items:[{ id:"primary" }] } })`.
+     Any proposed slot that now overlaps a `body.calendars.primary.busy`
+     block or is in the past → replace it. The follow-up always contains
+     3 currently-valid slots.
+   - Scan the thread for replies first with
+     `request({ provider:"google-mail", method:"GET", path:"/gmail/v1/users/me/threads/<threadId>", query:{ format:"full" } })`.
+   - Send the nudge as an in-thread reply via
+     `request({ provider:"google-mail", method:"POST", path:"/gmail/v1/users/me/messages/send", body:{ raw:<base64url RFC 822 incl. In-Reply-To/References>, threadId:<threadId> } })`.
    - One short paragraph + the slots. No "circling back".
    - Update the ledger (fu:1), schedule the next check (+2 business days).
 

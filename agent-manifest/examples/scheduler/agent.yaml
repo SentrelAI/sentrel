@@ -54,7 +54,9 @@ model:
 
 # Custom skill shipped with the bundle. Platform skills (calendar-booking,
 # gmail-management) are NOT bundled — they auto-install when the
-# googlecalendar / gmail integrations below are connected.
+# google-calendar / google-mail connections below are connected. Those
+# skills call the connected apps through the single `request` tool
+# (server `apps`): request({ provider, method, path, query?, body? }).
 skills:
   - ./skills/follow-up-protocol
 
@@ -107,15 +109,19 @@ schedules:
       (day, time, name). Keep it to a few lines. If nothing important
       happened, send NOTHING at all — no "all quiet" message.
 
+# Connected apps — Rio reaches each one through the single `request` tool
+# (server `apps`): request({ provider, method, path, query?, body? }). The
+# provider slug is the connection slug below; the platform injects the
+# token and returns { status, body }. No SDKs, no stored credentials here.
 integrations:
   # A calendar — any ONE of these works. The deploy wizard shows which
   # are already connected and asks the user to pick (or connect one).
   # required: a scheduler without a calendar can't do its job, so the
   # wizard blocks Deploy until the CHOSEN alternative is connected.
-  - any_of: [googlecalendar, outlook, calendly, calcom]
+  - any_of: [google-calendar, outlook, calendly, calcom]
     required: true
     why: Availability checks, event creation, travel blocks, attendee management.
-  - service: gmail
+  - service: google-mail
     why: Reading request threads, sending proposals, follow-ups, and confirmations.
 
 secrets: []

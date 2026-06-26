@@ -1,57 +1,67 @@
 ---
 name: meta-ads
-description: Use when creating, running, optimizing, or reporting on Meta (Facebook/Instagram) paid ad campaigns. Covers the campaign→ad-set→ad→creative assembly order, uploading creative, reading insights, pausing/scaling, and the hard budget + approval rules around spending money.
+description: Use when creating, running, optimizing, or reporting on Meta (Facebook/Instagram) paid ad campaigns. Covers the campaign→ad-set→ad→creative assembly order via the Meta Ads MCP, uploading creative, reading insights, pausing/scaling, and the hard budget + approval rules around spending money.
 ---
 
 # Meta Ads
 
-You run paid campaigns on Meta through the `metaads` tools. This spends
-real money, so every create/raise-budget action is gated behind approval
-and the monthly ceiling. Pausing is the one thing you may do on your own —
-it only ever saves money.
+You run paid campaigns on Meta through the **dedicated Meta Ads MCP** —
+tools named `mcp__meta_ads__*`. This is the one app that does NOT go through
+the `mcp__apps__request` proxy; call its MCP tools directly. Spending real
+money is gated behind approval and the monthly ceiling. Pausing is the one
+thing you may do on your own — it only ever saves money.
+
+First, resolve the ad account: `mcp__meta_ads__ads_get_ad_accounts` →
+use the `act_<id>` you'll pass to the create calls.
 
 ## The funnel — assemble in this order
 
-Meta's object model is nested. Build bottom-knowledge, create top-down:
+Meta's object model is nested. Create top-down:
 
-1. `METAADS_CREATE_CAMPAIGN` — the campaign holds the **objective**
-   (e.g. conversions, traffic, awareness) and overall budget strategy.
-2. `METAADS_CREATE_AD_SET` — targeting, placements, schedule, and the
-   **budget** (daily or lifetime). This is where spend is set.
-3. `METAADS_UPLOAD_AD_IMAGE` — upload the creative image (by public URL
-   from `share_file`); Meta returns an image hash.
-4. `METAADS_CREATE_AD_CREATIVE` — assemble the creative: the uploaded image
-   hash + primary text + headline + link/CTA.
-5. `METAADS_CREATE_AD` — bind the creative to the ad set. This is the live
-   ad.
-6. `METAADS_PREVIEW_AD_CREATIVE` — render a preview to include in the
+1. `mcp__meta_ads__ads_create_campaign` — the campaign holds the
+   **objective** (e.g. `OUTCOME_SALES`, `OUTCOME_TRAFFIC`,
+   `OUTCOME_AWARENESS`) and starts paused.
+2. `mcp__meta_ads__ads_create_ad_set` — targeting, placements, schedule, and
+   the **budget** (`daily_budget` or `lifetime_budget`, in minor units /
+   cents). This is where spend is set.
+3. `mcp__meta_ads__ads_create_creative` — assemble the creative: the image
+   (from `share_file`'s public URL or an uploaded image hash) + primary text
+   + headline + link/CTA. Inspect uploaded images with
+   `mcp__meta_ads__ads_get_ad_images`.
+4. `mcp__meta_ads__ads_create_ad` — bind the creative to the ad set. This is
+   the ad.
+5. `mcp__meta_ads__ads_get_ad_preview` — render a preview to include in the
    approval before anything goes live.
 
-Audiences: `METAADS_CREATE_CUSTOM_AUDIENCE` for retargeting/lookalikes.
-Read existing sets with `METAADS_READ_ADSETS`.
+Audiences: `mcp__meta_ads__ads_create_custom_audience` for
+retargeting/lookalikes;
+`mcp__meta_ads__ads_get_ad_account_custom_audiences` to list existing ones.
 
 ## Measure & optimize
 
-- `METAADS_GET_INSIGHTS` — spend, impressions, clicks, CTR, conversions,
-  CPA. Compute CAC (spend ÷ conversions) and ROAS (revenue ÷ spend) and put
-  them in every report.
-- `METAADS_PAUSE_CAMPAIGN` — pause underperformers **immediately, no
-  approval needed** (it saves money). Resume with `METAADS_RESUME_CAMPAIGN`
-  (resuming spends, so that needs approval).
-- `METAADS_UPDATE_CAMPAIGN` — edits. Anything that raises budget is gated.
+- `mcp__meta_ads__ads_get_insights` — spend, impressions, clicks, CTR,
+  conversions, CPA. Compute CAC (spend ÷ conversions) and ROAS (revenue ÷
+  spend) and put them in every report. Industry context:
+  `mcp__meta_ads__ads_insights_industry_benchmark`.
+- **Pause / activate** with `mcp__meta_ads__ads_update_entity` (set
+  `status:"PAUSED"`) — pausing underperformers needs **no approval** (it
+  saves money). Activating/resuming spends, so that needs approval.
+- `mcp__meta_ads__ads_update_entity` also edits budgets. Anything that
+  raises a budget is gated.
 
 ## Money rules — non-negotiable
 
 1. **Approval before launch.** `launch_ad_campaign` is gated. Draft the
    whole campaign (objective, audience, budget, creative preview) and submit
-   it for a human yes/no. Never call `METAADS_CREATE_CAMPAIGN` /
-   `_CREATE_AD` on your own.
+   it for a human yes/no. Never call `ads_create_campaign` /
+   `ads_create_ad` to go live on your own. Campaigns are created paused;
+   only activate after approval.
 2. **Respect the ceiling.** The monthly cap is the one set in the
    brand-and-safety policy (your knowledge base). Before proposing any
    budget, total the month-to-date committed spend across live campaigns
-   (from insights + the ledger) and make sure the new or raised budget
-   keeps the month under that ceiling. If it wouldn't, stop and tell the
-   owner — propose a smaller budget instead.
+   (from `ads_get_insights` + the ledger) and make sure the new or raised
+   budget keeps the month under that ceiling. If it wouldn't, stop and tell
+   the owner — propose a smaller budget instead.
 3. **Start small.** New campaigns launch at a conservative daily budget.
    Scaling spend (raising budget, resuming, duplicating into a bigger set)
    is a separate `adjust_ad_budget` approval and only after the numbers
@@ -66,5 +76,6 @@ Read existing sets with `METAADS_READ_ADSETS`.
 - Objective + why it fits the brief
 - Audience (interests / custom / lookalike) and placements
 - Daily/lifetime budget + how it sits under the monthly ceiling
-- The creative (preview) and the primary text / headline / CTA
+- The creative (preview from `ads_get_ad_preview`) and the primary text /
+  headline / CTA
 - What "working" looks like (target CAC/ROAS) and the review date

@@ -6,8 +6,8 @@ description: Use when generating images or video for a post or ad. Covers prompt
 # Creative generation
 
 You generate stills and video with the agent's built-in capability tools —
-not a Composio integration. The tool resolves a vendor by default, but for
-ad creative you should choose the model:
+not a connected app. The tool resolves a vendor by default, but for ad
+creative you should choose the model:
 
 - **Ad creative / posters → `model: "fal-ai/nano-banana-pro"`.** It renders
   crisp, legible text *on* the image (headlines, sub-headers, CTA buttons,

@@ -16,28 +16,33 @@ sdr/
     ├── apollo-enrichment/          # build + enrich lead lists
     ├── instantly-outreach/         # warm sending, campaigns, replies
     ├── linkedin-prospecting/       # per-prospect research hooks
-    └── news-research/              # Perplexity news hooks
+    └── news-research/              # web-search news hooks
 ```
+
+Every connected app (Apollo, Instantly, LinkedIn) is reached through one
+tool — `mcp__apps__request({ provider, method, path, query?, body? })`.
+The runtime injects each connected account's token, so no API keys live
+in this bundle. Connect each app once at `/integrations`.
 
 ## What it demonstrates
 
 | Requirement | Where |
 | --- | --- |
 | Own email address | `channels[0]` (`type: email`, `sarah@{{company_domain}}`) |
-| Apollo for enrichment | `integrations` service `apollo` + `skills/apollo-enrichment` + `APOLLO_API_KEY` |
-| Instantly with warm sending | `integrations` service `instantly` + `skills/instantly-outreach` (warmup-score gate ≥90) + `INSTANTLY_API_KEY` |
+| Apollo for enrichment | `integrations` service `apollo` + `skills/apollo-enrichment` (via `mcp__apps__request`) |
+| Instantly with warm sending | `integrations` service `instantly` + `skills/instantly-outreach` (warmup-score gate ≥90, paste-token connect) |
 | Pitch deck | `knowledge/pitch-deck.md`, enforced by personality ("if it isn't in the deck, I don't say it") |
 | Goal: book meetings | `goal.mission` + KPIs (5 meetings/week, 8% positive replies) + `definition_of_done` |
-| LinkedIn | MCP integration `linkedin` + `skills/linkedin-prospecting` |
-| News (Perplexity) | MCP integration `perplexity` + `skills/news-research` + `PERPLEXITY_API_KEY` |
+| LinkedIn | `integrations` service `linkedin` + `skills/linkedin-prospecting` (gated API — honest fallback) |
+| News | `skills/news-research` via the built-in web search (no app needed) |
 
 ## Safety posture
 
 - `send_email: ask` / `cold_email_bulk: ask` — no outbound without approval
 - `reply_email: auto` / `book_meeting: auto` — momentum where it's safe
 - `delete_data: block`
-- Secrets are declared by **name only**; the validator hard-fails on any
-  value that looks like a credential.
+- No credentials live in the bundle: connected apps inject their tokens
+  at call time through `mcp__apps__request`.
 
 ## Try it
 
@@ -52,5 +57,6 @@ npx @manifestagent/agentmanifest deploy examples/sdr
 ```
 
 Before deploying for real: replace the bracketed sections of
-`knowledge/pitch-deck.md` with your actual deck, and point the MCP
-transport URLs at your real LinkedIn/Perplexity MCP servers.
+`knowledge/pitch-deck.md` with your actual deck, and connect Apollo,
+Instantly, and LinkedIn at `/integrations` (Instantly is a paste-token
+connect — there's no Nango template for it).

@@ -67,7 +67,14 @@ This validates the bundle, uploads it, and opens the sentrel deploy
 wizard in your browser. Or from a workspace:
 `/deploy-agent?source=<this repo URL>/tree/main/agent-manifest/examples/scheduler`
 
-After deploy: connect Google Calendar + Gmail (the wizard offers both),
-fill the office address in the policy knowledge doc (or let Rio ask
-once), and send a test: "book a 30-min intro with someone@example.com
-next week" — expect exactly 3 slots and a follow-up check on the books.
+After deploy: connect Google Calendar + Gmail (the wizard offers both —
+the `google-calendar` and `google-mail` connections), fill the office
+address in the policy knowledge doc (or let Rio ask once), and send a
+test: "book a 30-min intro with someone@example.com next week" — expect
+exactly 3 slots and a follow-up check on the books.
+
+Rio reaches every connected app through one tool, `request` (server
+`apps`): `request({ provider, method, path, query?, body? })`. The
+platform injects auth and returns `{ status, body }` — no SDKs and no
+credentials live in the bundle. The bundled `calendar-booking` and
+`gmail-management` skills carry the exact request shapes.

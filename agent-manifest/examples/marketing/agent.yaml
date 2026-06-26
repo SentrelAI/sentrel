@@ -57,11 +57,12 @@ model:
   id: claude-opus-4-8
   temperature: 0.7
 
-# Knowledge-only skills: each explains HOW to use a platform's tools. The
-# tools themselves load from Composio when the integration is connected
-# (the engine loads the toolkit's full surface; these docs teach the
-# agent which tools to use, in what order, and the gotchas). No skill
-# hard-codes tool-name allowlists — names come straight from Composio.
+# Knowledge-only skills: each explains HOW to use a connected app's REST
+# API through the `mcp__apps__request` proxy — one tool, `request({ provider,
+# method, path, query?, body? })`, where `provider` is the app slug and
+# Rails injects the OAuth token. Meta Ads is the exception: it uses its
+# dedicated `mcp__meta_ads__*` MCP, not the proxy. These docs teach the
+# agent the real endpoints to call, in what order, and the gotchas.
 skills:
   - ./skills/creative-generation
   - ./skills/social-publishing
@@ -120,15 +121,19 @@ webhooks:
       it for approval — never launch spend automatically.
 
 integrations:
-  # The social networks to publish to. multi: connect ANY NUMBER — Nova
-  # posts natively to every connected one. required: at least one must be
-  # connected before deploy (an agent with no network can't publish).
+  # The social networks to publish to, reached via the mcp__apps__request
+  # proxy. multi: connect ANY NUMBER — Nova posts natively to every connected
+  # one. required: at least one must be connected at /integrations before
+  # deploy (an agent with no network can't publish). `linkedin` is a native
+  # Nango slug; instagram/tiktok/facebook/youtube use these lowercase slugs
+  # and must be connected at /integrations.
   - any_of: [instagram, tiktok, facebook, youtube, linkedin]
     multi: true
     required: true
     why: Where content gets published and reach is measured.
-  # Paid ads (optional — only if running campaigns). The full Meta funnel.
-  - service: metaads
+  # Paid ads (optional — only if running campaigns). The full Meta funnel
+  # runs through the dedicated mcp__meta_ads__* MCP, not the apps proxy.
+  - service: meta_ads
     why: Launch, optimize, pause, and report on Meta (FB/IG) ad campaigns.
 
 # Creative generation key (optional). With this set, image/video generation
@@ -137,12 +142,10 @@ integrations:
 secrets:
   - name: HIGGSFIELD_API_KEY
     why: Higgsfield creative generation (text-to-image FLUX + image-to-video).
-  # Optional email-marketing channel. If set, Nova can run newsletters and
-  # lifecycle email via your self-hosted Listmonk (api_user:token pair; the
-  # credential should also carry the instance base_url). Without it, the
-  # email-newsletters skill simply stays idle.
-  - name: LISTMONK_API_KEY
-    why: Listmonk newsletters, subscriber lists, and transactional email (value is the api_user:token pair).
+# Email marketing has no required secret: Nova sends low-volume mail through
+# Gmail (connect `google-mail` at /integrations) and bulk newsletters through
+# whatever ESP is connected there (Mailchimp/SendGrid/etc.). See the
+# email-newsletters skill. Without an email app connected, that skill stays idle.
 
 permissions:
   generate_creative: auto     # generating assets is cheap + reversible
