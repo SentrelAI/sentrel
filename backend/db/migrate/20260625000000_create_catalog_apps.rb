@@ -11,7 +11,7 @@ class CreateCatalogApps < ActiveRecord::Migration[8.0]
       t.string  :api_base_url                    # proxy.base_url
       t.string  :docs_url
       t.jsonb   :scopes, null: false, default: []
-      t.jsonb   :modes, null: false, default: ["managed"]
+      t.jsonb   :modes, null: false, default: [ "managed" ]
       t.string  :tool, null: false, default: "proxy"   # proxy | mcp  (policy)
       t.string  :review, null: false, default: "none"  # none|google|gated (policy)
       t.boolean :featured, null: false, default: false

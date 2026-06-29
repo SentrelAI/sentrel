@@ -83,8 +83,8 @@ class IntegrationCatalog
       entries
         .group_by { |e| e[:label].to_s.strip.downcase }
         .values
-        .map { |grp| grp.max_by { |e| [e[:available] ? 1 : 0, e[:featured] ? 1 : 0, -e[:slug].to_s.length] } }
-        .sort_by { |e| [e[:featured] ? 0 : 1, e[:label].to_s.downcase] }
+        .map { |grp| grp.max_by { |e| [ e[:available] ? 1 : 0, e[:featured] ? 1 : 0, -e[:slug].to_s.length ] } }
+        .sort_by { |e| [ e[:featured] ? 0 : 1, e[:label].to_s.downcase ] }
     end
 
     # Slim list for the engine — slug + label + api_base_url so nango_request

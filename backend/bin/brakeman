@@ -2,6 +2,10 @@
 require "rubygems"
 require "bundler/setup"
 
-ARGV.unshift("--ensure-latest")
-
+# NOTE: `--ensure-latest` was removed here. It made CI fail (exit 5) the moment a
+# newer Brakeman shipped upstream — regardless of our code — and the audited
+# `config/brakeman.ignore` fingerprints are pinned to the locked Brakeman version
+# (8.0.4), so a version bump also un-matches them. Keep the gem current via a
+# deliberate `bundle update brakeman` + regenerating the ignore file, not a flag
+# that reds the build on every release.
 load Gem.bin_path("brakeman", "brakeman")

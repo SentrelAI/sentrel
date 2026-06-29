@@ -1,18 +1,34 @@
 {
   "ignored_warnings": [
     {
-      "fingerprint": "0d935c1c7da4548a166f27e00f3e53b4e75f268fa0e7ca60c69c8d0fd95e8eb4",
-      "note": "Audited: agent params permit list is intentionally broad — every key is a known agent attribute. :status is admin-only via authorize_admin! upstream. Pre-existing, accepted."
-    },
-    {
-      "fingerprint": "82f1b6b4a0ad0539108c4bcad435d9143b818ae6aa91e32cdb7be7ee5dc86c77",
-      "note": "params.permit! in Api::SendEmailsController is engine-callable only — guarded by authenticate_engine! (X-Engine-Secret). Payload is the email build that the engine has already validated."
-    },
-    {
       "fingerprint": "bf838c888b2278571f8a5cafc5d5eabef92de7bff581d12e066e2286c877b3c2",
       "note": "False positive — outbound_sender.rb:134 builds an email 'From:' header via Mail::Message#from, not an ActiveRecord SQL clause. Brakeman can't disambiguate Mail#from from AR#from."
+    },
+    {
+      "fingerprint": "0d935c1c7da4548a166f27e00f3e53b4e75f268fa0e7ca60c69c8d0fd95e8eb4",
+      "note": "False positive — outbound_sender.rb:181 builds an email 'From:' header (display-name + address) via Mail::Message#from, not an ActiveRecord SQL clause. Same Mail#from-vs-AR#from confusion as the :134 entry."
+    },
+    {
+      "fingerprint": "2aa35024c1039a2f1ee2581fded2b51e0709231966b352823ab6ec84fadd9612",
+      "note": "Audited: AgentsController agent params permit list is intentionally broad — every key is a known agent attribute. :status/:role are admin-gated upstream."
+    },
+    {
+      "fingerprint": "1873e554f0303cdc6df288783d9444e8f86c0b9d5c9ce21917c0a6345121e350",
+      "note": "Audited safe — Admin::AgentsController < Admin::BaseController, which enforces authenticate_user! + require_platform_admin!. Permitting :role/:status is an intentional platform-admin capability."
+    },
+    {
+      "fingerprint": "76d6660c784e706e41a70c88fc7d99a28606bee467eeec9cda811a30e383439c",
+      "note": "Audited safe — Admin::UsersController < Admin::BaseController (platform-admin gated). Permitting :platform_admin is intentional; self-demotion is explicitly blocked (users_controller.rb:56). Only platform admins reach this action."
+    },
+    {
+      "fingerprint": "ea703b63398b1e48705a1d6fc2e572487de09bb0c7b5b4cde1a2e7485a7f8cf2",
+      "note": "Audited safe — Api::Mobile::AgentsController permit! on the loaded agent's own :capabilities sub-hash (every key is a known capability flag); same accepted pattern as the web AgentsController. Documented safe in-code."
+    },
+    {
+      "fingerprint": "a05f97ade05cb24145cd928dfcf7912c007c9c3d9d98a5f820683cb92faf07a3",
+      "note": "Audited safe — Api::Mobile::AgentsController permit! on the loaded agent's own :permissions sub-hash, scoped to that agent; same accepted pattern as the web AgentsController. Documented safe in-code."
     }
   ],
-  "updated": "2026-05-15",
+  "updated": "2026-06-29",
   "brakeman_version": "8.0.4"
 }

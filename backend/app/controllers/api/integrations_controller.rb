@@ -114,8 +114,8 @@ class Api::IntegrationsController < ActionController::API
   # otherwise try to "connect". Meta's MCP covers the whole Meta family, so a
   # connected Meta server suppresses connect-prompts for facebook/instagram/etc.
   def mcp_provider_aliases(server)
-    slugs = [server.slug].compact
-    blob = [server.slug, server.name, server.url].compact.join(" ").downcase
+    slugs = [ server.slug ].compact
+    blob = [ server.slug, server.name, server.url ].compact.join(" ").downcase
     slugs |= %w[meta_ads facebook instagram meta] if blob.match?(/meta|facebook|instagram/)
     slugs.uniq
   end

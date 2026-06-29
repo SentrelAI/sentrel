@@ -125,7 +125,7 @@ class IntegrationsController < ApplicationController
         id: l.id, at: l.created_at.iso8601, agent: l.agent&.name,
         provider: input["provider"], method: input["method"], path: input["path"],
         result: l.status, upstream: output["status"],
-        error: output["error"], error_kind: output["error_kind"], latency_ms: output["latency_ms"],
+        error: output["error"], error_kind: output["error_kind"], latency_ms: output["latency_ms"]
       }
     end
     summary = calls.group_by { |c| c[:provider] }.map { |prov, cs|

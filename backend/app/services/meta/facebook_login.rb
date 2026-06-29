@@ -50,7 +50,7 @@ module Meta
         redirect_uri: redirect_uri,
         state: state,
         response_type: "code",
-        override_default_response_type: true,
+        override_default_response_type: true
       }
       "https://www.facebook.com/#{graph_version}/dialog/oauth?#{URI.encode_www_form(params)}"
     end

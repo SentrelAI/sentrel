@@ -19,7 +19,7 @@ module Nango
       "facebook-business"   => { review: "gated" },
       "linkedin"            => { review: "gated" },
       "tiktok-ads"          => { review: "gated" },
-      "tiktok-accounts"     => { review: "gated" },
+      "tiktok-accounts"     => { review: "gated" }
     }.freeze
 
     # Curated directory apps that aren't Nango provider templates — dedicated
@@ -32,8 +32,8 @@ module Nango
         logo: "/integration-logos/meta_ads.svg", auth_mode: "OAUTH2",
         api_base_url: "https://graph.facebook.com",
         docs_url: "https://developers.facebook.com/docs/marketing-apis",
-        tool: "mcp", review: "gated", mcp_url: "https://sentrel-meta-mcp.fly.dev/mcp",
-      },
+        tool: "mcp", review: "gated", mcp_url: "https://sentrel-meta-mcp.fly.dev/mcp"
+      }
     ].freeze
 
     # Nango category slug -> display label for the sidebar.
@@ -47,7 +47,7 @@ module Nango
       "payment" => "Payments", "productivity" => "Productivity", "search" => "Search",
       "social" => "Social", "sports" => "Sports", "storage" => "Storage",
       "support" => "Support", "surveys" => "Surveys", "ticketing" => "Ticketing",
-      "video" => "Video",
+      "video" => "Video"
     }.freeze
 
     # "popular" is a cross-cutting tag (drives `featured`), not a real category.
@@ -81,7 +81,7 @@ module Nango
         tool: c[:tool] || "mcp", review: c[:review] || "none",
         featured: Array(c[:categories]).include?("popular"),
         published: true, position: 0, mcp_url: c[:mcp_url],
-        created_at: now, updated_at: now,
+        created_at: now, updated_at: now
       }
     end
 
@@ -110,7 +110,7 @@ module Nango
         position: 0,
         mcp_url: nil, # Nango provider apps connect via the proxy, not an MCP
         created_at: now,
-        updated_at: now,
+        updated_at: now
       }
     end
 

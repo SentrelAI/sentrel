@@ -39,7 +39,7 @@ class CatalogApp < ApplicationRecord
       review: review,
       featured: featured,
       categories: Array(categories),
-      mcp_url: mcp_url, # for tool: mcp apps — the dedicated MCP server URL
+      mcp_url: mcp_url # for tool: mcp apps — the dedicated MCP server URL
     }
   end
 end
