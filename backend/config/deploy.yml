@@ -1,7 +1,13 @@
 # Name of your application. Used to uniquely configure containers.
-service: sentrel
+# NOTE: kept as "alchemy" deliberately — this is an INTERNAL kamal label only
+# (container names + kamal-proxy routing key), invisible to users. Renaming it to
+# "sentrel" conflicts with the running alchemy service for www.sentrel.ai in
+# kamal-proxy ("host settings conflict"), which would require tearing the old
+# service down first (downtime). Everything user-visible is already sentrel
+# (image, module, cable). Rename this last, in a maintenance window, if desired.
+service: alchemy
 
-# Container image — built and pushed to GHCR.
+# Container image — built and pushed to GHCR (sentrel-branded).
 image: sentrelai/sentrel
 
 # Deploy to these servers.
