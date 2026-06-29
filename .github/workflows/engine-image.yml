@@ -40,7 +40,7 @@ jobs:
         id: image
         run: |
           OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "base=ghcr.io/${OWNER_LOWER}/alchemy-engine" >> $GITHUB_OUTPUT
+          echo "base=ghcr.io/${OWNER_LOWER}/sentrel-engine" >> $GITHUB_OUTPUT
 
       # Set up Buildx with retries against Docker Hub flakes. We've seen
       # registry-1.docker.io time out at builder-bootstrap time —

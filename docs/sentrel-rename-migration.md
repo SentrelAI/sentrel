@@ -63,3 +63,40 @@ git remote set-url origin git@github.com:SentrelAI/sentrel.git
 
 ## Why this isn't a sed
 `alchemy` is the *deployment identity* (image tag, kamal service, DB, Fly apps, cache, WS prefix). A blind rename desyncs the code from the running infrastructure → the next deploy can't find its image/DB/service. Each phase above keeps old + new side-by-side until the new one is verified, then retires the old.
+
+## The staged cutover branch — `chore/sentrel-rename-cutover`
+
+The **code-only** parts of Phases 1–2 are pre-staged on this branch (not merged,
+not deployed). It contains exactly:
+
+| File | Change |
+|---|---|
+| `backend/config/deploy.yml` | `service: alchemy → sentrel`, `image: parsedev/alchemy → sentrelai/sentrel` |
+| `backend/config/application.rb` | `module Alchemy → module Sentrel` (only ref; js-routes comment regenerates) |
+| `backend/config/cable.yml` | `channel_prefix: …_{development,production} → sentrel_…` |
+| `engine/fly.toml` | engine image → `ghcr.io/sentrelai/sentrel-engine:latest` |
+| `.github/workflows/engine-image.yml` | push base → `…/sentrel-engine` (owner auto-follows the repo transfer) |
+| `.github/workflows/app-deploy.yml` | image refs in comments/summary → `sentrelai/sentrel` |
+
+**Deploy preconditions (do these BEFORE merging/deploying the branch):**
+1. Repo transferred to SentrelAI **and** Actions secrets re-added in the new org
+   (esp. `KAMAL_REGISTRY_PASSWORD` with push rights to `ghcr.io/sentrelai/*`,
+   `ENGINE_IMAGE = ghcr.io/sentrelai/sentrel-engine:latest`).
+2. The `ghcr.io/sentrelai/sentrel` + `sentrel-engine` packages exist/are writable.
+3. Phase 3 DB rename done (or `DATABASE_URL` still points at the old DB name — the
+   app reads the name from the env URL, so the DB can lag the code).
+4. **Maintenance window** — merging flips the cable `channel_prefix`, dropping live
+   WebSocket channels at cutover. Run `bin/rails zeitwerk:check` + the full spec
+   suite first (the module rename).
+
+**Deliberately NOT in the branch (still manual / separate phase):**
+- **Storage volumes** `alchemy_storage` (deploy.yml) + `alchemy_data` (fly.toml) —
+  renaming them provisions *empty* volumes and orphans existing data. Migrate
+  contents or leave the names.
+- **DB names** (`database.yml`, CI `alchemy_test`, prod `DATABASE_URL`) — Phase 3,
+  coupled to the actual Postgres rename.
+- **Agent app template** `alchemy-{env}-agent-*` (fly.toml `app =`) — Phase 4,
+  gradual; existing agents keep their names until reprovisioned.
+- **SSH key path** `~/Downloads/alchemy_key.pem` (deploy.yml) — your local file.
+- **Repo transfer + local folder** — folder already renamed to `…/sentrel`; repo
+  transfer is the `gh api … transfer` command (run it yourself).

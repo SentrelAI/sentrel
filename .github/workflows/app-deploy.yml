@@ -18,7 +18,7 @@ name: app-deploy
 #   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SERVICE_SID
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ACCOUNT_ID
 #   FLY_API_TOKEN, FLY_ORG_SLUG, FLY_REGION
-#   ENGINE_IMAGE                                  — ghcr.io/parsedev/alchemy-engine:latest
+#   ENGINE_IMAGE                                  — ghcr.io/sentrelai/sentrel-engine:latest
 #   SENTRY_DSN
 #   ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY
 #   ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY
@@ -195,5 +195,5 @@ jobs:
       - name: Summary
         run: |
           echo "### Deployed" >> $GITHUB_STEP_SUMMARY
-          echo "- Image: ghcr.io/parsedev/alchemy:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: ghcr.io/sentrelai/sentrel:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- Host: www.sentrel.ai" >> $GITHUB_STEP_SUMMARY

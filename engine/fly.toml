@@ -13,7 +13,7 @@ app = "alchemy-dev-agent-TEMPLATE"
 primary_region = "lax"
 
 [build]
-  image = "ghcr.io/qubitam/alchemy-engine:latest"
+  image = "ghcr.io/sentrelai/sentrel-engine:latest"
 
 [env]
   DATA_DIR = "/data"
