@@ -10,6 +10,7 @@
 // happen once the user connects. After the OAuth completes, the user
 // re-prompts and the agent has the toolkit available.
 
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
@@ -105,7 +106,9 @@ export async function postProposal(opts: {
   kind: "oauth" | "api_credential" | "org_credential";
 }): Promise<void> {
   const { ctx, slug, label, why, kind } = opts;
-  const approvalToken = `${kind === "oauth" ? "conn" : "cred"}_${Date.now()}_${slug}`;
+  // randomUUID (not Date.now) so two proposals for the same slug can't collide
+  // on the pending_approvals.approval_token UNIQUE index.
+  const approvalToken = `${kind === "oauth" ? "conn" : "cred"}_${slug}_${randomUUID()}`;
   const summary = kind === "oauth"
     ? `Connect ${label} — ${why}`
     : `Add ${label} credential — ${why}`;

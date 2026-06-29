@@ -12,6 +12,7 @@
 //   4. Engine subscribes to its own approval channel (already wired for
 //      command approvals); resolveActionApproval() fires the promise.
 
+import { randomUUID } from "crypto";
 import { logger } from "../logger.js";
 
 export interface ActionApprovalDecision {
@@ -31,14 +32,16 @@ interface PendingActionApproval {
 }
 
 const pending = new Map<string, PendingActionApproval>();
-let nextId = 1;
 
 export function createActionApproval(
   summary: string,
   payloadType: string,
   timeoutMs = 24 * 60 * 60 * 1000, // 24h default — long enough for async user
 ): { id: string; promise: Promise<ActionApprovalDecision> } {
-  const id = `act_${nextId++}`;
+  // Globally-unique token: a per-process counter would reset on engine restart
+  // and collide with prior approvals already in pending_approvals (UNIQUE
+  // index on approval_token) → "duplicate-token constraint" on the next create.
+  const id = `act_${randomUUID()}`;
 
   const promise = new Promise<ActionApprovalDecision>((resolve) => {
     pending.set(id, { resolve, summary, payloadType, createdAt: Date.now() });
