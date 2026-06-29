@@ -440,6 +440,12 @@ Rails.application.routes.draw do
   # Root always renders the public landing page (auth-aware actions inside).
   root "home#index"
 
+  # Public legal pages (required for Meta App Review — Privacy / Terms / Data
+  # Deletion URLs). No auth.
+  get "privacy",        to: "legal#privacy",       as: :privacy
+  get "terms",          to: "legal#terms",         as: :terms
+  get "data-deletion",  to: "legal#data_deletion", as: :data_deletion
+
   # Public-facing catalog of 100+ ready-to-hire agent roles. Each card has
   # the role, what it does, suggested skills + integrations, and a deep
   # link to /agents/new pre-filled with the template. Aspirational right
