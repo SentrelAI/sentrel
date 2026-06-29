@@ -10,8 +10,9 @@ is the ordered playbook.
 > - ✅ Cosmetic example/comment strings renamed to Sentrel (shipped).
 > - ✅ **Phase 5 (billing-proxy)** — Sentrel↔OCBrand sanitization pairs added & shipped (`079ced2`).
 > - ✅ **Local working folder** renamed `alchemy-ai/alchemy` → `alchemy-ai/sentrel`.
-> - ⏳ **Phase 0 (repo transfer)** — reserved for you to run (irreversible org transfer; classifier-blocked for the assistant). Command below.
-> - ⏳ **Phases 1–4** — production-coupled (image republish, Rails module + cable cutover, DB rename, Fly apps). NOT auto-run — they need your trigger + a maintenance window. Commands below.
+> - ✅ **Repo renamed** `ParseDev/double.md` → **`ParseDev/sentrel`** (rename-in-place — keeps all Actions secrets / deploy keys / CI; old URL redirects). The org move to **SentrelAI** is deferred until secrets are re-prepped (`scripts/migrate-secrets-to-sentrelai.sh` is ready for that day).
+> - ✅ **Phases 1–2 staged + validated** on PR #43 (`chore/sentrel-rename-cutover`) — RSpec green on the `module Sentrel` rename; not merged (cable cutover needs a maintenance window).
+> - ⏳ **Phases 3–4** — production-coupled (DB rename, Fly agent apps). NOT auto-run — they need your trigger + a maintenance window. Commands below.
 >
 > Everything still labelled ⏳ below is **deliberately not auto-run** — execute it yourself.
 
