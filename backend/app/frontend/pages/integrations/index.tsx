@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -103,6 +104,10 @@ export default function IntegrationsIndex({
   const [optimisticRequested, setOptimisticRequested] = useState<Set<string>>(new Set())
   // When set, the 3-mode connect modal (Managed / BYO-OAuth / Paste-token).
   const [connectApp, setConnectApp] = useState<CatalogApp | null>(null)
+  // When set, the token-auth connect guide (e.g. Meta Ads) — instructions + paste field.
+  const [tokenConnect, setTokenConnect] = useState<CatalogEntry | null>(null)
+  const [tokenValue, setTokenValue] = useState("")
+  const [tokenSaving, setTokenSaving] = useState(false)
 
   // Catalog apps open the 3-mode modal (Managed / BYO-OAuth / Paste-token).
   function connect(serviceName: string, _scope: "org" | "user" = "org") {
@@ -137,15 +142,29 @@ export default function IntegrationsIndex({
     if (res.ok && data.id) { window.location.href = `/mcp_servers/${data.id}/connect`; return }
 
     // OAuth discovery failed → this MCP authenticates with a static token, not
-    // OAuth. Offer to connect by pasting the token instead.
-    const token = window.prompt(
-      `${entry.label} connects with an access token, not OAuth.\n\nPaste the token (e.g. your Meta system-user access token):`,
-    )
-    if (!token) return
-    const res2 = await post({ access_token: token })
-    const data2 = await res2.json().catch(() => ({}))
-    if (res2.ok && data2.id) window.location.reload()
-    else alert(data2.error || "Couldn't connect with that token.")
+    // OAuth. Open the guided token-connect modal (how-to instructions + paste field).
+    setTokenValue("")
+    setTokenConnect(entry)
+  }
+
+  // Submit the pasted token for a token-auth MCP (from the connect-guide modal).
+  async function submitTokenConnect() {
+    if (!tokenConnect || !tokenValue.trim() || tokenSaving) return
+    setTokenSaving(true)
+    const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+    try {
+      const res = await fetch("/mcp_servers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({ name: tokenConnect.label, slug: tokenConnect.slug, url: tokenConnect.mcp_url, access_token: tokenValue.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.id) { window.location.reload(); return }
+      alert(data.error || "Couldn't connect with that token.")
+    } catch {
+      alert("Couldn't connect with that token.")
+    }
+    setTokenSaving(false)
   }
 
   function disconnect(id: number) {
@@ -535,6 +554,59 @@ export default function IntegrationsIndex({
             >
               <Trash2 className="size-3.5" />
               {pendingDisconnect && disconnectingId === pendingDisconnect.id ? "Disconnecting..." : "Disconnect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Token-auth connect guide — token-based MCPs (e.g. Meta Ads) that don't
+          do OAuth. Embeds step-by-step "how to get the token" guidance so the
+          connect flow is self-documenting for end users. */}
+      <Dialog open={tokenConnect !== null} onOpenChange={(open) => { if (!open) { setTokenConnect(null); setTokenValue("") } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Connect {tokenConnect?.label}</DialogTitle>
+            <DialogDescription>
+              {tokenConnect?.slug === "meta_ads"
+                ? "Meta Ads connects with a Meta system-user access token (not OAuth). Here's how to get one:"
+                : `${tokenConnect?.label ?? "This app"} connects with an access token. Paste it below.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {tokenConnect?.slug === "meta_ads" && (
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+              <li>
+                Open{" "}
+                <a className="text-[var(--color-indigo)] underline-offset-4 hover:underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">
+                  Business Settings → Users → System Users
+                </a>.
+              </li>
+              <li>Select (or add) a system user, then click <span className="font-medium text-foreground">Generate New Token</span>.</li>
+              <li>Choose the Sentrel Meta app and grant <span className="font-medium text-foreground">ads_management</span> and <span className="font-medium text-foreground">ads_read</span> (add <span className="font-medium text-foreground">pages_show_list</span> + <span className="font-medium text-foreground">pages_manage_posts</span> to post organically).</li>
+              <li>Under <span className="font-medium text-foreground">Assign Assets</span>, give the system user your <span className="font-medium text-foreground">Ad Account</span> (and Page).</li>
+              <li>Copy the token and paste it below.</li>
+            </ol>
+          )}
+
+          <Input
+            type="password"
+            autoFocus
+            placeholder="Paste your access token"
+            value={tokenValue}
+            onChange={(e) => setTokenValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submitTokenConnect() }}
+          />
+          <p className="text-xs text-muted-foreground">
+            Stored encrypted and used only to call {tokenConnect?.label ?? "this service"} on your behalf. You won't see the token again after saving.
+          </p>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setTokenConnect(null); setTokenValue("") }} disabled={tokenSaving}>
+              Cancel
+            </Button>
+            <Button onClick={submitTokenConnect} disabled={tokenSaving || !tokenValue.trim()} className="gap-1.5">
+              <Plug className="size-3.5" />
+              {tokenSaving ? "Connecting..." : "Connect"}
             </Button>
           </DialogFooter>
         </DialogContent>
