@@ -11,12 +11,33 @@ class McpServersController < ApplicationController
   # POST /mcp_servers { name, slug, url, client_id }
   # Runs discovery to fill in the authorization-server endpoints + scopes.
   def create
-    p = params.permit(:name, :slug, :url, :client_id)
+    p = params.permit(:name, :slug, :url, :client_id, :access_token, :transport)
+    slug = p[:slug].presence || p[:name].to_s.parameterize.underscore
+
+    # Token-auth MCP servers (e.g. the Pipeboard-based Meta Ads MCP) don't speak
+    # the MCP OAuth spec — they authenticate with a static Bearer token and 401
+    # the .well-known discovery endpoints, so `Mcp::Oauth.discover` can't run.
+    # If the caller supplies a token, skip discovery and connect directly (the
+    # engine sends it as `Authorization: Bearer <token>`, see external-mcp.ts).
+    if p[:access_token].present?
+      server = McpServer.create!(
+        organization_id: current_tenant.id,
+        name:            p[:name],
+        slug:            slug,
+        url:             p[:url],
+        transport:       p[:transport].presence || "http",
+        access_token:    p[:access_token],
+        status:          "connected",
+      )
+      sync_agents_using(server)
+      return render json: serialize(server), status: :created
+    end
+
     meta = Mcp::Oauth.discover(p[:url])
     server = McpServer.create!(
       organization_id:    current_tenant.id,
       name:               p[:name],
-      slug:               p[:slug].presence || p[:name].to_s.parameterize.underscore,
+      slug:               slug,
       url:                p[:url],
       client_id:          p[:client_id],
       scopes:             meta[:scopes],

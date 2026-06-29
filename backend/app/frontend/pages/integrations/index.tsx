@@ -117,20 +117,35 @@ export default function IntegrationsIndex({
   }
 
   // Direct MCP connect: reuse an existing server for this slug (just re-auth),
-  // otherwise create one from the catalog's mcp_url, then full-page OAuth.
+  // otherwise create one from the catalog's mcp_url. OAuth-spec servers redirect
+  // to full-page consent; token-auth servers (e.g. the Pipeboard Meta Ads MCP,
+  // which 401s OAuth discovery) fall back to pasting a static Bearer token.
   async function connectMcp(entry: CatalogEntry) {
     const existing = mcp_servers.find((s) => s.slug === entry.slug)
     if (existing) { window.location.href = `/mcp_servers/${existing.id}/connect`; return }
     if (!entry.mcp_url) return
     const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
-    const res = await fetch("/mcp_servers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf },
-      body: JSON.stringify({ name: entry.label, slug: entry.slug, url: entry.mcp_url }),
-    })
+    const post = (extra: Record<string, unknown> = {}) =>
+      fetch("/mcp_servers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({ name: entry.label, slug: entry.slug, url: entry.mcp_url, ...extra }),
+      })
+
+    const res = await post()
     const data = await res.json().catch(() => ({}))
-    if (res.ok && data.id) window.location.href = `/mcp_servers/${data.id}/connect`
-    else alert(data.error || "Couldn't start the connection.")
+    if (res.ok && data.id) { window.location.href = `/mcp_servers/${data.id}/connect`; return }
+
+    // OAuth discovery failed → this MCP authenticates with a static token, not
+    // OAuth. Offer to connect by pasting the token instead.
+    const token = window.prompt(
+      `${entry.label} connects with an access token, not OAuth.\n\nPaste the token (e.g. your Meta system-user access token):`,
+    )
+    if (!token) return
+    const res2 = await post({ access_token: token })
+    const data2 = await res2.json().catch(() => ({}))
+    if (res2.ok && data2.id) window.location.reload()
+    else alert(data2.error || "Couldn't connect with that token.")
   }
 
   function disconnect(id: number) {
