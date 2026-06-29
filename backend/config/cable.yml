@@ -1,7 +1,7 @@
 development:
   adapter: redis
   url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
-  channel_prefix: alchemy_development
+  channel_prefix: sentrel_development
 
 test:
   adapter: test
@@ -9,4 +9,4 @@ test:
 production:
   adapter: redis
   url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
-  channel_prefix: alchemy_production
+  channel_prefix: sentrel_production
