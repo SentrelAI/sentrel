@@ -49,7 +49,7 @@ export function LandingNav() {
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 w-full">
-      <div className="pointer-events-auto relative mx-auto w-full max-w-5xl px-3 pt-3 md:px-5 md:pt-4">
+      <div className="pointer-events-auto relative mx-auto w-full max-w-6xl px-3 pt-3 md:px-5 md:pt-4">
         <div
           className={`relative flex h-14 items-center overflow-hidden rounded-lg border transition-[border-color,box-shadow,background-color] duration-300 ${
             scrolled
