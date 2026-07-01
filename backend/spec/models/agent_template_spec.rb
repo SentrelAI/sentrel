@@ -63,10 +63,12 @@ RSpec.describe AgentTemplate do
 
     it "seeds the full template pack idempotently" do
       expect(AgentTemplate.count).to be >= 14
+      # NOTE: "sdr" is intentionally absent — it's now sourced from the
+      # SentrelAI/agent-templates `sdr` bundle (Sarah), not the seed file.
       %w[
         ceo marketing-lead compliance-officer proposal-writer
         engineer product-manager designer content-writer data-analyst finance
-        sdr support researcher recruiter
+        support researcher recruiter
       ].each do |slug|
         t = AgentTemplate.find_by(slug: slug)
         expect(t).to be_present, "expected template #{slug} to be seeded"
