@@ -3,7 +3,8 @@ module Forge
   # briefs with rich notes) with EXTRA (89 lighter briefs now carrying
   # short `notes:` fields so the generator has enough context to write
   # high-quality identity_md without our hand-holding every entry).
-  # Together with the 16 hand-written seeds in db/seeds/agent_templates.rb,
+  # Together with the hand-written seeds in db/seeds/agent_templates.rb (and the
+  # official agent.yaml bundles imported via AgentTemplates::BundleImporter),
   # the system can ship ~125 templates after `rake forge:bootstrap` finishes.
   #
   # Adding more: drop new entries into EXTRA. No registry to keep in sync —

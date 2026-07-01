@@ -130,21 +130,27 @@ namespace :agent_templates do
     end
   end
 
-  desc "Demote non-canonical system templates → community. Canonical = the 16 slugs hand-seeded in db/seeds/agent_templates.rb. Forge-generated templates that snuck system_template=true get demoted (still visible as community templates so users who already installed them aren't broken)."
+  desc "Demote non-canonical system templates → community. Canonical = the slugs hand-seeded in db/seeds/agent_templates.rb PLUS any bundle-imported template (source_url present). Forge-generated templates that snuck system_template=true get demoted (still visible as community templates so users who already installed them aren't broken)."
   task demote_non_canonical_seeds: :environment do
     seed_file = Rails.root.join("db/seeds/agent_templates.rb")
     unless seed_file.exist?
       puts "Missing #{seed_file}; can't determine canonical list. Aborting."
       next
     end
-    canonical = seed_file.read.scan(/slug:\s*"([^"]+)"/).flatten.uniq
-    if canonical.empty?
+    seeded = seed_file.read.scan(/slug:\s*"([^"]+)"/).flatten.uniq
+    if seeded.empty?
       puts "Seed file parsed 0 canonical slugs — aborting (would demote everything)."
       next
     end
-    puts "Canonical system seeds (#{canonical.length}): #{canonical.join(', ')}"
 
     ActsAsTenant.without_tenant do
+      # Bundle-imported templates (from SentrelAI/agent-templates) are canonical
+      # too — they carry a source_url. Without this, retiring a seed entry in
+      # favour of its bundle would make this task demote the bundle version.
+      imported = AgentTemplate.where.not(source_url: nil).pluck(:slug).uniq
+      canonical = (seeded + imported).uniq
+      puts "Canonical system templates (#{canonical.length} = #{seeded.length} seeded + #{imported.length} bundle-imported): #{canonical.join(', ')}"
+
       offenders = AgentTemplate.where(system_template: true).where.not(slug: canonical)
       n = offenders.count
       if n.zero?
@@ -156,7 +162,7 @@ namespace :agent_templates do
         puts "  - #{t.slug}  (#{t.role})"
         t.update_column(:system_template, false)
       end
-      puts "\nDone. The drafter's [SYS] preference now only elevates the curated 16."
+      puts "\nDone. The drafter's [SYS] preference now only elevates the curated system templates (seeds + bundle-imported)."
     end
   end
 
