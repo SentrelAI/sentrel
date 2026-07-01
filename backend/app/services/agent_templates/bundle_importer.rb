@@ -69,7 +69,7 @@ module AgentTemplates
         license:                "CC-BY-4.0",
         suggested_provider:     (m.model["provider"].presence || "anthropic"),
         suggested_model:        (m.model["id"] || m.model["model_id"]),
-        suggested_skill_slugs:  m.skill_bundles.map { |s| s[:slug] },
+        suggested_skill_slugs:  (m.skill_bundles.map { |s| s[:slug] } + m.builtin_skill_slugs).uniq,
         suggested_integrations: m.integrations.filter_map { |i| i["service"] },
         capabilities:           definition["capabilities"],
         identity_md:            m.persona_md("identity"),
@@ -114,7 +114,10 @@ module AgentTemplates
         "permissions"  => m.permissions,
         "goal"         => m.goal,
         "inputs"       => m.inputs,
-        "skills"       => m.skill_bundles.map { |sb| { "slug" => sb[:slug], "source" => "custom", "files" => sb[:files] } },
+        "skills"       => (
+          m.skill_bundles.map { |sb| { "slug" => sb[:slug], "source" => "custom", "files" => sb[:files] } } +
+          m.builtin_skill_slugs.map { |slug| { "slug" => slug, "source" => "built_in" } }
+        ),
         "integrations_required" => m.integrations.filter_map { |i| { "service" => i["service"], "why" => i["why"] }.compact if i["service"] },
         "credentials_required"  => m.secret_names.map { |n| { "name_hint" => n } },
         "channels_required"     => m.channels.map { |c| { "type" => c["type"], "why" => c["why"] }.compact }

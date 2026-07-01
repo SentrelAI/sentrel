@@ -65,4 +65,51 @@ namespace :templates do
       Rake::Task["templates:import_bundles"].invoke(root, repo, ref)
     end
   end
+
+  # Export a single AgentTemplate → an agent-bundle/v1 directory (agent.yaml +
+  # persona md + any custom skills). The inverse of BundleImporter; the tool
+  # that migrates the Ruby seed catalog into forkable bundles (point 5).
+  #
+  #   rails templates:export_bundle[ceo,tmp/bundles]
+  desc "Export one AgentTemplate (by slug) as an agent-bundle/v1 dir"
+  task :export_bundle, %i[slug outdir] => :environment do |_t, args|
+    slug   = args[:slug].to_s.strip
+    outdir = args[:outdir].presence || "tmp/bundles"
+    abort "usage: rails templates:export_bundle[slug,outdir]" if slug.empty?
+    t = ActsAsTenant.without_tenant { AgentTemplate.find_by(slug: slug) }
+    abort "no template with slug #{slug.inspect}" unless t
+    dir = AgentTemplates::BundleExporter.new(t).write_to(outdir)
+    puts "  ✓ #{slug} → #{dir}"
+  end
+
+  # Bulk driver for point 5: export every slug still defined in the Ruby seed
+  # file into bundles under outdir, so they can be committed to the
+  # agent-templates repo and re-imported. Reads the canonical slug list from
+  # the seed file itself (no drift). Idempotent — overwrites outdir/<slug>.
+  #
+  #   rails templates:export_seeds[tmp/bundles]
+  desc "Export all seed-file templates as bundles (point 5 migration driver)"
+  task :export_seeds, %i[outdir] => :environment do |_t, args|
+    outdir    = args[:outdir].presence || "tmp/bundles"
+    seed_file = Rails.root.join("db/seeds/agent_templates.rb")
+    abort "seed file missing: #{seed_file}" unless seed_file.exist?
+    slugs = seed_file.read.scan(/slug:\s*"([^"]+)"/).flatten.uniq
+    abort "parsed 0 slugs from seed file" if slugs.empty?
+    puts "[templates:export_seeds] exporting #{slugs.size} seed template(s) → #{outdir}"
+
+    ActsAsTenant.without_tenant do
+      ok = 0
+      slugs.each do |slug|
+        t = AgentTemplate.find_by(slug: slug)
+        unless t
+          warn "  ✗ #{slug}: not in DB (run db:seed first)"
+          next
+        end
+        dir = AgentTemplates::BundleExporter.new(t).write_to(outdir)
+        puts "  ✓ #{slug.ljust(20)} → #{dir}"
+        ok += 1
+      end
+      puts "[templates:export_seeds] exported #{ok}/#{slugs.size}"
+    end
+  end
 end

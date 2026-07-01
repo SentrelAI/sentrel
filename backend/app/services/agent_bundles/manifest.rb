@@ -76,6 +76,9 @@ module AgentBundles
     def inputs          = Array(data["inputs"]).select { |i| i.is_a?(Hash) && i["key"].present? && i["label"].present? }
     # Inbound webhook endpoints created at deploy (tokenized URLs).
     def webhooks        = Array(data["webhooks"]).select { |w| w.is_a?(Hash) && w["name"].present? && w["instruction"].present? }
+    # Slugs of Sentrel built-in/platform skills the runtime already provides
+    # (web-search, send-email, …). Referenced by slug, no SKILL.md shipped.
+    def builtin_skill_slugs = Array(data["builtin_skills"]).map(&:to_s).select { |s| s.match?(/\A[a-z0-9][a-z0-9-]*\z/) }
 
     def persona_md(key)
       rel = data.dig("persona", key) || default_persona_path(key)

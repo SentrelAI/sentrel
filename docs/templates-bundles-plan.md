@@ -143,5 +143,24 @@ Handling the 9 confusion/improvement points:
 3. **Automate:** schedule `templates:sync` (sidekiq-cron) or wire a GitHub Action on push to the templates repo.
 
 ### Deliberately deferred
-- **Point 5 (retire seed):** the 36 in-repo seed templates still exist; bundle-derived ones live alongside them. Migrate + retire as a separate, careful PR.
 - **GitHub Action file** lives in the *other* repo (`agent-templates`), not here.
+
+---
+
+## Point 5 — seed → bundle migration (runbook)
+The machinery to retire the Ruby seed catalog now exists and is verified (all 16 seed templates round-trip faithfully: skills, capabilities, model, variables, integrations).
+
+**What was built (this stacked PR):**
+- **Spec extension** (agent-bundle/v1): `builtin_skills` (slugs of built-in/platform skills the runtime already ships — `web-search`, `send-email`, …) + `capabilities` (feature toggles). These were the fidelity gaps that blocked a faithful migration — the seeds wire skills by slug and set capability toggles, neither expressible before.
+- **`AgentTemplates::BundleExporter`** — the inverse of `BundleImporter`: an `AgentTemplate` row → an `agent.yaml` bundle dir (persona md + `builtin_skills`/`capabilities`/`inputs`/`integrations`; custom skills embedded as `skills/<slug>/SKILL.md`).
+- **`BundleImporter`** now merges `builtin_skills` into `suggested_skill_slugs` + the definition.
+- **Rake:** `templates:export_bundle[slug,outdir]` (one) and `templates:export_seeds[outdir]` (all seed slugs).
+- **Spec:** `bundle_export_roundtrip_spec` — export → import reproduces the template.
+
+**To finish the migration (the gated, mechanical steps):**
+1. `bin/rails db:seed` (so the seed rows exist), then `bin/rails templates:export_seeds[tmp/bundles]`.
+2. Review the generated bundles, copy into the `SentrelAI/agent-templates` repo, open a PR there. **Skip `sdr`** — already shipped as the `Sarah` bundle (see #47).
+3. Once merged, `bin/rails templates:sync` re-imports them with `source_url` set.
+4. **Then** delete `db/seeds/agent_templates.rb` (and its loader ref) in a final one-line PR — the seed rows are now sourced from bundles.
+
+**Fidelity note:** seed `category` is preserved as-is; rows whose DB category isn't one of the 8 enum values export as `starter` (same as they render today — no regression). `suggested_manager_role` is not part of the bundle spec and is not carried (org-topology hint, not template-essential).
