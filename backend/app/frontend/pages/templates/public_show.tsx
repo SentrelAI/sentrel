@@ -7,6 +7,7 @@ import {
   Brain,
   CalendarClock,
   Cpu,
+  GitBranch,
   Image as ImageIcon,
   ListChecks,
   Plug,
@@ -41,6 +42,7 @@ interface Template {
   skills: { slug: string; name: string }[]
   suggested_model: string | null
   suggested_provider: string | null
+  source_url?: string | null
 }
 
 interface Integration {
@@ -164,6 +166,14 @@ export default function TemplatePublicShow({ template: t }: { template: Template
                     Deploy this agent
                   </a>
                 </Button>
+                {t.source_url && (
+                  <Button asChild size="lg" variant="outline" className="gap-2">
+                    <a href={t.source_url} target="_blank" rel="noreferrer">
+                      <GitBranch className="size-4" />
+                      View source
+                    </a>
+                  </Button>
+                )}
               </div>
             </div>
           </div>

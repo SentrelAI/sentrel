@@ -14,6 +14,7 @@ interface Role {
   outcome: string
   skills: string[]
   integrations: string[]
+  template_slug?: string // set when a deployable template matches this role
 }
 
 interface Category {
@@ -187,7 +188,11 @@ function ToneFilter({ active, onClick, children }: { active: boolean; onClick: (
 }
 
 function RoleCard({ role, tone }: { role: Role; tone: "indigo" | "cyan" }) {
-  const newAgentHref = `/agents/new?template=${encodeURIComponent(role.name.toLowerCase())}&role=${encodeURIComponent(role.role)}`
+  // Matched roles deploy the REAL template (browse → deploy); unmatched fall
+  // back to the generic new-agent flow seeded with the role name.
+  const newAgentHref = role.template_slug
+    ? `/agents/new?template=${encodeURIComponent(role.template_slug)}`
+    : `/agents/new?template=${encodeURIComponent(role.name.toLowerCase())}&role=${encodeURIComponent(role.role)}`
 
   return (
     <Link

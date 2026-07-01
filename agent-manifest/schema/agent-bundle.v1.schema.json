@@ -10,6 +10,16 @@
     "name": { "type": "string", "minLength": 1 },
     "role": { "type": "string" },
     "description": { "type": "string" },
+    "category": {
+      "type": "string",
+      "enum": ["starter", "sales", "support", "marketing", "engineering", "people", "personal", "ops"],
+      "description": "Catalog category for the /templates gallery. One of the fixed set."
+    },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Icon name (lucide-react) shown on the template card, e.g. \"Megaphone\", \"Wrench\", \"Calendar\"."
+    },
 
     "goal": {
       "type": "object",
@@ -113,6 +123,21 @@
     "skills": {
       "type": "array",
       "items": { "$ref": "#/$defs/relativePath" }
+    },
+
+    "builtin_skills": {
+      "description": "Slugs of Sentrel built-in/platform skills the agent should have (e.g. web-search, send-email). Unlike `skills` (embedded SKILL.md bundles), these reference skills the runtime already provides, so no files are shipped.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }
+    },
+
+    "capabilities": {
+      "description": "Optional feature toggles for the deployed agent (knowledge_base, scheduling, tasks, integrations, recall, send_media). Each maps to an object like { enabled: true }. Omit to accept the platform defaults.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": { "enabled": { "type": "boolean" } }
+      }
     },
 
     "knowledge": {

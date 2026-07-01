@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_26_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_01_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -135,6 +135,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_26_000000) do
     t.boolean "published", default: false, null: false
     t.string "role", null: false
     t.string "slug", null: false
+    t.string "source_ref"
+    t.string "source_url"
     t.jsonb "suggested_integrations", default: [], null: false
     t.string "suggested_manager_role"
     t.string "suggested_model"

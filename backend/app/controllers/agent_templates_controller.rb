@@ -175,6 +175,7 @@ class AgentTemplatesController < ApplicationController
   # the template's owner (or system admins) may mutate it.
   def update
     template = ActsAsTenant.without_tenant { AgentTemplate.find_by!(slug: params[:id]) }
+    return if forbid_system_template!(template)
     forbid_mutation_for_non_owner!(template)
 
     if template.update(template_params)
@@ -187,6 +188,7 @@ class AgentTemplatesController < ApplicationController
   # DELETE /agent_templates/:id — owner-only.
   def destroy
     template = ActsAsTenant.without_tenant { AgentTemplate.find_by!(slug: params[:id]) }
+    return if forbid_system_template!(template)
     forbid_mutation_for_non_owner!(template)
     template.destroy
     redirect_to agent_templates_path, notice: "Template removed"
@@ -206,6 +208,16 @@ class AgentTemplatesController < ApplicationController
   def forbid_mutation_for_non_owner!(t)
     return if t.created_by_user_id == current_user.id
     redirect_to agent_template_path(t.slug), alert: "You can only edit templates you created" and return
+  end
+
+  # Official (bundle-derived) templates are managed from their GitHub bundle —
+  # the repo is the source of truth, so they can't be edited/removed in-app.
+  # Returns true (and redirects) when the mutation should be blocked.
+  def forbid_system_template!(t)
+    return false unless t.system_template
+    redirect_to agent_template_path(t.slug),
+                alert: "This is an official template — edit its bundle on GitHub, not here."
+    true
   end
 
   def template_json(t)

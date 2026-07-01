@@ -5,9 +5,19 @@ class HomeController < ApplicationController
 
   # /use-cases — public catalog of 100+ ready-to-hire roles. Data lives in
   # USE_CASES below so it's editable without a deploy of frontend code —
-  # the Inertia page reads + renders.
+  # the Inertia page reads + renders. Each role is enriched with a
+  # `template_slug` when a real deployable template matches (browse → deploy);
+  # roles without a match fall back to the generic new-agent flow.
   def use_cases
-    render inertia: "use_cases/index", props: { categories: USE_CASES }
+    slugs = ActsAsTenant.without_tenant { AgentTemplate.published.pluck(:slug) }.to_set
+    categories = USE_CASES.map do |cat|
+      roles = cat[:roles].map do |r|
+        match = [ r[:role], r[:name] ].compact.map { |s| s.to_s.parameterize }.find { |s| slugs.include?(s) }
+        match ? r.merge(template_slug: match) : r
+      end
+      cat.merge(roles: roles)
+    end
+    render inertia: "use_cases/index", props: { categories: categories }
   end
 
   # rubocop:disable Layout/LineLength

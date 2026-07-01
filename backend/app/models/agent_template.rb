@@ -109,7 +109,8 @@ class AgentTemplate < ApplicationRecord
       category: category,
       system_template: system_template,
       install_count: install_count,
-      author_name: system_template ? "Sentrel" : (created_by_user&.name.presence || "Workspace member")
+      author_name: system_template ? "Sentrel" : (created_by_user&.name.presence || "Workspace member"),
+      source_url: source_url # GitHub bundle source for official templates; nil otherwise
     }
   end
 

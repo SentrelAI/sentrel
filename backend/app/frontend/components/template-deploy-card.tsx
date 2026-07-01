@@ -1,5 +1,5 @@
 import { Link } from "@inertiajs/react"
-import { Rocket, Sparkles, Users } from "lucide-react"
+import { GitBranch, Rocket, Sparkles, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ export interface DeployTemplate {
   system_template: boolean
   author_name?: string
   install_count?: number
+  source_url?: string | null
 }
 
 // Deploy → the standard new-agent workflow, pre-filled with this template.
@@ -42,6 +43,20 @@ export function TemplateDeployCard({ t }: { t: DeployTemplate }) {
         {t.system_template ? <Sparkles className="size-3" /> : <Users className="size-3" />}
         {t.system_template ? "System" : "Community"}
       </Badge>
+
+      {t.source_url && (
+        <a
+          href={t.source_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-3 top-3 z-10 text-muted-foreground transition-colors hover:text-foreground"
+          aria-label="View source on GitHub"
+          title="View this template's bundle on GitHub"
+        >
+          <GitBranch className="size-3.5" />
+        </a>
+      )}
 
       <CardContent className="flex flex-1 flex-col items-center gap-2 p-4 pt-5 text-center">
         <Link href={viewHref(t.slug)} aria-label={`View ${t.name}`}>
