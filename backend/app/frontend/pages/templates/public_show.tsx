@@ -18,8 +18,10 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Overline } from "@/components/brand"
 import { LandingFooter } from "@/components/landing/landing-footer"
 import { LandingNav } from "@/components/landing/landing-nav"
 import { RobotCharacter } from "@/components/robot-character"
@@ -74,6 +76,23 @@ function prettySlug(slug: string): string {
   return slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+// The Sentrel wordmark — a gradient glyph + General Sans wordmark. Reused so
+// the brand shows up consistently across the page (and any screenshot of it).
+function SentrelWordmark({ className, prefix }: { className?: string; prefix?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1.5", className)}>
+      {prefix && <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{prefix}</span>}
+      <span
+        aria-hidden
+        className="grid size-5 place-items-center rounded-[6px] bg-gradient-to-br from-[var(--color-indigo)] to-[var(--cyan)] text-background shadow-sm"
+      >
+        <Sparkles className="size-3" />
+      </span>
+      <span className="font-display text-sm font-semibold tracking-[-0.03em] text-foreground">Sentrel</span>
+    </span>
+  )
+}
+
 // App chip — catalog logo on a white tile (so dark brand marks stay visible in
 // dark mode), falling back to a colored monogram when no logo is set.
 function AppChip({ app }: { app: Integration }) {
@@ -93,6 +112,15 @@ function AppChip({ app }: { app: Integration }) {
   )
 }
 
+function RailHeading({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <h3 className="mb-2.5 flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <Icon className="size-3.5" />
+      {children}
+    </h3>
+  )
+}
+
 export default function TemplatePublicShow({ template: t }: { template: Template }) {
   const model = modelLabel(t.suggested_model)
   const sections = [
@@ -106,60 +134,77 @@ export default function TemplatePublicShow({ template: t }: { template: Template
       <Head title={`${t.name} · Agent template`} />
       <LandingNav />
 
-      {/* Hero */}
+      {/* Hero — reads like a poster/ad for the agent */}
       <section className="relative overflow-hidden border-b">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-50"
+          className="pointer-events-none absolute inset-0 opacity-60"
           style={{
             background:
-              "radial-gradient(40% 50% at 20% 30%, var(--cyan-glow) 0%, transparent 60%), radial-gradient(40% 50% at 80% 60%, var(--indigo-glow) 0%, transparent 60%)",
+              "radial-gradient(45% 55% at 18% 25%, var(--cyan-glow) 0%, transparent 60%), radial-gradient(45% 55% at 85% 70%, var(--indigo-glow) 0%, transparent 60%)",
           }}
         />
-        <div className="relative mx-auto w-full max-w-5xl px-6 pb-12 pt-24 md:pb-16 md:pt-28">
-          <Link
-            href="/templates"
-            className="mb-8 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            All templates
-          </Link>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.035]"
+          style={{
+            backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
+            backgroundSize: "22px 22px",
+          }}
+        />
+        <div className="relative mx-auto w-full max-w-6xl px-6 pb-16 pt-24 md:pb-20 md:pt-28">
+          <div className="mb-10 flex items-center justify-between gap-4">
+            <Link
+              href="/templates"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+              All templates
+            </Link>
+            <SentrelWordmark prefix="An AI agent by" />
+          </div>
 
-          <div className="flex flex-col items-center gap-8 md:flex-row md:items-start md:gap-12">
-            <div className="shrink-0">
-              <RobotCharacter seed={t.slug} size={220} className="drop-shadow-md" />
+          <div className="flex flex-col items-center gap-10 md:flex-row md:items-center md:gap-16">
+            <div className="relative shrink-0">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -inset-6 rounded-full opacity-70 blur-2xl"
+                style={{ background: "radial-gradient(closest-side, var(--indigo-glow) 0%, transparent 75%)" }}
+              />
+              <RobotCharacter seed={t.slug} size={248} className="relative drop-shadow-xl" />
             </div>
 
             <div className="flex-1 text-center md:text-left">
-              <Badge variant={t.system_template ? "secondary" : "outline"} className="gap-1 text-[11px]">
-                {t.system_template ? <Sparkles className="size-3" /> : <Users className="size-3" />}
+              <Overline accent dot>
                 {t.system_template ? "System template" : "Community template"}
-              </Badge>
-              <h1 className="mt-4 font-display text-4xl font-semibold tracking-[-0.025em] text-foreground md:text-5xl">
+              </Overline>
+              <h1 className="mt-4 font-display text-5xl font-semibold leading-[0.95] tracking-[-0.03em] text-foreground md:text-7xl">
                 {t.name}
               </h1>
-              <p className="mt-1 text-lg text-muted-foreground">{t.role}</p>
+              <p className="serif-italic mt-3 text-2xl leading-tight text-[var(--color-indigo)] md:text-3xl">
+                {t.role}
+              </p>
               {t.description && (
-                <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-muted-foreground md:mx-0">
+                <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-muted-foreground md:mx-0 md:text-base">
                   {t.description}
                 </p>
               )}
 
               <div className="mt-6 flex flex-wrap items-center justify-center gap-2 md:justify-start">
                 {model && (
-                  <span className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5 rounded-md border bg-card/70 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur">
                     <Cpu className="size-3.5" />
                     {model}
                   </span>
                 )}
                 {t.author_name && (
-                  <span className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5 rounded-md border bg-card/70 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur">
                     by {t.author_name}
                   </span>
                 )}
               </div>
 
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-3 md:justify-start">
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3 md:justify-start">
                 <Button asChild size="lg" className="gap-2">
                   <a href={deployHref(t.slug)}>
                     <Rocket className="size-4" />
@@ -180,92 +225,127 @@ export default function TemplatePublicShow({ template: t }: { template: Template
         </div>
       </section>
 
-      {/* Body */}
-      <section className="mx-auto w-full max-w-3xl px-6 py-12 md:py-16">
-        {t.integrations.length > 0 && (
-          <div className="mb-10">
-            <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Plug className="size-3.5" />
-              Tools it connects to
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {t.integrations.map((app) => (
-                <AppChip key={app.slug} app={app} />
-              ))}
+      {/* Body — sticky "at a glance" rail + persona */}
+      <section className="mx-auto w-full max-w-6xl px-6 py-14 md:py-16">
+        <div className="grid gap-10 lg:grid-cols-[320px_1fr] lg:gap-14">
+          <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
+            <div className="rounded-xl border bg-card/60 p-5">
+              <Overline className="mb-4">At a glance</Overline>
+
+              {model && (
+                <div className="mb-5">
+                  <RailHeading icon={Cpu}>Model</RailHeading>
+                  <span className="text-sm text-foreground">{model}</span>
+                </div>
+              )}
+
+              {t.integrations.length > 0 && (
+                <div className="mb-5">
+                  <RailHeading icon={Plug}>Tools it connects to</RailHeading>
+                  <div className="flex flex-wrap gap-2">
+                    {t.integrations.map((app) => (
+                      <AppChip key={app.slug} app={app} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {t.skills.length > 0 && (
+                <div className="mb-5">
+                  <RailHeading icon={Wrench}>Skills</RailHeading>
+                  <div className="flex flex-wrap gap-1.5">
+                    {t.skills.map((s) => (
+                      <Badge key={s.slug} variant="secondary" className="text-[11px] font-normal">
+                        {s.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {t.capabilities.length > 0 && (
+                <div className={t.source_url ? "mb-5" : ""}>
+                  <RailHeading icon={Sparkles}>Built-in</RailHeading>
+                  <div className="flex flex-wrap gap-1.5">
+                    {t.capabilities.map((key) => {
+                      const meta = CAPABILITY_META[key]
+                      const Icon = meta?.icon ?? Wrench
+                      return (
+                        <span
+                          key={key}
+                          className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs"
+                        >
+                          <Icon className="size-3.5 text-muted-foreground" />
+                          {meta?.label ?? prettySlug(key)}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {t.source_url && (
+                <a
+                  href={t.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <GitBranch className="size-3.5" />
+                  View this template's source
+                </a>
+              )}
+            </div>
+          </aside>
+
+          <div className="min-w-0">
+            {sections.length > 0 ? (
+              <div className="space-y-10">
+                {sections.map((sec) => (
+                  <section key={sec.label}>
+                    <h2 className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      {sec.label}
+                    </h2>
+                    <article className="prose prose-sm max-w-none dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{sec.body}</ReactMarkdown>
+                    </article>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">This template doesn't have a written persona yet.</p>
+            )}
+
+            {/* Bottom CTA — branded "ad" card */}
+            <div className="relative mt-14 overflow-hidden rounded-2xl border bg-card/60 p-8 text-center md:p-10">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 opacity-70"
+                style={{
+                  background:
+                    "radial-gradient(60% 120% at 50% 0%, var(--indigo-glow) 0%, transparent 60%)",
+                }}
+              />
+              <div className="relative flex flex-col items-center gap-4">
+                <RobotCharacter seed={t.slug} size={84} />
+                <div>
+                  <p className="font-display text-2xl font-semibold tracking-[-0.02em]">
+                    Put <span className="serif-italic text-[var(--color-indigo)]">{t.name}</span> to work.
+                  </p>
+                  <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                    Connect the tools, set the policy, and your new {t.role.toLowerCase()} starts working in a couple of clicks.
+                  </p>
+                </div>
+                <Button asChild size="lg" className="mt-1 gap-2">
+                  <a href={deployHref(t.slug)}>
+                    <Rocket className="size-4" />
+                    Deploy this agent
+                  </a>
+                </Button>
+                <SentrelWordmark prefix="Built on" className="mt-2 opacity-80" />
+              </div>
             </div>
           </div>
-        )}
-
-        {(t.capabilities.length > 0 || t.skills.length > 0) && (
-          <div className="mb-10 grid gap-6 sm:grid-cols-2">
-            {t.capabilities.length > 0 && (
-              <div>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Built-in capabilities
-                </h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {t.capabilities.map((key) => {
-                    const meta = CAPABILITY_META[key]
-                    const Icon = meta?.icon ?? Wrench
-                    return (
-                      <span
-                        key={key}
-                        className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs"
-                      >
-                        <Icon className="size-3.5 text-muted-foreground" />
-                        {meta?.label ?? prettySlug(key)}
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {t.skills.length > 0 && (
-              <div>
-                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Wrench className="size-3.5" />
-                  Skills
-                </h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {t.skills.map((s) => (
-                    <Badge key={s.slug} variant="secondary" className="text-[11px] font-normal">
-                      {s.name}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="space-y-10">
-          {sections.map((sec) => (
-            <section key={sec.label}>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                {sec.label}
-              </h2>
-              <article className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{sec.body}</ReactMarkdown>
-              </article>
-            </section>
-          ))}
-        </div>
-
-        {/* Bottom CTA */}
-        <div className="mt-14 flex flex-col items-center gap-4 rounded-xl border bg-card/50 p-8 text-center">
-          <RobotCharacter seed={t.slug} size={80} />
-          <div>
-            <p className="font-display text-lg font-semibold">Put {t.name} to work.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Deploy in a couple of clicks — connect the tools, set the policy, and it starts working.
-            </p>
-          </div>
-          <Button asChild size="lg" className="gap-2">
-            <a href={deployHref(t.slug)}>
-              <Rocket className="size-4" />
-              Deploy this agent
-            </a>
-          </Button>
         </div>
       </section>
 

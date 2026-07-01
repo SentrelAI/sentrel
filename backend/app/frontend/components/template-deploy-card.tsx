@@ -68,7 +68,7 @@ export function TemplateDeployCard({ t }: { t: DeployTemplate }) {
         </Link>
 
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{t.name}</div>
+          <div className="truncate font-display text-sm font-semibold tracking-[-0.01em]">{t.name}</div>
           <div className="truncate text-[11px] text-muted-foreground">{t.role}</div>
         </div>
 
