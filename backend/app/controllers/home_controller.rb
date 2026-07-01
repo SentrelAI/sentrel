@@ -12,7 +12,7 @@ class HomeController < ApplicationController
     slugs = ActsAsTenant.without_tenant { AgentTemplate.published.pluck(:slug) }.to_set
     categories = USE_CASES.map do |cat|
       roles = cat[:roles].map do |r|
-        match = [r[:role], r[:name]].compact.map { |s| s.to_s.parameterize }.find { |s| slugs.include?(s) }
+        match = [ r[:role], r[:name] ].compact.map { |s| s.to_s.parameterize }.find { |s| slugs.include?(s) }
         match ? r.merge(template_slug: match) : r
       end
       cat.merge(roles: roles)
