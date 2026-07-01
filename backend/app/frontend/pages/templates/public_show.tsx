@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import AppLogo from "@/components/app-logo"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Overline } from "@/components/brand"
@@ -76,19 +77,14 @@ function prettySlug(slug: string): string {
   return slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-// The Sentrel wordmark — a gradient glyph + General Sans wordmark. Reused so
-// the brand shows up consistently across the page (and any screenshot of it).
+// The official Sentrel logo (typographic wordmark via AppLogo) with an optional
+// mono byline prefix — reused so the brand shows up consistently across the
+// page and in any screenshot of it.
 function SentrelWordmark({ className, prefix }: { className?: string; prefix?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-1.5", className)}>
+    <span className={cn("inline-flex items-center gap-2", className)}>
       {prefix && <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{prefix}</span>}
-      <span
-        aria-hidden
-        className="grid size-5 place-items-center rounded-[6px] bg-gradient-to-br from-[var(--color-indigo)] to-[var(--cyan)] text-background shadow-sm"
-      >
-        <Sparkles className="size-3" />
-      </span>
-      <span className="font-display text-sm font-semibold tracking-[-0.03em] text-foreground">Sentrel</span>
+      <AppLogo size="sm" />
     </span>
   )
 }

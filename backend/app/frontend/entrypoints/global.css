@@ -9,10 +9,11 @@
    sit here, BEFORE @custom-variant and @plugin below.
    ========================================================== */
 @import url("https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
-/* Brand wordmark typeface — used only by the Sentrel logo (AppLogo). Swap the
-   family here + in --font-brand to try another identity face. */
-@import url("https://fonts.googleapis.com/css2?family=Goldman:wght@400;700&display=swap");
+/* One Google Fonts request: body/mono/serif + Goldman (the logo-only identity
+   face, used by AppLogo via --font-brand). Kept in a single @import so it can't
+   be dropped by @import-ordering rules. Swap "Goldman" here + in --font-brand
+   to try another identity face. */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Goldman:wght@400;700&family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
