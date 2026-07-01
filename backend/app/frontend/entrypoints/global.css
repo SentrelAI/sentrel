@@ -10,6 +10,9 @@
    ========================================================== */
 @import url("https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
+/* Brand wordmark typeface — used only by the Sentrel logo (AppLogo). Swap the
+   family here + in --font-brand to try another identity face. */
+@import url("https://fonts.googleapis.com/css2?family=Goldman:wght@400;700&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -86,6 +89,8 @@
   --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, "Liberation Mono", "Courier New", monospace;
+  /* Logo-only identity face (Goldman — squared, techy). Falls back to display. */
+  --font-brand: "Goldman", "General Sans", system-ui, sans-serif;
 
   /* — Shadows — Genesis restraint + one brutalist — */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);

@@ -1,56 +1,32 @@
+import { cn } from "@/lib/utils"
+
 interface AppLogoProps {
   size?: "sm" | "default" | "lg"
+  /** "full" → the Sentrel wordmark. "mark" → the compact S monogram. */
   variant?: "full" | "mark"
+  className?: string
 }
 
 /**
- * Sentrel logomark — a small indigo-to-cyan gradient diamond that
- * pairs with the wordmark. When variant="mark" only the square renders.
+ * Sentrel logo — a pure-typography wordmark set in the brand identity face
+ * (Goldman, a squared/techy display face, via --font-brand). No icon: the
+ * letterforms are the mark. Swap the typeface in global.css (--font-brand +
+ * its @import) to try another identity — every logo on the site follows.
  */
-function Mark({ px = 18 }: { px?: number }) {
+export default function AppLogo({ size = "default", variant = "full", className }: AppLogoProps) {
+  const textSize =
+    size === "lg" ? "text-[28px] md:text-[32px]" : size === "sm" ? "text-base" : "text-xl"
+
   return (
     <span
-      aria-hidden
-      className="relative inline-flex shrink-0 items-center justify-center"
-      style={{ width: px, height: px }}
+      className={cn(
+        "inline-block select-none leading-none tracking-[0.02em] text-foreground",
+        textSize,
+        className,
+      )}
+      style={{ fontFamily: "var(--font-brand)", fontWeight: 700 }}
     >
-      <span
-        className="absolute inset-0 rotate-45 rounded-[4px]"
-        style={{
-          background:
-            "linear-gradient(135deg, var(--color-indigo) 0%, var(--cyan) 100%)",
-          boxShadow: "0 0 12px var(--indigo-glow)",
-        }}
-      />
-      <span
-        className="absolute inset-[22%] rotate-45 rounded-[2px] bg-background"
-      />
+      {variant === "mark" ? "S" : "Sentrel"}
     </span>
-  )
-}
-
-export default function AppLogo({ size = "default", variant = "full" }: AppLogoProps) {
-  const textSize =
-    size === "lg" ? "text-3xl" : size === "sm" ? "text-base" : "text-xl"
-  const markPx = size === "lg" ? 24 : size === "sm" ? 14 : 18
-
-  if (variant === "mark") {
-    return <Mark px={markPx} />
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <Mark px={markPx} />
-      <span
-        className={`leading-none tracking-[-0.015em] text-foreground ${textSize}`}
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontStyle: "italic",
-          fontWeight: 400,
-        }}
-      >
-        Sentrel
-      </span>
-    </div>
   )
 }

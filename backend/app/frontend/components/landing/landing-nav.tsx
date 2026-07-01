@@ -72,7 +72,10 @@ export function LandingNav() {
             href="/"
             className="relative flex items-center gap-2 pl-4 pr-3 text-background transition-opacity hover:opacity-80 sm:pl-5 sm:pr-4"
           >
-            <span className="font-display text-base font-semibold tracking-[-0.03em] text-background">
+            <span
+              className="text-base tracking-[0.02em] text-background"
+              style={{ fontFamily: "var(--font-brand)", fontWeight: 700 }}
+            >
               Sentrel
             </span>
           </Link>
