@@ -16,6 +16,12 @@ class AgentTemplate < ApplicationRecord
   scope :system,         -> { where(system_template: true) }
   scope :user_published, -> { where(system_template: false, published: true) }
 
+  # The curated public catalog: official (system) templates published AND backed
+  # by a GitHub bundle (source_url present). This is the ONLY set /templates
+  # shows — Forge-generated rows and legacy seeds without a source stay out, so
+  # the gallery can't be polluted by auto-generated or unverified templates.
+  scope :catalog, -> { system.where(published: true).where.not(source_url: nil) }
+
   # Templates an org's user is allowed to see — system seeds (no org), plus
   # templates from their own org. Combined with `published` so unfinished
   # private drafts (created via "Save as template" but not yet shared) don't

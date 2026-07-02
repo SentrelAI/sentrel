@@ -112,4 +112,53 @@ namespace :templates do
       puts "[templates:export_seeds] exported #{ok}/#{slugs.size}"
     end
   end
+
+  # Cull the public catalog down to GitHub-backed templates only. UNPUBLISHES
+  # (does not delete) every template without a source_url, so /templates shows
+  # just the verified bundle library. Reversible — rows are kept, only
+  # published:false. Run after the AgentTemplate.catalog guard ships.
+  #
+  #   rails templates:cull_non_github           # dry-run: show what would change
+  #   rails templates:cull_non_github[go]       # actually unpublish
+  desc "Unpublish all non-GitHub (source_url IS NULL) templates — reversible"
+  task :cull_non_github, %i[confirm] => :environment do |_t, args|
+    go = args[:confirm].to_s == "go"
+    ActsAsTenant.without_tenant do
+      targets = AgentTemplate.where(source_url: nil, published: true)
+      n = targets.count
+      puts "[cull] #{n} non-GitHub published template(s) would be unpublished."
+      puts "[cull] GitHub-backed catalog to keep: #{AgentTemplate.catalog.count}"
+      unless go
+        puts "[cull] DRY RUN — re-run as templates:cull_non_github[go] to apply."
+        next
+      end
+      targets.update_all(published: false, updated_at: Time.current)
+      puts "[cull] done. Public catalog now shows #{AgentTemplate.catalog.count} GitHub-backed templates."
+      puts "[cull] reverse with: AgentTemplate.unscoped.where(source_url: nil).update_all(published: true)"
+    end
+  end
+
+  # Hard-delete the Forge-generated junk (source_url IS NULL, created_by_user_id
+  # IS NULL, system_template = false) — the auto-generated bootstrap templates,
+  # NOT the hand-seeded 16 (those migrate to bundles) and NOT anything a human
+  # created. Deployed agents are unaffected (they copy the definition at deploy).
+  #
+  #   rails templates:delete_forge_junk          # dry-run
+  #   rails templates:delete_forge_junk[go]      # delete
+  desc "Delete Forge-generated templates (no source, no human author, non-system)"
+  task :delete_forge_junk, %i[confirm] => :environment do |_t, args|
+    go = args[:confirm].to_s == "go"
+    ActsAsTenant.without_tenant do
+      targets = AgentTemplate.where(source_url: nil, created_by_user_id: nil, system_template: false)
+      n = targets.count
+      puts "[delete_forge] #{n} Forge-generated template(s) match (no source, no author, non-system)."
+      unless go
+        puts "[delete_forge] sample: #{targets.limit(10).pluck(:slug).join(', ')}"
+        puts "[delete_forge] DRY RUN — re-run as templates:delete_forge_junk[go] to delete."
+        next
+      end
+      deleted = targets.destroy_all.size
+      puts "[delete_forge] deleted #{deleted}. Remaining templates: #{AgentTemplate.unscoped.count}."
+    end
+  end
 end
