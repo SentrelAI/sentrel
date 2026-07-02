@@ -70,7 +70,7 @@ module AgentTemplates
         suggested_provider:     (m.model["provider"].presence || "anthropic"),
         suggested_model:        (m.model["id"] || m.model["model_id"]),
         suggested_skill_slugs:  (m.skill_bundles.map { |s| s[:slug] } + m.builtin_skill_slugs).uniq,
-        suggested_integrations: m.integrations.filter_map { |i| i["service"] },
+        suggested_integrations: m.integrations.flat_map { |i| Array(i["service"]) + Array(i["any_of"]) }.uniq,
         capabilities:           definition["capabilities"],
         identity_md:            m.persona_md("identity"),
         personality_md:         m.persona_md("personality"),
@@ -118,7 +118,13 @@ module AgentTemplates
           m.skill_bundles.map { |sb| { "slug" => sb[:slug], "source" => "custom", "files" => sb[:files] } } +
           m.builtin_skill_slugs.map { |slug| { "slug" => slug, "source" => "built_in" } }
         ),
-        "integrations_required" => m.integrations.filter_map { |i| { "service" => i["service"], "why" => i["why"] }.compact if i["service"] },
+        "integrations_required" => m.integrations.filter_map { |i|
+          if i["service"]
+            { "service" => i["service"], "required" => i["required"], "why" => i["why"] }.compact
+          elsif i["any_of"].present?
+            { "any_of" => Array(i["any_of"]), "required" => i["required"], "why" => i["why"] }.compact
+          end
+        },
         "credentials_required"  => m.secret_names.map { |n| { "name_hint" => n } },
         "channels_required"     => m.channels.map { |c| { "type" => c["type"], "why" => c["why"] }.compact }
       }.compact
