@@ -49,6 +49,10 @@
 /*-wg.conf
 /socat-*.service
 
+# Local-only working docs (not tracked): Meta playbook + the agent-library roadmap.
+/META_PLAYBOOK.md
+/AGENT_ROADMAP.md
+
 
 # Vite Ruby
 /public/vite*
