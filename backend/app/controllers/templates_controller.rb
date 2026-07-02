@@ -10,15 +10,14 @@ class TemplatesController < ApplicationController
 
   # GET /templates
   #
-  # acts_as_tenant stacks AgentTemplate's default org scope on top of
-  # `visible_to`, which would hide the system seeds (organization_id IS NULL).
-  # Wrap in without_tenant so `visible_to` does the access check itself:
-  #   - logged out (tenant nil) → published system seeds only
-  #   - logged in               → system seeds + this org's published templates
+  # The public gallery is the CURATED catalog: only official templates backed by
+  # a GitHub bundle (source_url present) — see AgentTemplate.catalog. Forge-
+  # generated rows and legacy seeds without a source never appear here, so the
+  # gallery stays a verified, forkable library. Org-owned templates live in the
+  # in-app /agent_templates page, not this public marketing catalog.
   def index
-    tenant = current_tenant
     templates = ActsAsTenant.without_tenant do
-      AgentTemplate.visible_to(tenant)
+      AgentTemplate.catalog
                    .includes(:created_by_user)
                    .order(:category, :name)
                    .map(&:card_attributes)
