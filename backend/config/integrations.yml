@@ -294,3 +294,16 @@ tiktok:
   modes: [byo_token, managed, byo_oauth]
   tool: proxy
   review: gated
+
+hubspot:
+  logo: /integration-logos/hubspot.svg
+  label: HubSpot
+  category: Sales
+  provider_config_key: hubspot
+  auth_type: oauth2
+  api_base_url: https://api.hubapi.com
+  docs_url: https://developers.hubspot.com/docs/api/overview
+  scopes: [oauth, crm.objects.deals.read, crm.objects.deals.write, crm.objects.contacts.read, crm.objects.contacts.write, crm.objects.companies.read, crm.objects.companies.write, crm.objects.owners.read, crm.schemas.deals.read, crm.schemas.contacts.read, crm.schemas.companies.read]
+  modes: [managed, byo_token]
+  tool: proxy
+  review: none
