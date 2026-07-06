@@ -76,6 +76,9 @@ interface Props {
   nango_connect_base_url?: string | null
   requested_services?: string[]
   mcp_servers?: McpServerRow[]
+  // One-click Meta connect (Facebook Login for Business) — when true the Meta
+  // Ads card starts the FLB OAuth flow instead of the token-paste guide.
+  meta_fbl_enabled?: boolean
 }
 
 export default function IntegrationsIndex({
@@ -85,6 +88,7 @@ export default function IntegrationsIndex({
   nango_connect_base_url = null,
   requested_services = [],
   mcp_servers = [],
+  meta_fbl_enabled = false,
 }: Props) {
   const requestedSet = new Set(requested_services)
   // The static catalog (Nango directory) is always present now.
@@ -113,6 +117,12 @@ export default function IntegrationsIndex({
   function connect(serviceName: string, _scope: "org" | "user" = "org") {
     const entry = catalogBySlug.get(serviceName)
     if (!entry) return
+    // Meta Ads with FLB enabled → the one-click "Connect Meta" OAuth flow
+    // (Facebook Login for Business); falls back to the token guide otherwise.
+    if (entry.slug === "meta_ads" && meta_fbl_enabled) {
+      window.location.href = "/meta/fbl/start"
+      return
+    }
     // tool:mcp apps (Meta Ads) connect via the dedicated MCP's OAuth, not Nango.
     if (entry.tool === "mcp") { connectMcp(entry); return }
     setConnectApp({

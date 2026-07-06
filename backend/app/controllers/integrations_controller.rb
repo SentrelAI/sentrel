@@ -79,6 +79,9 @@ class IntegrationsController < ApplicationController
       # Static integration catalog (config/integrations.yml) — the connectable
       # app directory rendered by the frontend.
       catalog: IntegrationCatalog.list(current_tenant.id, configured_keys: Nango::Client.configured_provider_keys),
+      # One-click Meta connect (Facebook Login for Business). When enabled, the
+      # Meta Ads card routes to /meta/fbl/start instead of the token guide.
+      meta_fbl_enabled: Meta::FacebookLogin.enabled?,
       org_integration_configs: org_configs,
       nango_connect_base_url: ENV["NANGO_CONNECT_BASE_URL"],
       requested_services: requested_slugs,

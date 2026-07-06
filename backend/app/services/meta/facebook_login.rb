@@ -69,17 +69,27 @@ module Meta
     end
 
     # Step 3 — refresh a 60-day expiring System User token within its window
-    # (unattended; failing to refresh in 60 days forfeits it). For a long-lived
-    # *user* token this is the fb_exchange_token grant; System User tokens are
-    # re-minted via the business management API. Stubbed until the FLB config +
-    # System User id are known post-approval.
-    def refresh(_current_token)
+    # (unattended; failing to refresh in 60 days forfeits it and the customer
+    # must re-consent). FLB business-integration tokens refresh via the
+    # fb_exchange_token grant: trade the current (still-valid) token for a
+    # fresh 60-day one. MetaFblRefreshJob calls this daily for tokens nearing
+    # expiry. Returns { access_token:, expires_in: }.
+    def refresh(current_token)
       raise Error, "FLB not enabled" unless enabled?
-      # TODO(post-approval): re-mint via
-      #   GET /{graph_version}/oauth/access_token?grant_type=fb_exchange_token
-      #   (user tokens) OR /{business-id}/access_token for System User tokens,
-      #   per the FLB configuration. Persist the new token + expires_at.
-      raise Error, "refresh not implemented until FLB config is provisioned"
+      res = get_json("/#{graph_version}/oauth/access_token",
+        grant_type: "fb_exchange_token",
+        client_id: ENV.fetch("META_APP_ID"),
+        client_secret: ENV.fetch("META_APP_SECRET"),
+        fb_exchange_token: current_token)
+      { access_token: res["access_token"], expires_in: res["expires_in"] }
+    end
+
+    # The self-hosted Meta Ads MCP the token is used against (the engine sends
+    # it as the Bearer for mcp__meta_ads__* tools). Kept here so the FLB
+    # callback can create the org's McpServer row without hardcoding the URL
+    # in a controller.
+    def default_mcp_url
+      ENV.fetch("META_MCP_URL", "https://sentrel-meta-mcp.fly.dev/mcp")
     end
 
     # Optional — debug a token (validity, scopes, expiry) via the debug endpoint.
