@@ -58,6 +58,11 @@ env:
     # route to the dashboard, which sets X-Frame-Options and blocks framing).
     NANGO_BASE_URL: https://connect.sentrel.ai
     NANGO_CONNECT_BASE_URL: https://connect.sentrel.ai
+    # Facebook Login for Business (one-click Connect Meta). Flip to "true" once
+    # the FLB configuration exists and META_APP_ID/SECRET + META_FBL_CONFIG_ID
+    # are in .kamal/secrets. "false" = the flow is inert (token connect only).
+    META_FBL_ENABLED: "false"
+    META_GRAPH_VERSION: v21.0
   secret:
     - RAILS_MASTER_KEY
     - DATABASE_URL
@@ -78,6 +83,9 @@ env:
     - SLACK_CLIENT_ID
     - SLACK_CLIENT_SECRET
     - SLACK_SIGNING_SECRET
+    - META_APP_ID
+    - META_APP_SECRET
+    - META_FBL_CONFIG_ID
     - AWS_ACCESS_KEY_ID
     - AWS_SECRET_ACCESS_KEY
     - AWS_ACCOUNT_ID

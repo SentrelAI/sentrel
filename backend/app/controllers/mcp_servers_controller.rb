@@ -20,15 +20,24 @@ class McpServersController < ApplicationController
     # If the caller supplies a token, skip discovery and connect directly (the
     # engine sends it as `Authorization: Bearer <token>`, see external-mcp.ts).
     if p[:access_token].present?
-      server = McpServer.create!(
-        organization_id: current_tenant.id,
-        name:            p[:name],
-        slug:            slug,
-        url:             p[:url],
-        transport:       p[:transport].presence || "http",
-        access_token:    p[:access_token],
-        status:          "connected",
+      # Meta tokens get validated against the Graph API before we accept them —
+      # instant "invalid token" feedback beats a cryptic tool failure later.
+      if slug == "meta_ads" && (err = meta_token_error(p[:access_token]))
+        return render json: { error: err }, status: :unprocessable_entity
+      end
+
+      # Upsert on (org, slug) so RE-connecting (pasting a fresh token) updates
+      # the existing row instead of tripping the slug-uniqueness validation.
+      server = McpServer.find_or_initialize_by(organization_id: current_tenant.id, slug: slug)
+      server.assign_attributes(
+        name:         p[:name].presence || server.name,
+        url:          p[:url].presence || server.url,
+        transport:    p[:transport].presence || server.transport.presence || "http",
+        access_token: p[:access_token],
+        expires_at:   nil, # static tokens: no known expiry — health checks catch death
+        status:       "connected",
       )
+      server.save!
       sync_agents_using(server)
       return render json: serialize(server), status: :created
     end
@@ -101,5 +110,20 @@ class McpServersController < ApplicationController
     scope = Agent.where(organization_id: server.organization_id)
     scope = scope.where(id: server.agent_id) if server.agent_id
     scope.find_each { |a| EngineSync.trigger(a) rescue nil }
+  end
+
+  # Sanity-check a Meta access token before accepting it: one Graph API `/me`
+  # call proves it's live. Works for tokens from ANY app (ours or a customer's
+  # own — the BYO-app path), since the token authenticates itself. Returns a
+  # user-facing error string, or nil when the token is good. Fails OPEN on
+  # network trouble — a Graph blip shouldn't block connecting.
+  def meta_token_error(token)
+    Meta::FacebookLogin.get_json("/#{Meta::FacebookLogin.graph_version}/me", access_token: token)
+    nil
+  rescue Meta::FacebookLogin::Error => e
+    return nil unless e.message.include?("meta 4") # only reject on 4xx (bad token); fail open otherwise
+    "That token was rejected by Meta (#{e.message[0, 120]}). Regenerate it and check the scopes."
+  rescue StandardError
+    nil
   end
 end

@@ -384,6 +384,16 @@ Rails.application.routes.draw do
   end
   get "slack/oauth/callback", to: "slack_oauth#callback", as: :slack_oauth_callback
 
+  # Facebook Login for Business — one-click Meta connect (gated by
+  # META_FBL_ENABLED). start → Meta consent for our FLB System-User config;
+  # callback → exchanges the code for a BISU token persisted on the org's
+  # meta_ads McpServer row. The callback URL must be whitelisted verbatim in
+  # the Meta app's FLB settings (Valid OAuth Redirect URIs).
+  authenticate :user do
+    get "meta/fbl/start",    to: "meta_fbl#start",    as: :meta_fbl_start
+    get "meta/fbl/callback", to: "meta_fbl#callback", as: :meta_fbl_callback
+  end
+
   # OAuth 2.0 self-identifying client metadata documents (RFC-style, public).
   # Anthropic's claude.ai/oauth/authorize accepts any URL as client_id as long
   # as it serves valid OAuth client metadata. Hosting our own here means we

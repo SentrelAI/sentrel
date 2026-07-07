@@ -76,6 +76,9 @@ interface Props {
   nango_connect_base_url?: string | null
   requested_services?: string[]
   mcp_servers?: McpServerRow[]
+  // One-click Meta connect (Facebook Login for Business) — when true the Meta
+  // Ads card starts the FLB OAuth flow instead of the token-paste guide.
+  meta_fbl_enabled?: boolean
 }
 
 export default function IntegrationsIndex({
@@ -85,6 +88,7 @@ export default function IntegrationsIndex({
   nango_connect_base_url = null,
   requested_services = [],
   mcp_servers = [],
+  meta_fbl_enabled = false,
 }: Props) {
   const requestedSet = new Set(requested_services)
   // The static catalog (Nango directory) is always present now.
@@ -108,12 +112,25 @@ export default function IntegrationsIndex({
   const [tokenConnect, setTokenConnect] = useState<CatalogEntry | null>(null)
   const [tokenValue, setTokenValue] = useState("")
   const [tokenSaving, setTokenSaving] = useState(false)
+  // Which manual Meta guide to show: your own Meta app (full isolation,
+  // recommended) vs. a token from Sentrel's bridge (partner-shared assets).
+  const [metaGuideMode, setMetaGuideMode] = useState<"byo" | "bridge">("byo")
 
   // Catalog apps open the 3-mode modal (Managed / BYO-OAuth / Paste-token).
   function connect(serviceName: string, _scope: "org" | "user" = "org") {
     const entry = catalogBySlug.get(serviceName)
     if (!entry) return
-    // tool:mcp apps (Meta Ads) connect via the dedicated MCP's OAuth, not Nango.
+    // Meta Ads → the guided connect modal with both doors: one-click OAuth
+    // (Facebook Login for Business, when enabled) and manual token connect
+    // (your own Meta app, or a bridge token). Known token-auth — skip the
+    // OAuth-discovery dance entirely.
+    if (entry.slug === "meta_ads") {
+      setTokenValue("")
+      setMetaGuideMode("byo")
+      setTokenConnect(entry)
+      return
+    }
+    // tool:mcp apps connect via the dedicated MCP's OAuth, not Nango.
     if (entry.tool === "mcp") { connectMcp(entry); return }
     setConnectApp({
       slug: entry.slug, label: entry.label, category: entry.category, description: entry.description,
@@ -568,24 +585,82 @@ export default function IntegrationsIndex({
             <DialogTitle>Connect {tokenConnect?.label}</DialogTitle>
             <DialogDescription>
               {tokenConnect?.slug === "meta_ads"
-                ? "Meta Ads connects with a Meta system-user access token (not OAuth). Here's how to get one:"
+                ? "Connect your Meta ad account to Sentrel."
                 : `${tokenConnect?.label ?? "This app"} connects with an access token. Paste it below.`}
             </DialogDescription>
           </DialogHeader>
 
+          {tokenConnect?.slug === "meta_ads" && meta_fbl_enabled && (
+            <div className="space-y-3">
+              <Button className="w-full gap-2" onClick={() => { window.location.href = "/meta/fbl/start" }}>
+                Connect with Meta — one click
+              </Button>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">or connect manually</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
+
           {tokenConnect?.slug === "meta_ads" && (
-            <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-              <li>
-                Open{" "}
-                <a className="text-[var(--color-indigo)] underline-offset-4 hover:underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">
-                  Business Settings → Users → System Users
-                </a>.
-              </li>
-              <li>Select (or add) a system user, then click <span className="font-medium text-foreground">Generate New Token</span>.</li>
-              <li>Choose the Sentrel Meta app and grant <span className="font-medium text-foreground">ads_management</span> and <span className="font-medium text-foreground">ads_read</span> (add <span className="font-medium text-foreground">pages_show_list</span> + <span className="font-medium text-foreground">pages_manage_posts</span> to post organically).</li>
-              <li>Under <span className="font-medium text-foreground">Assign Assets</span>, give the system user your <span className="font-medium text-foreground">Ad Account</span> (and Page).</li>
-              <li>Copy the token and paste it below.</li>
-            </ol>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMetaGuideMode("byo")}
+                  className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${metaGuideMode === "byo" ? "border-[var(--color-indigo)] bg-[var(--indigo-surface)] text-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
+                >
+                  Use your own Meta app
+                  <span className="block text-[10px] font-normal text-muted-foreground">full isolation · recommended</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMetaGuideMode("bridge")}
+                  className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${metaGuideMode === "bridge" ? "border-[var(--color-indigo)] bg-[var(--indigo-surface)] text-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
+                >
+                  Token from a shared setup
+                  <span className="block text-[10px] font-normal text-muted-foreground">partner-managed / bridge</span>
+                </button>
+              </div>
+
+              {metaGuideMode === "byo" ? (
+                <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                  <li>
+                    Go to{" "}
+                    <a className="text-[var(--color-indigo)] underline-offset-4 hover:underline" href="https://developers.facebook.com/apps/create/" target="_blank" rel="noreferrer">
+                      developers.facebook.com → Create App
+                    </a>{" "}
+                    → type <span className="font-medium text-foreground">Business</span> → name it (e.g. "YourCo × Sentrel").
+                  </li>
+                  <li>In the new app's dashboard: <span className="font-medium text-foreground">Add Product → Marketing API</span>.</li>
+                  <li>
+                    Open{" "}
+                    <a className="text-[var(--color-indigo)] underline-offset-4 hover:underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">
+                      Business Settings → Users → System users
+                    </a>{" "}
+                    → <span className="font-medium text-foreground">Add</span> → role <span className="font-medium text-foreground">Admin</span>.
+                  </li>
+                  <li>On the system user, click <span className="font-medium text-foreground">Add assets</span>: your new <span className="font-medium text-foreground">app</span> (full control), your <span className="font-medium text-foreground">ad account</span> (manage campaigns), and your <span className="font-medium text-foreground">Page</span>.</li>
+                  <li>Click <span className="font-medium text-foreground">Generate token</span> → select your app → expiry <span className="font-medium text-foreground">never</span> → check <span className="font-medium text-foreground">ads_management, ads_read, business_management, pages_show_list, pages_read_engagement</span>.</li>
+                  <li>Copy the token and paste it below. It only ever reaches <em>your</em> assets, through <em>your</em> app.</li>
+                </ol>
+              ) : (
+                <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                  <li>Use this when your assets are managed through a partner setup (your agency/Sentrel manages via partner sharing) and you've been handed a token.</li>
+                  <li>
+                    Otherwise, in{" "}
+                    <a className="text-[var(--color-indigo)] underline-offset-4 hover:underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noreferrer">
+                      Business Settings → Users → System users
+                    </a>
+                    , select the system user → <span className="font-medium text-foreground">Generate New Token</span>.
+                  </li>
+                  <li>Select the connected Meta app and grant <span className="font-medium text-foreground">ads_management, ads_read, business_management, pages_show_list, pages_read_engagement</span>.</li>
+                  <li>Under <span className="font-medium text-foreground">Assign Assets</span>, ensure the system user has the <span className="font-medium text-foreground">ad account</span> (and Page).</li>
+                  <li>Copy the token and paste it below.</li>
+                </ol>
+              )}
+            </div>
           )}
 
           <Input
