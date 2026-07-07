@@ -58,10 +58,12 @@ env:
     # route to the dashboard, which sets X-Frame-Options and blocks framing).
     NANGO_BASE_URL: https://connect.sentrel.ai
     NANGO_CONNECT_BASE_URL: https://connect.sentrel.ai
-    # Facebook Login for Business (one-click Connect Meta). Flip to "true" once
-    # the FLB configuration exists and META_APP_ID/SECRET + META_FBL_CONFIG_ID
-    # are in .kamal/secrets. "false" = the flow is inert (token connect only).
-    META_FBL_ENABLED: "false"
+    # Facebook Login for Business (one-click Connect Meta). Enabled 2026-07-07:
+    # FLB configuration 2198501570915298 (System User, Pages + Ad accounts
+    # required) + META_APP_ID/SECRET/FBL_CONFIG_ID in GitHub secrets + the
+    # /meta/fbl/callback redirect URI whitelisted. Set "false" to kill-switch
+    # the one-click flow (token connect keeps working).
+    META_FBL_ENABLED: "true"
     META_GRAPH_VERSION: v21.0
   secret:
     - RAILS_MASTER_KEY
