@@ -33,10 +33,19 @@ interface PendingActionApproval {
 
 const pending = new Map<string, PendingActionApproval>();
 
+// How long a run blocks in-line waiting for the human. Short on purpose:
+// past this the tool returns { value: "pending" }, the agent tells the user
+// it's waiting and ENDS the turn — freeing the (concurrency-1) lane for chat.
+// The approval card stays live; when the decision lands with no in-run waiter,
+// the gateway enqueues a continuation job (see gateway.ts approval sub).
+// Before this, the wait defaulted to 24h — runs showed "Thinking · 1440m" and
+// every queued message sat behind them.
+export const IN_RUN_APPROVAL_WAIT_MS = 2 * 60 * 1000;
+
 export function createActionApproval(
   summary: string,
   payloadType: string,
-  timeoutMs = 24 * 60 * 60 * 1000, // 24h default — long enough for async user
+  timeoutMs = IN_RUN_APPROVAL_WAIT_MS,
 ): { id: string; promise: Promise<ActionApprovalDecision> } {
   // Globally-unique token: a per-process counter would reset on engine restart
   // and collide with prior approvals already in pending_approvals (UNIQUE
@@ -49,8 +58,11 @@ export function createActionApproval(
     setTimeout(() => {
       if (pending.has(id)) {
         pending.delete(id);
-        resolve({ value: "timeout" });
-        logger.warn(`Action approval ${id} timed out, auto-resolving as 'timeout'`);
+        // "pending" ≠ rejected: the card is still live in the UI. The tool
+        // handler tells the agent to end its turn; the decision resumes work
+        // via a continuation job when it eventually arrives.
+        resolve({ value: "pending" });
+        logger.info(`Action approval ${id}: no decision within in-run wait — releasing the turn (card stays active)`);
       }
     }, timeoutMs);
   });

@@ -121,7 +121,12 @@ export function buildPrompt(
       parts.push(
         `## Scheduled task (automated — not a user message)\n` +
         `Execute the following instruction. Do NOT greet the user or ask what they need. ` +
-        `This is an automated scheduled job — go directly to the task:\n\n${schedInstruction}`,
+        `This is an automated scheduled job — go directly to the task:\n\n${schedInstruction}\n\n` +
+        `Memory discipline for scheduled runs: run status, blockers, pending drafts, and "do X every day" ` +
+        `notes belong in your REPLY, not in persistent memory. Never write standing directives into memory ` +
+        `from a scheduled run that would change how you answer normal chat messages — when a user says hello ` +
+        `tomorrow, they want their question answered, not this task re-run. Durable business facts you learned ` +
+        `are fine to remember.`,
       );
       break;
     }

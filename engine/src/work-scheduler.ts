@@ -135,6 +135,7 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
           await queue.add(jobType, payload, {
             jobId: `work-cron-${item.id}-backfill-${prevMs}`,
             removeOnComplete: { count: 5 },
+        priority: 10, // scheduled work yields to user-originated jobs (priority 1)
             removeOnFail: { count: 3 },
           });
           logger.info(
@@ -149,6 +150,7 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
         repeat: { pattern: item.cron_expression!, tz },
         jobId: `work-cron-${item.id}`,
         removeOnComplete: { count: 5 },
+        priority: 10, // scheduled work yields to user-originated jobs (priority 1)
         removeOnFail: { count: 3 },
       });
       break;
@@ -159,6 +161,7 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
         repeat: { every: everyMs },
         jobId: `work-int-${item.id}`,
         removeOnComplete: { count: 10 },
+        priority: 10, // scheduled work yields to user-originated jobs (priority 1)
         removeOnFail: { count: 5 },
       });
       break;
@@ -181,6 +184,7 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
         await queue.add(jobType, payload, {
           jobId: `work-once-${item.id}`,
           removeOnComplete: { count: 5 },
+        priority: 10, // scheduled work yields to user-originated jobs (priority 1)
           removeOnFail: { count: 3 },
         });
       } else {
@@ -188,6 +192,7 @@ async function registerItem(item: ScheduledWorkItem): Promise<void> {
           delay: delayMs,
           jobId: `work-once-${item.id}`,
           removeOnComplete: { count: 5 },
+        priority: 10, // scheduled work yields to user-originated jobs (priority 1)
           removeOnFail: { count: 3 },
         });
       }

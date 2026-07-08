@@ -2,7 +2,7 @@ import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
 import { logger, setLogBroadcaster } from "./logger.js";
-import { redis } from "./queue.js";
+import { redis, queue } from "./queue.js";
 
 // Hook every engine log line into the broadcast pipeline so the browser
 // logs drawer streams them via AgentChatChannel. This runs at module
@@ -399,6 +399,31 @@ function subscribeApprovalChannel(): void {
           text: msg.text,
         });
         logger.info(`Approval sub: action ${msg.approvalToken} → ${msg.value}${msg.text ? ` (amend: ${msg.text})` : ""} (resolved: ${resolved})`);
+
+        // No in-run waiter → the run that requested this approval already
+        // released its turn (short in-run wait). Resume the work in a fresh
+        // job carrying the decision. jobId dedupes double-clicks/re-publishes.
+        if (!resolved) {
+          const summary = typeof msg.summary === "string" && msg.summary ? ` ("${msg.summary}")` : "";
+          const note = msg.text ? ` They added a note: "${msg.text}".` : "";
+          await queue.add("scheduled_task", {
+            type: "scheduled_task",
+            agentId: config.employeeId,
+            channel: (typeof msg.originChannel === "string" && msg.originChannel) || "web",
+            payload: {
+              instruction:
+                `The user just decided on your earlier approval request${summary}: ${msg.value}.${note} ` +
+                `Continue that piece of work accordingly — act on it if approved, stand down gracefully if rejected, ` +
+                `and apply any amendment. Do not re-request approval for the same action unless the amendment changes it materially.`,
+            },
+          }, {
+            jobId: `approval-resume-${msg.approvalToken}`,
+            priority: 1,
+            removeOnComplete: { count: 10 },
+            removeOnFail: { count: 5 },
+          }).catch((err) => logger.error("Approval sub: failed to enqueue continuation", { error: (err as Error).message }));
+          logger.info(`Approval sub: enqueued continuation for ${msg.approvalToken} (${msg.value})`);
+        }
         return;
       }
     } catch (err) {

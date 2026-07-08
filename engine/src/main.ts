@@ -78,8 +78,26 @@ async function main() {
   await host.updateAgentStatus(agent.id, "running");
 
   // 5. Start worker
+  // Scheduled work older than this is dropped, not executed. A "daily pass"
+  // tick from many hours ago has no value by the time a slept/wedged machine
+  // finally drains it — executing it anyway is how stale passes end up
+  // answering the user's unrelated chat messages. (Approval-resume jobs are
+  // exempt: a decision is actionable whenever it arrives.)
+  const MAX_SCHEDULED_JOB_AGE_MS = 3 * 60 * 60 * 1000;
+
   const worker = createWorker(async (job) => {
     try {
+      if (job.data?.type === "scheduled_task" && !String(job.id || "").startsWith("approval-resume-")) {
+        const ageMs = Date.now() - job.timestamp;
+        if (ageMs > MAX_SCHEDULED_JOB_AGE_MS) {
+          logger.warn(`Dropping stale scheduled_task (queued ${Math.round(ageMs / 60000)}m ago, jobId=${job.id})`);
+          // Advance last_run_at so the boot-time cron backfill doesn't
+          // resurrect the very tick we just dropped.
+          const taskId = job.data.payload?.taskId;
+          if (taskId) await host.updateScheduledWorkLastRun(taskId).catch(() => {});
+          return;
+        }
+      }
       const currentAgent = await host.getAgent(config.employeeId);
       await runAgent(currentAgent, job.data);
       incrementJobCount();
