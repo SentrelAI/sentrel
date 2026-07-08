@@ -104,7 +104,7 @@ module AgentProvisioner
         name: "agent-#{agent.id}",
         region: region,
         config: {
-          image: ENV.fetch("ENGINE_IMAGE", "ghcr.io/parsedev/alchemy-engine:latest"),
+          image: EngineImage.current,
           env: env_for(agent),
           services: [ {
             ports: [ { port: 443, handlers: [ "tls", "http" ] },
