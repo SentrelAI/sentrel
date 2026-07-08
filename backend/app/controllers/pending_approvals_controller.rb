@@ -59,7 +59,12 @@ class PendingApprovalsController < ApplicationController
       type: "action_approval_response",
       approvalToken: approval.approval_token,
       value: approval.decision,
-      text: approval.decision_text
+      text: approval.decision_text,
+      # Context for the engine's continuation job (fired when the requesting
+      # run already released its turn): what was approved, and where the work
+      # originated so the resumed reply lands in the right channel.
+      summary: approval.try(:summary),
+      originChannel: approval.try(:origin)
     }.to_json
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
     redis.publish("agent-#{approval.agent_id}-approvals", msg)

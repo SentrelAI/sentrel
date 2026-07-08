@@ -797,6 +797,9 @@ const ComposerAction: FC<{ agentReady: boolean; agentStatus: string }> = ({ agen
 const ThinkingStatus: FC = () => {
   const isRunning = useAuiState((s) => s.thread.isRunning);
   const recovery = useContext(RecoveryThinkingContext);
+  // A pending approval card means the run is waiting on the HUMAN, not
+  // computing — "Thinking · 42m" was a lie that hid the needed action.
+  const pendingApproval = useContext(ActionApprovalContext);
   const showThinking = isRunning || recovery.active;
   const [elapsed, setElapsed] = useState<string>("");
 
@@ -823,8 +826,17 @@ const ThinkingStatus: FC = () => {
   return (
     <>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Loader2Icon className="size-3.5 animate-spin" />
-        <span>Thinking{elapsed ? ` · ${elapsed}` : "…"}</span>
+        {pendingApproval ? (
+          <>
+            <span className="size-2 animate-pulse rounded-full bg-amber-500" />
+            <span>Waiting for your approval{elapsed ? ` · ${elapsed}` : "…"}</span>
+          </>
+        ) : (
+          <>
+            <Loader2Icon className="size-3.5 animate-spin" />
+            <span>Thinking{elapsed ? ` · ${elapsed}` : "…"}</span>
+          </>
+        )}
       </div>
       {isRunning ? (
         <ComposerPrimitive.Cancel asChild>

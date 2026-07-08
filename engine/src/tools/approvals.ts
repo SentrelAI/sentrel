@@ -221,6 +221,21 @@ export function buildApprovalsMcpServer(ctx: ApprovalsContext) {
         });
 
         const decision = await promise;
+        if (decision.value === "pending") {
+          // No human decision within the in-run wait. Release the turn: the
+          // approval card stays active in the chat, and when the user decides,
+          // the gateway enqueues a continuation job that resumes this work.
+          return {
+            content: [{
+              type: "text",
+              text:
+                `No decision yet — the approval card for "${args.summary}" is still active in the chat. ` +
+                `END YOUR TURN NOW: briefly tell the user you're waiting for their decision, then stop. ` +
+                `Do NOT call request_approval again for this action, do NOT retry, and do NOT treat this as a rejection. ` +
+                `You will be woken automatically with their decision to continue the work.`,
+            }],
+          };
+        }
         return {
           content: [{
             type: "text",

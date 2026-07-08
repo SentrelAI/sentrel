@@ -25,6 +25,10 @@ export function startInboxPoller(): void {
         const bullmqOpts: Record<string, unknown> = {
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 50 },
+          // Inbox jobs are user-originated (chat, email, task assignments) —
+          // they jump ahead of queued scheduled/heartbeat work (priority 10)
+          // so a backlog of cron ticks can never starve a live conversation.
+          priority: 1,
         };
         if (jobData.jobId) {
           bullmqOpts.jobId = jobData.jobId;

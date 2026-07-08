@@ -93,6 +93,15 @@ async function runAgentUnlocked(agent: Agent, job: JobData): Promise<void> {
   }
   logger.info(`Running agent: ${agent.name} (${agent.role})`, { jobType: job.type, jobId });
 
+  // Mark scheduled work as serviced at START, not only at completion. A run
+  // that hangs (or dies mid-flight) otherwise never advances last_run_at, and
+  // the boot-time cron backfill re-fires the same tick on every wake — the
+  // "stale daily pass answers every message" loop. Completion updates it
+  // again, which is harmless.
+  if (job.type === "scheduled_task" && job.payload?.taskId) {
+    await host.updateScheduledWorkLastRun(job.payload.taskId).catch(() => {});
+  }
+
   // Short-circuit: YES/NO replies on non-web channels are approval responses,
   // not new prompts. Handle them and skip the agent run entirely.
   if (await maybeHandleApprovalResponse(agent, job, jobId)) return;
