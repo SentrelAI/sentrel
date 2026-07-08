@@ -74,7 +74,7 @@ module AgentMachineOps
   def redeploy(agent, image: nil)
     app = app_name(agent)
     mid = machine_id(agent) or return operation_failure(agent, :redeploy, "Agent has no machine_id recorded")
-    target = image || ENV.fetch("ENGINE_IMAGE", "ghcr.io/parsedev/alchemy-engine:latest")
+    target = image.presence || EngineImage.current
 
     current = fly_api(:get, "/apps/#{app}/machines/#{mid}")
     cfg = current["config"] || {}
