@@ -2,12 +2,15 @@
 // primitives the agent chains to build ANY ad:
 //
 //   • scene video  (Kling t2v / i2v)         — cinematic b-roll
+//   • one-step talking UGC (Veo 3.1 / Sora)   — prompt → person speaking with
+//        NATIVE audio (dialogue + room tone) in a single render. Preferred
+//        for UGC ads; pass model "fal-ai/veo3.1/fast".
 //   • pre-made avatar (veed text-to-video)    — a stock creator speaks a script
 //   • CUSTOM talking avatar (TTS + lip-sync)  — make ANY face you generate
 //        (a doctor, a nurse, a patient) speak a script, lip-synced. This is
 //        what makes "doctor UGC" possible without us hard-coding a doctor:
 //        the agent generates the person, hands us the image + the script,
-//        and we voice it (fal ElevenLabs) and lip-sync it (Kling AI Avatar).
+//        and we voice it (fal ElevenLabs) and lip-sync it (OmniHuman).
 //
 // Contracts all VERIFIED live (2026-06) against the org's real fal key:
 //   auth   : Authorization: Key <FAL_KEY>
@@ -30,10 +33,11 @@ import { logger } from "../../logger.js";
 import type { GenerateVideoInput, GenerateVideoOutput } from "./types.js";
 
 const QUEUE = "https://queue.fal.run";
-// Kling 2.1 standard — strong quality at a sane price. Override per-call via
-// input.model, or globally via FAL_VIDEO_I2V_MODEL / FAL_VIDEO_T2V_MODEL.
-const DEFAULT_I2V = process.env.FAL_VIDEO_I2V_MODEL || "fal-ai/kling-video/v2.1/standard/image-to-video";
-const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2.1/standard/text-to-video";
+// Kling 2.5 turbo pro — top-tier motion/prompt adherence, $0.35 per 5s clip
+// (verified on fal 2026-07). Override per-call via input.model, or globally
+// via FAL_VIDEO_I2V_MODEL / FAL_VIDEO_T2V_MODEL.
+const DEFAULT_I2V = process.env.FAL_VIDEO_I2V_MODEL || "fal-ai/kling-video/v2.5-turbo/pro/image-to-video";
+const DEFAULT_T2V = process.env.FAL_VIDEO_T2V_MODEL || "fal-ai/kling-video/v2.5-turbo/pro/text-to-video";
 // Pre-made UGC creator: a script → a stock person delivering it. Fixed
 // library of generic creators (no custom face, no doctors).
 const DEFAULT_AVATAR = process.env.FAL_AVATAR_MODEL || "veed/avatars/text-to-video";
@@ -46,10 +50,29 @@ const DEFAULT_AVATAR = process.env.FAL_AVATAR_MODEL || "veed/avatars/text-to-vid
 // skill counters this by mandating TIGHT head-and-shoulders source framing
 // (no arms in the shot) + a self-review pass. Swap via FAL_LIPSYNC_MODEL
 // (e.g. veed/fabric-1.0 for a cheaper, pose-stable alternative).
-const DEFAULT_LIPSYNC = process.env.FAL_LIPSYNC_MODEL || "fal-ai/bytedance/omnihuman";
+// v1.5 (verified 2026-07): single takes up to 30s of audio at 1080p, 60s at
+// 720p — v1 choked on anything past ~10s, forcing ffmpeg stitching.
+const DEFAULT_LIPSYNC = process.env.FAL_LIPSYNC_MODEL || "fal-ai/bytedance/omnihuman/v1.5";
 // Voice the script. fal-hosted ElevenLabs → returns a fal.media audio URL
 // the lip-sync model can fetch (our own blob URLs are unreachable to fal).
 const TTS_MODEL = process.env.FAL_TTS_MODEL || "fal-ai/elevenlabs/tts/multilingual-v2";
+
+// fal retires model slugs (fal-ai/veo3 → "deprecated, no longer supported",
+// 2026-07) — agents and old skills still pass the retired names. Map them to
+// the live equivalents instead of failing the render.
+const MODEL_ALIASES: Record<string, string> = {
+  "fal-ai/veo3": "fal-ai/veo3.1",
+  "fal-ai/veo3/fast": "fal-ai/veo3.1/fast",
+  "fal-ai/veo3/image-to-video": "fal-ai/veo3.1/image-to-video",
+  "fal-ai/veo3/fast/image-to-video": "fal-ai/veo3.1/fast/image-to-video",
+  "fal-ai/bytedance/omnihuman": "fal-ai/bytedance/omnihuman/v1.5",
+};
+
+function normalizeModel(model: string): string {
+  const mapped = MODEL_ALIASES[model];
+  if (mapped) logger.info(`fal: mapped retired model ${model} → ${mapped}`);
+  return mapped || model;
+}
 
 async function getKey(agentId: number): Promise<string | null> {
   const cred = await fetchSecret({ agentId, provider: "fal", kind: "generic" });
@@ -79,7 +102,11 @@ async function toDataUri(image: string): Promise<string | null> {
 
 // Submit a job to fal's queue and poll to completion. Returns the result
 // JSON (shape depends on the model: { video:{url} } or { audio:{url} }).
-// maxPolls × 3s — Kling renders run 1–4 min; TTS is seconds.
+// maxPolls × 3s — Kling renders run 1–4 min; TTS is seconds. Video callers
+// pass a much larger cap: long lip-sync jobs (16s+ audio) routinely exceed
+// 10 min, and giving up early doesn't stop the fal job — we still pay for
+// the render, we just throw the result away (this burned three OmniHuman
+// renders in one Nova session before the cap was raised).
 async function submitAndPoll(
   model: string,
   body: Record<string, unknown>,
@@ -100,7 +127,11 @@ async function submitAndPoll(
     if (status === "COMPLETED") done = true;
     else if (status === "ERROR" || status === "FAILED") throw new Error(`fal ${model} job ${status}`);
   }
-  if (!done) throw new Error(`fal ${model}: timed out`);
+  if (!done) throw new Error(
+    `fal ${model}: no result after ${Math.round(maxPolls * 3 / 60)} min of polling. ` +
+    `The fal job may still complete (and bill) server-side — do NOT immediately retry the same render; ` +
+    `wait a few minutes or try a faster model.`,
+  );
 
   const out = await fetch(submit.response_url, { headers });
   if (!out.ok) throw new Error(`fal ${model} result fetch failed: ${out.status}`);
@@ -140,13 +171,13 @@ export const FalVideoProvider = {
       const imageData = await toDataUri(input.image);
       if (!imageData) throw new Error(`fal lipsync: couldn't read face image ${input.image}`);
       const audioUrl = await falTts(input.prompt, input.voice, headers);
-      model = input.model || DEFAULT_LIPSYNC;
+      model = normalizeModel(input.model || DEFAULT_LIPSYNC);
       body.image_url = imageData;
       body.audio_url = audioUrl;
       mode = "custom-avatar";
     } else if (input.avatar) {
       // Pre-made UGC creator (veed). prompt = the verbatim script.
-      model = input.model || DEFAULT_AVATAR;
+      model = normalizeModel(input.model || DEFAULT_AVATAR);
       body.text = input.prompt;
       body.avatar_id = input.avatar;
       mode = "stock-avatar";
@@ -155,16 +186,29 @@ export const FalVideoProvider = {
       // as a data URI so fal never has to fetch a URL.
       const imageData = input.image ? await toDataUri(input.image) : null;
       if (input.image && !imageData) throw new Error(`fal kling: couldn't read source image ${input.image}`);
-      model = input.model || (imageData ? DEFAULT_I2V : DEFAULT_T2V);
+      model = normalizeModel(input.model || (imageData ? DEFAULT_I2V : DEFAULT_T2V));
       body.prompt = input.prompt;
       if (imageData) body.image_url = imageData;
 
-      // Veo 3 / Sora 2 generate a talking person WITH native audio from the
+      // Veo 3.1 / Sora 2 generate a talking person WITH native audio from the
       // prompt alone (one-step UGC, no separate image or lip-sync). They use a
-      // different param shape than Kling — aspect_ratio always, no "5"/"10".
+      // different param shape than Kling (verified fal-ai/veo3.1/* 2026-07:
+      // aspect_ratio 16:9|9:16, duration "4s"|"6s"|"8s", generate_audio).
       if (/veo|sora/.test(model)) {
-        body.aspect_ratio = input.aspect_ratio || "9:16";
-        if (/veo/.test(model)) body.generate_audio = true; // native dialogue
+        // Veo's t2v and i2v are separate endpoints — route to the i2v variant
+        // when a source image is present so the render doesn't 4xx.
+        if (/veo/.test(model) && imageData && !model.includes("image-to-video")) {
+          model = `${model}/image-to-video`;
+        }
+        // Veo rejects 1:1 — clamp to 16:9 (agents crop square cuts with ffmpeg).
+        const ratio = input.aspect_ratio === "1:1" ? "16:9" : (input.aspect_ratio || "9:16");
+        body.aspect_ratio = ratio;
+        if (/veo/.test(model)) {
+          body.generate_audio = true; // native dialogue
+          if (input.duration) {
+            body.duration = input.duration <= 4 ? "4s" : input.duration <= 6 ? "6s" : "8s";
+          }
+        }
         mode = "one-step-talking";
       } else {
         // Kling: derives ratio from the source image; t2v needs aspect_ratio.
@@ -173,7 +217,11 @@ export const FalVideoProvider = {
       }
     }
 
-    const result = await submitAndPoll(model, body, headers);
+    // 3s per poll: 400 polls = 20 min for lip-sync (long audio takes render
+    // slowly), 300 = 15 min for everything else. The old 150 (7.5 min) cap
+    // sat right in OmniHuman's normal range and killed paid-for renders.
+    const maxPolls = mode === "custom-avatar" ? 400 : 300;
+    const result = await submitAndPoll(model, body, headers, maxPolls);
     const url = (result.video as { url?: string } | undefined)?.url;
     if (!url) throw new Error(`fal ${model}: no video url in result: ${JSON.stringify(result).slice(0, 200)}`);
 
