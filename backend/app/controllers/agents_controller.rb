@@ -318,6 +318,15 @@ class AgentsController < ApplicationController
     # current_tenant helper returns nil, which would hide org-owned
     # community templates from their own org.
     tenant = current_tenant
+    # GitHub-backed templates deploy through the full /deploy-agent wizard —
+    # one deploy UI, not two. /agents/new?template=<slug> deep links redirect
+    # there; only templates without a bundle source use the in-page flow.
+    if params[:template].present?
+      requested = ActsAsTenant.without_tenant { AgentTemplate.visible_to(tenant).find_by(slug: params[:template]) }
+      if requested&.source_url.present?
+        return redirect_to deploy_agent_path(source: requested.source_url)
+      end
+    end
     templates_for_picker = ActsAsTenant.without_tenant do
       AgentTemplate.visible_to(tenant).order(:name).to_a
     end
@@ -778,7 +787,8 @@ class AgentsController < ApplicationController
       suggested_manager_role: t.suggested_manager_role,
       suggested_provider: t.suggested_provider,
       suggested_model: t.suggested_model,
-      variables: t.variables
+      variables: t.variables,
+      source_url: t.source_url
     }
   end
 
