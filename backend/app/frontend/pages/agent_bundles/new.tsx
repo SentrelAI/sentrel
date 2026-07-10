@@ -1,7 +1,7 @@
 import { Head, router, useForm } from "@inertiajs/react"
 import { useState } from "react"
 import {
-  AlertTriangle, BookOpen, Check, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Sparkle, Target, Terminal, Trash2, Wrench,
+  AlertTriangle, BookOpen, Check, ChevronDown, Circle, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Sparkle, Target, Terminal, Trash2, Wrench,
 } from "lucide-react"
 
 import { Overline } from "@/components/brand"
@@ -481,8 +481,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             )}
 
             {/* Agent details — name/slug/role/model, all editable, at the top */}
-            <section>
-              <Overline className="mb-3">Agent details</Overline>
+            <WizardStep title="Agent details" state={agentName.trim() ? "done" : "attention"} summary={agentName.trim() || "unnamed"} defaultOpen>
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 {preview.description && <p className="text-xs text-muted-foreground leading-relaxed">{preview.description}</p>}
                 {!updating && (
@@ -539,11 +538,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   A taken slug gets a numeric suffix automatically. Variables like <code className="font-mono">{"{{agent_name}}"}</code> and <code className="font-mono">{"{{company_name}}"}</code> are filled in with your workspace's values at deploy.
                 </p>
               </div>
-            </section>
+            </WizardStep>
 
             {/* Goal — editable */}
-            <section>
-              <Overline className="mb-3">Goal</Overline>
+            <WizardStep title="Goal" summary={preview.goal?.kpis?.length ? `mission + ${preview.goal.kpis.length} KPIs` : "mission"}>
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="mission" className="flex items-center gap-1.5"><Target className="size-3.5" /> Mission</Label>
@@ -594,11 +592,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   />
                 </div>
               </div>
-            </section>
+            </WizardStep>
 
             {/* Persona — same editor as the agent Identity tab, variable chips included */}
-            <section>
-              <Overline className="mb-3">Persona</Overline>
+            <WizardStep title="Persona" summary="identity · personality · instructions">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Identity</Label>
@@ -613,11 +610,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   <MarkdownEditor value={instructionsMd} onChange={setInstructionsMd} minHeight="160px" ariaLabel="Instructions" />
                 </div>
               </div>
-            </section>
+            </WizardStep>
 
             {/* Skills + knowledge (from the bundle — read-only) */}
-            <section>
-              <Overline className="mb-3">Skills & knowledge</Overline>
+            <WizardStep title="Skills & knowledge" summary={`${preview.skills.length} bundle skill${preview.skills.length === 1 ? "" : "s"} · ${preview.knowledge.length} knowledge doc${preview.knowledge.length === 1 ? "" : "s"}`}>
               <div className="rounded-lg border bg-card divide-y">
                 {preview.skills.map((s) => (
                   <details key={s.slug} className="group">
@@ -661,11 +657,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   </div>
                 </div>
               )}
-            </section>
+            </WizardStep>
 
             {/* Schedules — standing cron jobs, fully editable */}
-            <section>
-              <Overline className="mb-3">Schedules</Overline>
+            <WizardStep title="Schedules" summary={`${schedules.length} scheduled routine${schedules.length === 1 ? "" : "s"}`}>
               <p className="text-xs text-muted-foreground mb-3 max-w-lg">
                 Standing cron jobs the agent runs autonomously. Edit, remove, or add your own — created active at deploy.
               </p>
@@ -746,13 +741,12 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   <Plus className="size-3" /> Add schedule
                 </Button>
               </div>
-            </section>
+            </WizardStep>
 
             {/* Webhooks the bundle ships — read-only preview; tokenized URLs
                 are generated at deploy and live on the agent's Webhooks tab. */}
             {(preview.webhooks || []).length > 0 && (
-              <section>
-                <Overline className="mb-3">Webhooks</Overline>
+              <WizardStep title="Webhooks" summary={`${preview.webhooks.length} webhook${preview.webhooks.length === 1 ? "" : "s"}`}>
                 <div className="rounded-lg border bg-card divide-y">
                   {preview.webhooks.map((w) => (
                     <div key={w.name} className="px-4 py-2.5 text-xs">
@@ -769,15 +763,14 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   Each gets a unique URL at deploy — copy them from the agent's Webhooks tab into the external service.
                 </p>
-              </section>
+              </WizardStep>
             )}
 
             {/* Setup inputs — bundle-declared deploy parameters. Each value
                 substitutes {{key}} tokens across persona/knowledge/schedules
                 at deploy (e.g. the repo list a bug-fixer may work in). */}
             {bundleInputs.length > 0 && (
-              <section>
-                <Overline className="mb-3">Setup</Overline>
+              <WizardStep title="Setup" state={missingInputs.length ? "attention" : "done"} summary={missingInputs.length ? `${missingInputs.length} required input${missingInputs.length === 1 ? "" : "s"} missing` : "all inputs set"} defaultOpen>
                 <div className="rounded-lg border bg-card p-4 space-y-4">
                   {bundleInputs.map((input) => (
                     <div key={input.key} className="space-y-1">
@@ -808,7 +801,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                     </div>
                   ))}
                 </div>
-              </section>
+              </WizardStep>
             )}
 
             {/* Connections — actionable right here: a jump to the /integrations
@@ -816,8 +809,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 secrets. Everything is org-level, so connecting before the agent
                 exists is fine. */}
             {(preview.integrations.length > 0 || preview.secrets.length > 0 || preview.channels.length > 0) && (
-              <section>
-                <Overline className="mb-3">Connections</Overline>
+              <WizardStep title="Connections" state={missingRequired.length ? "attention" : "done"} summary={missingRequired.length ? `connect ${missingRequired.join(", ")}` : "requirements connected"} defaultOpen>
                 <p className="text-xs text-muted-foreground mb-3 max-w-lg">
                   Connect now or after deploy — your call. Anything left unconnected shows up as a reminder on the agent's page.
                 </p>
@@ -1004,11 +996,20 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 {connectError && (
                   <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{connectError}</div>
                 )}
-              </section>
+              </WizardStep>
             )}
 
-            {/* Deploy */}
-            <section className="space-y-3 pb-8">
+            {/* Deploy — the rail's terminal node */}
+            <section className="relative pl-9 space-y-3 pb-8">
+              <div
+                className={`absolute left-0 top-0 grid size-6 place-items-center rounded-full border ${
+                  authenticated && missingRequired.length === 0 && missingInputs.length === 0
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-muted text-muted-foreground"
+                }`}
+              >
+                <Rocket className="size-3" />
+              </div>
               {!updating && (
                 <label className="flex items-center gap-2 text-xs cursor-pointer">
                   <Checkbox checked={saveAsTemplate} onCheckedChange={(v) => setSaveAsTemplate(!!v)} />
@@ -1142,6 +1143,43 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 // Devise's stored location (set in AgentBundlesController#new) brings the
 // user back to this exact URL after either flow, and the deploy wizard is
 // whitelisted from the onboarding gate so a fresh signup deploys at once.
+
+// One vertical step on the deploy page: status bubble + connector line,
+// collapsible body with a one-line summary when closed. Deliberately NOT a
+// paged wizard — everything stays on one page; steps are structure +
+// completion state, and the required ones ship open.
+function WizardStep({ title, state = "none", summary, defaultOpen = false, children }: {
+  title: string
+  state?: "done" | "attention" | "none"
+  summary?: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <section className="relative pl-9">
+      <div className="absolute left-[11px] top-7 -bottom-6 w-px bg-border" aria-hidden />
+      <div
+        className={`absolute left-0 top-0 grid size-6 place-items-center rounded-full border ${
+          state === "done"
+            ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+            : state === "attention"
+              ? "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-400"
+              : "border-border bg-muted text-muted-foreground"
+        }`}
+      >
+        {state === "done" ? <Check className="size-3.5" /> : state === "attention" ? <AlertTriangle className="size-3" /> : <Circle className="size-1.5 fill-current" />}
+      </div>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left" aria-expanded={open}>
+        <Overline>{title}</Overline>
+        {!open && summary && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{summary}</span>}
+        <ChevronDown className={`ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="mt-3">{children}</div>}
+    </section>
+  )
+}
+
 function AuthPanel({ bundleName }: { bundleName: string | null }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin")
 
