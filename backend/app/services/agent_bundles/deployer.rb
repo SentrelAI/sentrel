@@ -127,6 +127,13 @@ module AgentBundles
         }.compact)
     end
 
+    def valid_timezone?(tz)
+      TZInfo::Timezone.get(tz)
+      true
+    rescue TZInfo::InvalidTimezoneIdentifier
+      false
+    end
+
     def substitute(text, ctx)
       return nil if text.blank?
       text.gsub(/\{\{\s*(\w+)\s*\}\}/) { ctx.key?(Regexp.last_match(1)) ? ctx[Regexp.last_match(1)] : Regexp.last_match(0) }
@@ -264,13 +271,19 @@ module AgentBundles
       schedule_list.each do |sched|
         s = sched.respond_to?(:stringify_keys) ? sched.stringify_keys : sched
         next if s["name"].blank? || s["cron"].blank? || s["instruction"].blank?
+        # Timezone gets the same {{token}} substitution as the instruction —
+        # bundles declare `timezone: "{{timezone}}"` against a deploy input.
+        # Unresolved tokens / junk fall back to UTC rather than reaching the
+        # engine's cron parser as an invalid zone.
+        tz = substitute(s["timezone"].presence || "UTC", ctx)
+        tz = "UTC" if tz.blank? || tz.include?("{{") || !valid_timezone?(tz)
         agent.scheduled_work.create!(
           organization: @org,
           mode: "cron",
           name: s["name"],
           instruction: substitute(s["instruction"], ctx),
           cron_expression: s["cron"],
-          timezone: s["timezone"].presence || "UTC",
+          timezone: tz,
           active: true,
         )
       end
