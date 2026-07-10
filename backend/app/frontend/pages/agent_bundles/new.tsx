@@ -233,11 +233,20 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [secretAdvanced, setSecretAdvanced] = useState<Set<string>>(new Set())
   const [secretBusy, setSecretBusy] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
+  // Friendly names for non-technical users: "google_calendar" reads as
+  // "Google Calendar" with its logo wherever the catalog knows the app.
+  function svcEntry(service: string) {
+    return integration_catalog.find((a) => normSvc(a.slug) === normSvc(service))
+  }
+  function svcLabel(service: string) {
+    return svcEntry(service)?.label || service.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
   // Step rail state. Required steps ship open; a manual toggle pins a step
   // so auto-advance never fights the user.
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({
     details: true, goal: false, persona: false, skills: false,
-    schedules: false, webhooks: false, setup: true, connections: true,
+    schedules: false, boundaries: false, webhooks: false, setup: true, connections: true,
   })
   const pinnedSteps = useRef<Set<string>>(new Set())
   function toggleStep(id: string) {
@@ -697,7 +706,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             {/* Schedules — standing cron jobs, fully editable */}
             <WizardStep id="schedules" title="Schedules" summary={`${schedules.length} scheduled routine${schedules.length === 1 ? "" : "s"}`} open={!!openSteps["schedules"]} onToggle={() => toggleStep("schedules")}>
               <p className="text-xs text-muted-foreground mb-3 max-w-lg">
-                Standing cron jobs the agent runs autonomously. Edit, remove, or add your own — created active at deploy.
+                Routines the agent runs on its own — like a morning brief or a weekly report. Change when they run, remove any, or add your own.
               </p>
               <div className="space-y-3">
                 {schedules.map((s, i) => {
@@ -778,10 +787,34 @@ export default function DeployAgent({ source, upload, preview, error, connected_
               </div>
             </WizardStep>
 
+            {/* Permissions, translated for humans: what it does on its own vs
+                what waits for your approval. The single biggest trust question a
+                non-technical deployer has — answered before deploy. */}
+            {Object.keys(preview.permissions || {}).length > 0 && (
+              <WizardStep id="boundaries" title="Boundaries" summary={`${Object.values(preview.permissions).filter((v) => v === "ask" || v === "draft").length} actions need your approval · ${Object.values(preview.permissions).filter((v) => v === "block").length} never allowed`} open={!!openSteps["boundaries"]} onToggle={() => toggleStep("boundaries")}>
+                <p className="text-xs text-muted-foreground mb-3 max-w-lg">
+                  What this agent may do on its own, and where it stops and asks you first. Fine-tune later on the agent's page.
+                </p>
+                <div className="rounded-lg border bg-card divide-y">
+                  {Object.entries(preview.permissions).map(([verb, level]) => (
+                    <div key={verb} className="flex items-center gap-2 px-4 py-2 text-xs">
+                      <span className="font-medium capitalize">{verb.replace(/_/g, " ")}</span>
+                      <span className={`ml-auto shrink-0 text-[11px] ${
+                        level === "auto" ? "text-emerald-600 dark:text-emerald-400"
+                        : level === "block" ? "text-red-600 dark:text-red-400"
+                        : "text-amber-600 dark:text-amber-400"}`}>
+                        {level === "auto" ? "does on its own" : level === "block" ? "never allowed" : level === "draft" ? "drafts for your approval" : "asks you first"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </WizardStep>
+            )}
+
             {/* Webhooks the bundle ships — read-only preview; tokenized URLs
                 are generated at deploy and live on the agent's Webhooks tab. */}
             {(preview.webhooks || []).length > 0 && (
-              <WizardStep id="webhooks" title="Webhooks" summary={`${preview.webhooks.length} webhook${preview.webhooks.length === 1 ? "" : "s"}`} open={!!openSteps["webhooks"]} onToggle={() => toggleStep("webhooks")}>
+              <WizardStep id="webhooks" title="Triggers (advanced)" summary={`${preview.webhooks.length} webhook${preview.webhooks.length === 1 ? "" : "s"}`} open={!!openSteps["webhooks"]} onToggle={() => toggleStep("webhooks")}>
                 <div className="rounded-lg border bg-card divide-y">
                   {preview.webhooks.map((w) => (
                     <div key={w.name} className="px-4 py-2.5 text-xs">
@@ -814,7 +847,6 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                         {input.required && (
                           <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required</Badge>
                         )}
-                        <code className="text-[10px] text-muted-foreground font-mono">{"{{"}{input.key}{"}}"}</code>
                       </Label>
                       {isTimezoneInput(input) ? (
                         <TimezoneSelect
@@ -844,7 +876,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 secrets. Everything is org-level, so connecting before the agent
                 exists is fine. */}
             {(preview.integrations.length > 0 || preview.secrets.length > 0 || preview.channels.length > 0) && (
-              <WizardStep id="connections" title="Connections" state={missingRequired.length ? "attention" : "done"} summary={missingRequired.length ? `connect ${missingRequired.join(", ")}` : "requirements connected"} open={!!openSteps["connections"]} onToggle={() => toggleStep("connections")}>
+              <WizardStep id="connections" title="Connections" state={missingRequired.length ? "attention" : "done"} summary={missingRequired.length ? `connect ${missingRequired.map(svcLabel).join(", ")}` : "everything required is connected"} open={!!openSteps["connections"]} onToggle={() => toggleStep("connections")}>
                 <p className="text-xs text-muted-foreground mb-3 max-w-lg">
                   Connect now or after deploy — your call. Anything left unconnected shows up as a reminder on the agent's page.
                 </p>
@@ -863,9 +895,12 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                       const isConnected = connected.has(normSvc(i.service))
                       return (
                         <div key={`${i.kind}-${i.service}`} className="flex items-center gap-2 px-4 py-2.5 text-xs">
-                          <Plug className="size-3.5 text-muted-foreground" />
-                          <span className="font-medium">{i.service}</span>
-                          <Badge variant="outline" className="text-[9px]">{i.kind}</Badge>
+                          {svcEntry(i.service)?.logo ? (
+                            <img src={svcEntry(i.service)!.logo!} alt="" className="size-3.5 shrink-0" />
+                          ) : (
+                            <Plug className="size-3.5 text-muted-foreground" />
+                          )}
+                          <span className="font-medium">{svcLabel(i.service)}</span>
                           {i.required && !isConnected && (
                             <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required before deploy</Badge>
                           )}
@@ -924,7 +959,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                                 ) : (
                                   <span className={`size-3 rounded-full border shrink-0 ${isActive ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
                                 )}
-                                <span className="font-medium truncate">{service}</span>
+                                <span className="font-medium truncate">{svcLabel(service)}</span>
                                 <span className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
                                   {isConnected ? (
                                     <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
@@ -1058,7 +1093,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                   <span>
-                    This bundle requires <span className="font-semibold">{missingRequired.join(", ")}</span> connected before deploy — use the Connect button{missingRequired.length > 1 ? "s" : ""} in Connections above.
+                    This agent needs <span className="font-semibold">{missingRequired.map(svcLabel).join(", ")}</span> connected before deploy — use the Connect button{missingRequired.length > 1 ? "s" : ""} in Connections above.
                   </span>
                 </div>
               )}
@@ -1075,7 +1110,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   type="button"
                   onClick={deploy}
                   disabled={deploying || (authenticated && (missingRequired.length > 0 || missingInputs.length > 0))}
-                  title={!authenticated ? undefined : missingRequired.length > 0 ? `Connect ${missingRequired.join(", ")} first` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
+                  title={!authenticated ? undefined : missingRequired.length > 0 ? `Connect ${missingRequired.map(svcLabel).join(", ")} first` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
                 >
                   <Rocket className="size-4 mr-1.5" />
                   {!authenticated
@@ -1083,7 +1118,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                     : deploying
                       ? (updating ? "Redeploying…" : "Deploying…")
                       : missingRequired.length > 0
-                        ? `Connect ${missingRequired[0]} to deploy`
+                        ? `Connect ${svcLabel(missingRequired[0])} to deploy`
                         : missingInputs.length > 0
                           ? `Fill in ${missingInputs[0]} to deploy`
                           : updating
