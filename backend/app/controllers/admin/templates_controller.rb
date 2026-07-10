@@ -38,6 +38,16 @@ module Admin
                               :featured, :featured_position,
                               :identity_md, :personality_md, :instructions_md,
                               :email_signature_md, :suggested_model, :suggested_provider)
+        # Featuring without an explicit position appends to the end of the
+        # row; unfeaturing clears the position so re-featuring later doesn't
+        # resurrect a stale slot.
+        if attrs.key?(:featured) && !attrs.key?(:featured_position)
+          if ActiveModel::Type::Boolean.new.cast(attrs[:featured])
+            attrs[:featured_position] ||= (AgentTemplate.where(featured: true).maximum(:featured_position) || 0) + 1
+          else
+            attrs[:featured_position] = nil
+          end
+        end
         template.update!(attrs)
         redirect_to admin_templates_path, notice: "Updated #{template.slug}"
       end

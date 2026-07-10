@@ -1,6 +1,6 @@
 import { Link, router } from "@inertiajs/react"
 import { useEffect, useState } from "react"
-import { Sparkles, Star } from "lucide-react"
+import { ChevronDown, ChevronUp, Sparkles, Star } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
 import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
@@ -79,6 +79,28 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
       if (!ok) return
     }
     router.put(`/admin/templates/${t.id}`, { featured: !t.featured }, { preserveScroll: true })
+  }
+
+  // Swap featured_position with the neighbor in the current featured order.
+  // Two PUTs (no bulk endpoint) — fine at curated-row scale.
+  function moveFeatured(t: Template, dir: -1 | 1) {
+    const row = templates
+      .filter((x) => x.featured)
+      .sort((a, b) => (a.featured_position ?? Number.MAX_SAFE_INTEGER) - (b.featured_position ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name))
+    const idx = row.findIndex((x) => x.id === t.id)
+    const other = row[idx + dir]
+    if (!other) return
+    // Normalize to dense 1..n positions with the two rows swapped, so rows
+    // that were featured before positions existed (null) get real slots.
+    const reordered = [...row]
+    reordered[idx] = other
+    reordered[idx + dir] = t
+    reordered.forEach((x, i) => {
+      const pos = i + 1
+      if (x.featured_position !== pos) {
+        router.put(`/admin/templates/${x.id}`, { featured: true, featured_position: pos }, { preserveScroll: true })
+      }
+    })
   }
 
   function destroy(t: Template) {
@@ -175,6 +197,16 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
                       >
                         <Star className={`size-3.5 ${t.featured ? "fill-current" : ""}`} />
                       </button>
+                      {t.featured && (
+                        <>
+                          <button onClick={() => moveFeatured(t, -1)} title="Move up in Featured" className="ml-1 rounded border px-1.5 py-1 text-xs hover:bg-muted">
+                            <ChevronUp className="size-3.5" />
+                          </button>
+                          <button onClick={() => moveFeatured(t, 1)} title="Move down in Featured" className="ml-1 rounded border px-1.5 py-1 text-xs hover:bg-muted">
+                            <ChevronDown className="size-3.5" />
+                          </button>
+                        </>
+                      )}
                       <button onClick={() => togglePublished(t)} className="ml-1 rounded border px-2 py-1 text-xs hover:bg-muted">
                         {t.published ? "Unpublish" : "Publish"}
                       </button>

@@ -1,6 +1,6 @@
 import { Head, Link } from "@inertiajs/react"
 import { useMemo, useState } from "react"
-import { Bot, Search, Sparkles, Upload, Users } from "lucide-react"
+import { Bot, Search, Sparkles, Star, Upload, Users } from "lucide-react"
 
 import AppLayout from "@/layouts/app-layout"
 import { PageHeader } from "@/components/page-header"
@@ -18,7 +18,9 @@ interface Template {
   description: string | null
   icon: string | null
   category: string | null
-  capabilities: Record<string, { enabled?: boolean }>
+  capabilities: Record<string, { enabled?: boolean   featured?: boolean
+  featured_position?: number | null
+}>
   suggested_skill_slugs: string[]
   install_count: number
   published: boolean
@@ -62,6 +64,18 @@ export default function TemplatesIndex({ templates, categories }: Props) {
     }
     return rows
   }, [templates, source, query])
+
+  // Curated highlights above the category groups — same row the public
+  // gallery shows, so featured placement is consistent inside and out.
+  const featured = useMemo(() => {
+    return filtered
+      .filter((t) => t.featured)
+      .sort((a, b) => {
+        const pa = a.featured_position ?? Number.MAX_SAFE_INTEGER
+        const pb = b.featured_position ?? Number.MAX_SAFE_INTEGER
+        return pa - pb || a.name.localeCompare(b.name)
+      })
+  }, [filtered])
 
   // Group by category for the rendered grid, in the order defined by `categories`.
   const grouped = useMemo(() => {
@@ -128,8 +142,21 @@ export default function TemplatesIndex({ templates, categories }: Props) {
               No templates match your filter.
             </CardContent>
           </Card>
-        ) : (
-          categories.map((cat) => {
+        ) : (<>
+          {featured.length > 0 && (
+            <section>
+              <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Star className="size-3.5 fill-current text-amber-500" />
+                Featured
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {featured.map((t) => (
+                  <TemplateCard key={`featured-${t.slug}`} t={t} />
+                ))}
+              </div>
+            </section>
+          )}
+          {categories.map((cat) => {
             const items = grouped[cat]
             if (!items || items.length === 0) return null
             return (
@@ -144,8 +171,8 @@ export default function TemplatesIndex({ templates, categories }: Props) {
                 </div>
               </section>
             )
-          })
-        )}
+          })}
+        </>)}
       </div>
     </AppLayout>
   )
