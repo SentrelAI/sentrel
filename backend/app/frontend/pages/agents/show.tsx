@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Fragment, useState, useCallback, useRef, useEffect } from "react"
-import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown, Plug } from "lucide-react"
+import { Plus, Trash2, Pause, Play, X as XIcon, ChevronsUpDown, ChevronDown, Plug, History as HistoryIcon, GitPullRequest } from "lucide-react"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -359,7 +359,8 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const file = IDENTITY_FILES.find((f) => f.key === activeFile)!
+  const showHistory = activeFile === "history"
+  const file = IDENTITY_FILES.find((f) => f.key === activeFile) ?? IDENTITY_FILES[0]
   const currentValue = drafts[activeFile] ?? (agent as Record<string, unknown>)[file.field] as string ?? ""
   const isDirty = drafts[activeFile] !== undefined && drafts[activeFile] !== ((agent as Record<string, unknown>)[file.field] as string ?? "")
 
@@ -420,9 +421,23 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
             </button>
           )
         })}
+        <div className="mt-2 border-t border-border pt-2">
+          <button
+            onClick={() => setActiveFile("history")}
+            className={`flex items-center gap-2 w-full px-3 py-1.5 text-left text-sm transition-colors ${
+              showHistory ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            }`}
+          >
+            <HistoryIcon className="size-3.5 shrink-0" />
+            <span className="truncate text-xs">History</span>
+          </button>
+        </div>
       </div>
 
-      {/* Right: editor */}
+      {/* Right: editor (or the persona-edit history pane) */}
+      {showHistory ? (
+        <PersonaHistory agentId={agent.id} />
+      ) : (
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Editor header */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/10">
@@ -490,6 +505,120 @@ function IdentityEditor({ agent }: { agent: Agent & { email_signature_md?: strin
             />
           </div>
         )}
+      </div>
+      )}
+    </div>
+  )
+}
+
+// ── Persona edit history: every prompt change with before/after, who/when/
+// why — and "propose to template", which opens a PR on the agent-templates
+// GitHub repo carrying the improved text.
+function PersonaHistory({ agentId }: { agentId: string }) {
+  interface Revision {
+    id: number; field: string; note: string | null
+    before_text: string | null; after_text: string
+    user_name: string | null; created_at: string; proposed_pr_url: string | null
+  }
+  const [loading, setLoading] = useState(true)
+  const [revisions, setRevisions] = useState<Revision[]>([])
+  const [templateSlug, setTemplateSlug] = useState<string | null>(null)
+  const [templateVersion, setTemplateVersion] = useState<number | null>(null)
+  const [upstreamConfigured, setUpstreamConfigured] = useState(false)
+  const [proposing, setProposing] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch(`/agents/${agentId}/persona_revisions`, { headers: { Accept: "application/json" } })
+      .then((r) => r.json())
+      .then((body) => {
+        setRevisions(body.revisions || [])
+        setTemplateSlug(body.template_slug || null)
+        setTemplateVersion(body.template_version_number ?? null)
+        setUpstreamConfigured(!!body.upstream_configured)
+      })
+      .catch(() => toast.error("Couldn't load edit history"))
+      .finally(() => setLoading(false))
+  }, [agentId])
+
+  async function propose(rev: Revision) {
+    setProposing(rev.id)
+    try {
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
+      const res = await fetch(`/agents/${agentId}/propose_upstream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({ revision_id: rev.id }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok && body.url) {
+        setRevisions((prev) => prev.map((r) => (r.id === rev.id ? { ...r, proposed_pr_url: body.url } : r)))
+        toast.success("Pull request opened on the templates repo")
+        window.open(body.url, "_blank")
+      } else {
+        toast.error(body.error || "Couldn't open the pull request")
+      }
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setProposing(null)
+    }
+  }
+
+  const FIELD_LABEL: Record<string, string> = {
+    identity_md: "SOUL.md", personality_md: "PERSONALITY.md",
+    instructions_md: "INSTRUCTIONS.md", email_signature_md: "SIGNATURE.md",
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="px-4 py-2 border-b border-border bg-muted/10 flex items-center gap-2">
+        <HistoryIcon className="size-3.5 text-muted-foreground" />
+        <span className="text-sm font-medium">Edit history</span>
+        {templateSlug && (
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            created from <span className="font-mono">{templateSlug}</span>{templateVersion ? ` v${templateVersion}` : ""}
+          </span>
+        )}
+      </div>
+      <div className="p-4 space-y-3">
+        {loading && <p className="text-xs text-muted-foreground">Loading…</p>}
+        {!loading && revisions.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No edits recorded yet. Every save in this editor is tracked here — what changed, who changed it, and when.
+          </p>
+        )}
+        {revisions.map((rev) => (
+          <details key={rev.id} className="rounded-lg border bg-card">
+            <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer text-xs">
+              <span className="font-mono font-medium">{FIELD_LABEL[rev.field] || rev.field}</span>
+              <span className="text-muted-foreground">{rev.user_name || "someone"} · {new Date(rev.created_at).toLocaleString()}</span>
+              {rev.note && <span className="text-muted-foreground italic truncate">— {rev.note}</span>}
+              <span className="ml-auto shrink-0">
+                {rev.proposed_pr_url ? (
+                  <a href={rev.proposed_pr_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline">
+                    <GitPullRequest className="size-3" /> proposed
+                  </a>
+                ) : templateSlug && upstreamConfigured ? (
+                  <Button type="button" size="sm" variant="outline" className="h-6 text-[10px]" disabled={proposing === rev.id}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); propose(rev) }}>
+                    <GitPullRequest className="size-3 mr-1" />
+                    {proposing === rev.id ? "Opening PR…" : "Propose to template"}
+                  </Button>
+                ) : null}
+              </span>
+            </summary>
+            <div className="border-t px-3 py-2 grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[10px] font-medium text-muted-foreground mb-1">Before</div>
+                <pre className="whitespace-pre-wrap text-[11px] leading-relaxed max-h-64 overflow-y-auto text-muted-foreground">{rev.before_text || "(empty)"}</pre>
+              </div>
+              <div>
+                <div className="text-[10px] font-medium text-muted-foreground mb-1">After</div>
+                <pre className="whitespace-pre-wrap text-[11px] leading-relaxed max-h-64 overflow-y-auto">{rev.after_text}</pre>
+              </div>
+            </div>
+          </details>
+        ))}
       </div>
     </div>
   )

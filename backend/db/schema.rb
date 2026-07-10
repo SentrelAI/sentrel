@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_10_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_10_224907) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -187,6 +187,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_000100) do
     t.index ["token"], name: "index_agent_webhooks_on_token", unique: true
   end
 
+  create_table "agent_persona_revisions", force: :cascade do |t|
+    t.bigint "agent_id", null: false
+    t.text "after_text", null: false
+    t.text "before_text"
+    t.datetime "created_at", null: false
+    t.string "field", null: false
+    t.string "note"
+    t.bigint "organization_id", null: false
+    t.string "proposed_pr_url"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.index ["agent_id", "created_at"], name: "index_agent_persona_revisions_on_agent_id_and_created_at"
+    t.index ["agent_id"], name: "index_agent_persona_revisions_on_agent_id"
+    t.index ["organization_id"], name: "index_agent_persona_revisions_on_organization_id"
+    t.index ["user_id"], name: "index_agent_persona_revisions_on_user_id"
+  end
+
   create_table "agents", force: :cascade do |t|
     t.string "approval_mode", default: "manual", null: false
     t.jsonb "capabilities", default: {}, null: false
@@ -212,6 +229,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_000100) do
     t.decimal "spend_notify_threshold_pct", precision: 4, scale: 2, default: "0.8", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.string "template_slug"
+    t.integer "template_version_number"
+    t.index ["template_slug"], name: "index_agents_on_template_slug"
     t.index ["capabilities"], name: "index_agents_on_capabilities", using: :gin
     t.index ["manager_id"], name: "index_agents_on_manager_id"
     t.index ["organization_id", "slug"], name: "index_agents_on_organization_id_and_slug", unique: true
@@ -770,6 +790,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_10_000100) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "agent_credential_grants", "agents"
   add_foreign_key "agent_credential_grants", "credentials"
+  add_foreign_key "agent_persona_revisions", "agents"
+  add_foreign_key "agent_persona_revisions", "organizations"
+  add_foreign_key "agent_persona_revisions", "users"
   add_foreign_key "agent_files", "agents"
   add_foreign_key "agent_files", "organizations"
   add_foreign_key "agent_skills", "agents"

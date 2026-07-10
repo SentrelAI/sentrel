@@ -217,6 +217,12 @@ Rails.application.routes.draw do
     resources :agent_bundles, only: [ :create ]
     get "agents/:agent_id/screen", to: "agent_screens#show", as: :agent_screen
     resources :agents do
+      member do
+        # Persona edit history + roll-a-proven-edit-upstream (GitHub PR
+        # against the agent-templates repo).
+        get  :persona_revisions
+        post :propose_upstream
+      end
       resources :conversations, only: [ :index, :show ] do
         member do
           patch :archive

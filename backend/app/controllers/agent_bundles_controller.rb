@@ -170,6 +170,13 @@ class AgentBundlesController < ApplicationController
     ).call
 
     agent = result.agent
+    # Lineage: when this bundle came from a catalog template's GitHub source,
+    # stamp the agent with it — anchors persona-edit history + the
+    # propose-upstream flow.
+    if params[:github_url].present?
+      tpl = ActsAsTenant.without_tenant { AgentTemplate.find_by(source_url: params[:github_url].to_s.strip) }
+      agent.update_columns(template_slug: tpl.slug, template_version_number: tpl.current_version&.version_number) if tpl
+    end
     EngineSync.trigger(agent)
     ProvisionAgentJob.perform_later(agent.id)
 
