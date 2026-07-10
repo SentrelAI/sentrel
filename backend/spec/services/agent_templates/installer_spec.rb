@@ -11,21 +11,21 @@ RSpec.describe AgentTemplates::Installer do
       "name"         => "Nova",
       "role"         => "Marketer",
       "persona"      => {
-        "identity_md" => "I market {{brand_name}} for {{company_name}}.",
+        "identity_md" => "I market {{brand_name}} for {{company_name}}."
       },
       "model"        => { "provider" => "anthropic", "model_id" => "claude-opus-4-8" },
       "inputs"       => [
         { "key" => "brand_name", "label" => "Brand", "required" => true },
-        { "key" => "timezone", "label" => "Timezone", "default" => "UTC" },
+        { "key" => "timezone", "label" => "Timezone", "default" => "UTC" }
       ],
       "schedules"    => [
         {
           "name"        => "Daily pass",
           "cron"        => "0 9 * * 1-5",
           "timezone"    => "{{timezone}}",
-          "instruction" => "Run the daily pass for {{brand_name}}.",
-        },
-      ],
+          "instruction" => "Run the daily pass for {{brand_name}}."
+        }
+      ]
     }
   end
 
@@ -54,7 +54,7 @@ RSpec.describe AgentTemplates::Installer do
   end
 
   it "falls back to UTC for unresolved or invalid timezones" do
-    definition["inputs"] = [{ "key" => "brand_name", "label" => "Brand" }]
+    definition["inputs"] = [ { "key" => "brand_name", "label" => "Brand" } ]
     agent = install(inputs: { "brand_name" => "Acme" })
     expect(agent.scheduled_work.find_by!(name: "Daily pass").timezone).to eq("UTC")
 

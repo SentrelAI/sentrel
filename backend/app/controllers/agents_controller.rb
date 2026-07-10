@@ -1,6 +1,6 @@
 class AgentsController < ApplicationController
   before_action :authenticate_user!
-  before_action :set_agent, only: [ :show, :edit, :update, :destroy, :export ]
+  before_action :set_agent, only: [ :show, :edit, :update, :destroy, :export, :persona_revisions, :propose_upstream ]
 
   def index
     agents = current_tenant.agents.includes(:ai_config, :instance, :manager).to_a
@@ -395,6 +395,10 @@ class AgentsController < ApplicationController
         return redirect_back fallback_location: new_agent_path, alert: e.message
       end
 
+      # Lineage: which template (and version) this agent came from — the
+      # anchor for persona-edit history + propose-upstream.
+      @agent.update_columns(template_slug: template.slug, template_version_number: version&.version_number)
+
       apply_initial_channels!(@agent)
       EngineSync.trigger(@agent)
       ProvisionAgentJob.perform_later(@agent.id)
@@ -519,7 +523,9 @@ class AgentsController < ApplicationController
   end
 
   def update
+    persona_before = @agent.attributes.slice(*AgentPersonaRevision::FIELDS)
     if @agent.update(agent_params)
+      record_persona_revisions!(persona_before)
       env_changed = false
       if params[:ai_config].present? && @agent.ai_config
         @agent.ai_config.assign_attributes(ai_config_params)
@@ -553,6 +559,38 @@ class AgentsController < ApplicationController
   # GET /agents/:id/export → portable agent.json. Triggers a browser
   # download via Content-Disposition; safe to share publicly (no
   # secrets / channel tokens / runtime state embedded).
+  # GET /agents/:id/persona_revisions — the agent's prompt-edit history.
+  def persona_revisions
+    revisions = @agent.persona_revisions.newest_first.limit(100).includes(:user).map do |r|
+      {
+        id: r.id, field: r.field, note: r.note,
+        before_text: r.before_text, after_text: r.after_text,
+        user_name: r.user&.name, created_at: r.created_at.iso8601,
+        proposed_pr_url: r.proposed_pr_url
+      }
+    end
+    render json: {
+      template_slug: @agent.template_slug,
+      template_version_number: @agent.template_version_number,
+      upstream_configured: AgentTemplates::UpstreamProposer.configured?,
+      revisions: revisions
+    }
+  end
+
+  # POST /agents/:id/propose_upstream { revision_id } — open a PR on the
+  # agent-templates repo carrying this revision's text. Admin/owner only.
+  def propose_upstream
+    unless current_user.role.in?(%w[owner admin])
+      return render json: { error: "Only workspace admins can propose template changes" }, status: :forbidden
+    end
+    revision = @agent.persona_revisions.find(params[:revision_id])
+    return render json: { error: "Already proposed", url: revision.proposed_pr_url }, status: :conflict if revision.proposed?
+    url = AgentTemplates::UpstreamProposer.new(revision: revision, user: current_user).call
+    render json: { ok: true, url: url }
+  rescue AgentTemplates::UpstreamProposer::Error => e
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
   def export
     definition = AgentTemplates::Exporter.new(@agent, exported_by: current_user).call
     filename   = "#{@agent.slug.presence || "agent"}.agent.json"
@@ -810,6 +848,27 @@ class AgentsController < ApplicationController
 
   # Replaces the agent's credential grants with whatever the form sent.
   # Empty array clears all grants — agent falls back to org defaults.
+  # One revision row per persona field the save actually changed — the
+  # agent's prompt-edit history. note comes from the editor's optional
+  # "what/why" input.
+  def record_persona_revisions!(before)
+    AgentPersonaRevision::FIELDS.each do |field|
+      next unless @agent.saved_changes.key?(field)
+      after = @agent[field]
+      next if after.blank? # clearing a field isn't a promotable edit
+      @agent.persona_revisions.create!(
+        organization: current_tenant,
+        user: current_user,
+        field: field,
+        before_text: before[field],
+        after_text: after,
+        note: params[:revision_note].to_s.strip.presence,
+      )
+    end
+  rescue => e
+    Rails.logger.error("persona revision capture failed: #{e.message}")
+  end
+
   def update_credential_grants
     requested_ids = Array(params[:granted_credential_ids]).map(&:to_i).reject(&:zero?)
     # Only allow grants for credentials in the agent's organization.

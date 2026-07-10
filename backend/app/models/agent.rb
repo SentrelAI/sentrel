@@ -23,6 +23,7 @@ class Agent < ApplicationRecord
   has_many :agent_credential_grants, dependent: :destroy
   has_many :credentials, through: :agent_credential_grants
   has_many :agent_summaries, dependent: :destroy
+  has_many :persona_revisions, class_name: "AgentPersonaRevision", dependent: :destroy
 
   # Tear down the agent's Fly machine/app/volume BEFORE the dependent: :destroy
   # associations run. Without this, destroying an Agent only deletes the
