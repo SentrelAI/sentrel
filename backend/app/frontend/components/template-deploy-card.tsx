@@ -42,14 +42,29 @@ export function TemplateDeployCard({ t }: { t: DeployTemplate }) {
         t.featured ? " border-[var(--color-indigo)]/50 ring-1 ring-[var(--color-indigo)]/20" : ""
       }`}
     >
-      {t.featured && (
-        <Badge
-          className="absolute left-3 top-3 z-10 gap-1 border-transparent bg-[var(--color-indigo)] text-[10px] text-white"
-        >
-          <Star className="size-3 fill-current" />
-          Featured
-        </Badge>
-      )}
+      {/* Top-left cluster: Featured badge + GitHub-source link share one flex
+          row — two independent absolutes stacked on top of each other before. */}
+      <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5">
+        {t.featured && (
+          <Badge className="gap-1 border-transparent bg-[var(--color-indigo)] text-[10px] text-white">
+            <Star className="size-3 fill-current" />
+            Featured
+          </Badge>
+        )}
+        {t.source_url && (
+          <a
+            href={t.source_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="View source on GitHub"
+            title="View this template's bundle on GitHub"
+          >
+            <GitBranch className="size-3.5" />
+          </a>
+        )}
+      </div>
       <Badge
         variant={t.system_template ? "secondary" : "outline"}
         className="absolute right-3 top-3 z-10 gap-1 text-[10px]"
@@ -57,20 +72,6 @@ export function TemplateDeployCard({ t }: { t: DeployTemplate }) {
         {t.system_template ? <Sparkles className="size-3" /> : <Users className="size-3" />}
         {t.system_template ? "System" : "Community"}
       </Badge>
-
-      {t.source_url && (
-        <a
-          href={t.source_url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="absolute left-3 top-3 z-10 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="View source on GitHub"
-          title="View this template's bundle on GitHub"
-        >
-          <GitBranch className="size-3.5" />
-        </a>
-      )}
 
       <CardContent className="flex flex-1 flex-col items-center gap-2 p-4 pt-5 text-center">
         <Link href={viewHref(t.slug)} aria-label={`View ${t.name}`}>
