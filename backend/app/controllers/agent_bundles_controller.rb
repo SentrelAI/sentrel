@@ -86,6 +86,13 @@ class AgentBundlesController < ApplicationController
       # wizard can run the same ConnectModal flow /integrations uses instead
       # of bouncing the user off the deploy page.
       integration_catalog: user_signed_in? ? IntegrationCatalog.list(current_tenant.id, configured_keys: Nango::Client.configured_provider_keys) : [],
+      # Lets the wizard preview the agent's future email address
+      # (<slug>@<domain>) on the channels rows.
+      org_email_domain: user_signed_in? ? current_tenant.try(:email_domain).presence : nil,
+      # No domain yet → the wizard offers the instant managed-subdomain
+      # claim inline (zone + suggested label) instead of dead-ending.
+      managed_email_zone: user_signed_in? ? Email::DnsAutoConfigurator.available_zones.first&.dig(:zone) : nil,
+      suggested_email_label: user_signed_in? ? Email::DnsAutoConfigurator.suggested_subdomain_for(current_tenant.slug).to_s.split(".").first : nil,
       nango_connect_base_url: ENV["NANGO_CONNECT_BASE_URL"],
       # Org state so the wizard renders live status on the bundle's
       # requirements: which services are already connected, and

@@ -94,6 +94,9 @@ interface Props {
   authenticated?: boolean
   integration_catalog?: CatalogApp[]
   nango_connect_base_url?: string | null
+  org_email_domain?: string | null
+  managed_email_zone?: string | null
+  suggested_email_label?: string | null
 }
 
 // "APOLLO_API_KEY" / "apollo-token" → "apollo" — same normalization the
@@ -122,7 +125,7 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true, integration_catalog = [], nango_connect_base_url = null }: Props) {
+export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true, integration_catalog = [], nango_connect_base_url = null, org_email_domain = null, managed_email_zone = null, suggested_email_label = null }: Props) {
   const [url, setUrl] = useState(source)
   // Deploy target: create a fresh agent, or redeploy the bundle onto an
   // existing one (spec-owned fields update in place; the agent keeps its
@@ -150,6 +153,35 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [identityMd, setIdentityMd] = useState(preview?.persona?.identity_md || "")
   const [personalityMd, setPersonalityMd] = useState(preview?.persona?.personality_md || "")
   const [instructionsMd, setInstructionsMd] = useState(preview?.persona?.instructions_md || "")
+  // Workspace email domain, claimable inline. Local state so a successful
+  // claim flips the email row live without a reload.
+  const [orgDomain, setOrgDomain] = useState<string | null>(org_email_domain)
+  const [claimLabel, setClaimLabel] = useState(suggested_email_label || "")
+  const [claimBusy, setClaimBusy] = useState(false)
+  const [claimError, setClaimError] = useState<string | null>(null)
+  async function claimSubdomain() {
+    if (!claimLabel.trim() || !managed_email_zone) return
+    setClaimBusy(true)
+    setClaimError(null)
+    try {
+      const res = await fetch("/settings/claim_managed_subdomain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrfToken() },
+        body: JSON.stringify({ label: claimLabel.trim(), zone: managed_email_zone }),
+      })
+      if (res.ok || res.redirected) {
+        setOrgDomain(`${claimLabel.trim().toLowerCase()}.${managed_email_zone}`)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setClaimError(body.error || "Couldn't claim that name — try another.")
+      }
+    } catch (err) {
+      setClaimError((err as Error).message)
+    } finally {
+      setClaimBusy(false)
+    }
+  }
+
   const detectedTz = (() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } catch { return "UTC" }
   })()
@@ -906,14 +938,75 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   Connect now or after deploy — your call. Anything left unconnected shows up as a reminder on the agent's page.
                 </p>
                 <div className="rounded-lg border bg-card divide-y">
+                  {/* Always-true baseline so nobody wonders how they'll talk
+                      to the thing they're about to hire. */}
+                  <div className="flex items-center gap-2 px-4 py-2.5 text-xs">
+                    <Radio className="size-3.5 text-muted-foreground" />
+                    <span className="font-medium">Chat in the app</span>
+                    <span className="text-[10px] text-muted-foreground truncate">— always on; talk to the agent from its page</span>
+                    <Badge className="text-[10px] gap-1 ml-auto shrink-0 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Included</Badge>
+                  </div>
                   {preview.channels.map((c) => (
                     <div key={c.type} className="flex items-center gap-2 px-4 py-2.5 text-xs">
                       <Radio className="size-3.5 text-muted-foreground" />
-                      <span className="font-medium capitalize">{c.type} channel</span>
-                      {c.why && <span className="text-[10px] text-muted-foreground truncate">— {c.why}</span>}
-                      <span className="text-[10px] text-muted-foreground ml-auto shrink-0">provisioned at deploy</span>
+                      <span className="font-medium capitalize">{c.type}</span>
+                      {c.type === "email" ? (
+                        orgDomain ? (
+                          <span className="text-[10px] text-muted-foreground truncate">
+                            — gets its own inbox: <span className="font-mono text-foreground">{(slugify(agentName) || agentSlug || "agent")}@{orgDomain}</span>. Email it, CC it, forward it work.
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 truncate">
+                            — your workspace has no email domain yet, so this agent can't get an inbox
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground truncate">
+                          — {c.why || `finish pairing on the agent's Channels tab after deploy`}
+                        </span>
+                      )}
+                      <span className={`text-[10px] ml-auto shrink-0 ${c.type === "email" && !orgDomain ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                        {c.type === "email" && orgDomain ? "connects at deploy" : c.type === "email" ? "needs setup" : "pair after deploy"}
+                      </span>
                     </div>
                   ))}
+                  {/* Domain missing → fix it right here: claim an instant
+                      <name>.{zone} domain (platform zone, auto-DNS, no wait),
+                      or link out for a custom domain. */}
+                  {!orgDomain && preview.channels.some((c) => c.type === "email") && (
+                    <div className="px-4 py-3 space-y-2 bg-amber-500/5">
+                      {managed_email_zone ? (
+                        <>
+                          <p className="text-[11px] text-muted-foreground">
+                            Get one instantly — free <span className="font-mono">@{managed_email_zone}</span> address, no DNS setup:
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={claimLabel}
+                              onChange={(e) => setClaimLabel(e.target.value)}
+                              placeholder="yourcompany"
+                              className="h-7 w-40 text-xs"
+                            />
+                            <span className="text-xs text-muted-foreground font-mono">.{managed_email_zone}</span>
+                            <Button type="button" size="sm" className="h-7 text-[11px]" disabled={claimBusy || !claimLabel.trim()} onClick={claimSubdomain}>
+                              {claimBusy ? "Claiming…" : "Claim"}
+                            </Button>
+                            <a href="/settings" className="text-[10px] text-muted-foreground hover:text-foreground underline ml-1">use my own domain</a>
+                          </div>
+                          {claimError && <p className="text-[11px] text-destructive">{claimError}</p>}
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                          Set a workspace email domain in <a href="/settings" className="underline">Settings</a> so this agent can get an inbox.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {preview.channels.length === 0 && (
+                    <div className="px-4 py-2.5 text-[10px] text-muted-foreground">
+                      Want it on email, Telegram, or WhatsApp too? Add channels on the agent's Channels tab after deploy.
+                    </div>
+                  )}
                   {preview.integrations
                     .filter((i): i is { service: string; kind: "service" | "mcp"; required?: boolean; why: string | null } => i.kind !== "choice")
                     .map((i) => {
