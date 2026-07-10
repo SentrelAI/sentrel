@@ -1,5 +1,5 @@
 import { Head, router, useForm } from "@inertiajs/react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   AlertTriangle, BookOpen, Check, ChevronDown, Circle, Clock, FolderGit2, KeyRound, Plug, Plus, Radio, Rocket, Search, Sparkle, Target, Terminal, Trash2, Wrench,
 } from "lucide-react"
@@ -233,6 +233,18 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [secretAdvanced, setSecretAdvanced] = useState<Set<string>>(new Set())
   const [secretBusy, setSecretBusy] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
+  // Step rail state. Required steps ship open; a manual toggle pins a step
+  // so auto-advance never fights the user.
+  const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({
+    details: true, goal: false, persona: false, skills: false,
+    schedules: false, webhooks: false, setup: true, connections: true,
+  })
+  const pinnedSteps = useRef<Set<string>>(new Set())
+  function toggleStep(id: string) {
+    pinnedSteps.current.add(id)
+    setOpenSteps((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
   // Connect-in-place: which service's ConnectModal is open.
   const [connectingApp, setConnectingApp] = useState<CatalogApp | null>(null)
 
@@ -317,6 +329,29 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 
   // Required deploy-time inputs that are still empty also gate Deploy.
   const missingInputs = bundleInputs.filter((i) => i.required && !(inputValues[i.key] || "").trim()).map((i) => i.label)
+
+  // Auto-advance: when the last required connection lands (a definitive
+  // moment — the OAuth popup succeeded), tuck Connections away after a beat
+  // and glide to whatever still blocks Deploy, or to the deploy node itself.
+  // Setup never auto-collapses: its "completion" flips while the user is
+  // mid-typing, and yanking a focused input away is hostile.
+  const prevMissingRequired = useRef<number | null>(null)
+  useEffect(() => {
+    const prev = prevMissingRequired.current
+    prevMissingRequired.current = missingRequired.length
+    if (prev === null || prev === 0 || missingRequired.length > 0) return
+    const reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const t = setTimeout(() => {
+      if (!pinnedSteps.current.has("connections")) {
+        setOpenSteps((p) => ({ ...p, connections: false }))
+      }
+      const target = missingInputs.length > 0 ? "#step-setup" : "#deploy-node"
+      document.querySelector(target)?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" })
+    }, 650)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingRequired.length])
+
 
   function deploy() {
     setDeployError(null)
@@ -481,7 +516,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             )}
 
             {/* Agent details — name/slug/role/model, all editable, at the top */}
-            <WizardStep title="Agent details" state={agentName.trim() ? "done" : "attention"} summary={agentName.trim() || "unnamed"} defaultOpen>
+            <WizardStep id="details" title="Agent details" state={agentName.trim() ? "done" : "attention"} summary={agentName.trim() || "unnamed"} open={!!openSteps["details"]} onToggle={() => toggleStep("details")}>
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 {preview.description && <p className="text-xs text-muted-foreground leading-relaxed">{preview.description}</p>}
                 {!updating && (
@@ -541,7 +576,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             </WizardStep>
 
             {/* Goal — editable */}
-            <WizardStep title="Goal" summary={preview.goal?.kpis?.length ? `mission + ${preview.goal.kpis.length} KPIs` : "mission"}>
+            <WizardStep id="goal" title="Goal" summary={preview.goal?.kpis?.length ? `mission + ${preview.goal.kpis.length} KPIs` : "mission"} open={!!openSteps["goal"]} onToggle={() => toggleStep("goal")}>
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="mission" className="flex items-center gap-1.5"><Target className="size-3.5" /> Mission</Label>
@@ -595,7 +630,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             </WizardStep>
 
             {/* Persona — same editor as the agent Identity tab, variable chips included */}
-            <WizardStep title="Persona" summary="identity · personality · instructions">
+            <WizardStep id="persona" title="Persona" summary="identity · personality · instructions" open={!!openSteps["persona"]} onToggle={() => toggleStep("persona")}>
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Identity</Label>
@@ -613,7 +648,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             </WizardStep>
 
             {/* Skills + knowledge (from the bundle — read-only) */}
-            <WizardStep title="Skills & knowledge" summary={`${preview.skills.length} bundle skill${preview.skills.length === 1 ? "" : "s"} · ${preview.knowledge.length} knowledge doc${preview.knowledge.length === 1 ? "" : "s"}`}>
+            <WizardStep id="skills" title="Skills & knowledge" summary={`${preview.skills.length} bundle skill${preview.skills.length === 1 ? "" : "s"} · ${preview.knowledge.length} knowledge doc${preview.knowledge.length === 1 ? "" : "s"}`} open={!!openSteps["skills"]} onToggle={() => toggleStep("skills")}>
               <div className="rounded-lg border bg-card divide-y">
                 {preview.skills.map((s) => (
                   <details key={s.slug} className="group">
@@ -660,7 +695,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             </WizardStep>
 
             {/* Schedules — standing cron jobs, fully editable */}
-            <WizardStep title="Schedules" summary={`${schedules.length} scheduled routine${schedules.length === 1 ? "" : "s"}`}>
+            <WizardStep id="schedules" title="Schedules" summary={`${schedules.length} scheduled routine${schedules.length === 1 ? "" : "s"}`} open={!!openSteps["schedules"]} onToggle={() => toggleStep("schedules")}>
               <p className="text-xs text-muted-foreground mb-3 max-w-lg">
                 Standing cron jobs the agent runs autonomously. Edit, remove, or add your own — created active at deploy.
               </p>
@@ -746,7 +781,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             {/* Webhooks the bundle ships — read-only preview; tokenized URLs
                 are generated at deploy and live on the agent's Webhooks tab. */}
             {(preview.webhooks || []).length > 0 && (
-              <WizardStep title="Webhooks" summary={`${preview.webhooks.length} webhook${preview.webhooks.length === 1 ? "" : "s"}`}>
+              <WizardStep id="webhooks" title="Webhooks" summary={`${preview.webhooks.length} webhook${preview.webhooks.length === 1 ? "" : "s"}`} open={!!openSteps["webhooks"]} onToggle={() => toggleStep("webhooks")}>
                 <div className="rounded-lg border bg-card divide-y">
                   {preview.webhooks.map((w) => (
                     <div key={w.name} className="px-4 py-2.5 text-xs">
@@ -770,7 +805,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 substitutes {{key}} tokens across persona/knowledge/schedules
                 at deploy (e.g. the repo list a bug-fixer may work in). */}
             {bundleInputs.length > 0 && (
-              <WizardStep title="Setup" state={missingInputs.length ? "attention" : "done"} summary={missingInputs.length ? `${missingInputs.length} required input${missingInputs.length === 1 ? "" : "s"} missing` : "all inputs set"} defaultOpen>
+              <WizardStep id="setup" title="Setup" state={missingInputs.length ? "attention" : "done"} summary={missingInputs.length ? `${missingInputs.length} required input${missingInputs.length === 1 ? "" : "s"} missing` : "all inputs set"} open={!!openSteps["setup"]} onToggle={() => toggleStep("setup")}>
                 <div className="rounded-lg border bg-card p-4 space-y-4">
                   {bundleInputs.map((input) => (
                     <div key={input.key} className="space-y-1">
@@ -809,7 +844,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 secrets. Everything is org-level, so connecting before the agent
                 exists is fine. */}
             {(preview.integrations.length > 0 || preview.secrets.length > 0 || preview.channels.length > 0) && (
-              <WizardStep title="Connections" state={missingRequired.length ? "attention" : "done"} summary={missingRequired.length ? `connect ${missingRequired.join(", ")}` : "requirements connected"} defaultOpen>
+              <WizardStep id="connections" title="Connections" state={missingRequired.length ? "attention" : "done"} summary={missingRequired.length ? `connect ${missingRequired.join(", ")}` : "requirements connected"} open={!!openSteps["connections"]} onToggle={() => toggleStep("connections")}>
                 <p className="text-xs text-muted-foreground mb-3 max-w-lg">
                   Connect now or after deploy — your call. Anything left unconnected shows up as a reminder on the agent's page.
                 </p>
@@ -1000,11 +1035,11 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             )}
 
             {/* Deploy — the rail's terminal node */}
-            <section className="relative pl-9 space-y-3 pb-8">
+            <section id="deploy-node" className="relative pl-9 space-y-3 pb-8 scroll-mt-24">
               <div
-                className={`absolute left-0 top-0 grid size-6 place-items-center rounded-full border ${
+                className={`absolute left-0 top-0 grid size-6 place-items-center rounded-full border transition-colors duration-500 ${
                   authenticated && missingRequired.length === 0 && missingInputs.length === 0
-                    ? "border-primary bg-primary text-primary-foreground"
+                    ? "border-primary bg-primary text-primary-foreground step-ready-glow"
                     : "border-border bg-muted text-muted-foreground"
                 }`}
               >
@@ -1148,34 +1183,48 @@ export default function DeployAgent({ source, upload, preview, error, connected_
 // collapsible body with a one-line summary when closed. Deliberately NOT a
 // paged wizard — everything stays on one page; steps are structure +
 // completion state, and the required ones ship open.
-function WizardStep({ title, state = "none", summary, defaultOpen = false, children }: {
+function WizardStep({ id, title, state = "none", summary, open, onToggle, children }: {
+  id: string
   title: string
   state?: "done" | "attention" | "none"
   summary?: string
-  defaultOpen?: boolean
+  open: boolean
+  onToggle: () => void
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
   return (
-    <section className="relative pl-9">
-      <div className="absolute left-[11px] top-7 -bottom-6 w-px bg-border" aria-hidden />
+    <section id={`step-${id}`} className="relative pl-9 scroll-mt-24">
+      {/* Connector fills green once the step is satisfied — progress you can
+          see flow down the rail. */}
       <div
-        className={`absolute left-0 top-0 grid size-6 place-items-center rounded-full border ${
+        className={`absolute left-[11px] top-7 -bottom-6 w-px transition-colors duration-700 ${
+          state === "done" ? "bg-emerald-500/50" : "bg-border"
+        }`}
+        aria-hidden
+      />
+      <div
+        className={`absolute left-0 top-0 grid size-6 place-items-center rounded-full border transition-colors duration-500 ${
           state === "done"
             ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
             : state === "attention"
-              ? "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-400"
+              ? "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-400 step-attention-pulse"
               : "border-border bg-muted text-muted-foreground"
         }`}
       >
-        {state === "done" ? <Check className="size-3.5" /> : state === "attention" ? <AlertTriangle className="size-3" /> : <Circle className="size-1.5 fill-current" />}
+        {state === "done" ? (
+          <Check className="size-3.5 step-check-pop" />
+        ) : state === "attention" ? (
+          <AlertTriangle className="size-3" />
+        ) : (
+          <Circle className="size-1.5 fill-current" />
+        )}
       </div>
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left" aria-expanded={open}>
+      <button type="button" onClick={onToggle} className="flex w-full items-center gap-2 text-left" aria-expanded={open}>
         <Overline>{title}</Overline>
         {!open && summary && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{summary}</span>}
-        <ChevronDown className={`ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform duration-300 ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && <div className="mt-3">{children}</div>}
+      {open && <div className="mt-3 step-body-enter">{children}</div>}
     </section>
   )
 }
