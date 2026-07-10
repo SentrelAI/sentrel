@@ -245,6 +245,18 @@ const channelIcon: Record<string, React.ComponentType<{ className?: string }>> =
   slack: Hash,
 }
 
+// A brand-new agent reads status "stopped" for the ~90s its machine boots —
+// which looks dead. If the instance exists, has no provisioning error, and
+// the agent is young, present it as "starting" (and the page polls below).
+function effectiveAgentStatus(agent: Agent): string {
+  const inst = (agent as { instance?: { status?: string; provisioning_error?: string | null } | null }).instance
+  if (agent.status === "running" || !inst || inst.provisioning_error) return agent.status
+  const ageMs = Date.now() - new Date((agent as { created_at?: string }).created_at || 0).getTime()
+  const bootingInstance = ["provisioning", "starting", "pending", "running"].includes(inst.status || "")
+  if (agent.status === "stopped" && bootingInstance && ageMs < 10 * 60 * 1000) return "starting"
+  return agent.status
+}
+
 // ── Header bar content for this page ──
 function agentStatusDot(status: string): "online" | "working" | "idle" | "error" | "offline" {
   if (status === "running" || status === "starting") return "working"
@@ -257,8 +269,8 @@ function AgentTopBarMeta({ agent }: { agent: Agent }) {
   return (
     <div className="flex items-center gap-3 border-l pl-3">
       <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-        <StatusDot status={agentStatusDot(agent.status)} pulse={agent.status === "running"} />
-        <span className="uppercase tracking-[0.1em]">{agent.status}</span>
+        <StatusDot status={agentStatusDot(effectiveAgentStatus(agent))} pulse={effectiveAgentStatus(agent) !== "paused"} />
+        <span className="uppercase tracking-[0.1em]">{effectiveAgentStatus(agent) === "starting" ? "starting up…" : effectiveAgentStatus(agent)}</span>
       </span>
       {agent.ai_config && (
         <span className="hidden rounded-sm bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
@@ -634,6 +646,15 @@ function toNumOrNull(v: number | string | null | undefined): number | null {
 }
 
 export default function AgentShow({ agent, spend, conversations, emails, chat_messages, agent_thinking = null, tasks, scheduled_tasks, approvals_by_message, pending_action_approvals = [], pending_approvals_by_conversation = {}, webhooks = [], installed_skills = [], available_skills = [], knowledge_documents = [], agent_files = [], anthropic_account_connected, available_llm_providers = [], channel_configs = [], missing_integrations = [], rail }: Props) {
+  // While a fresh agent's machine boots, poll so the page flips to
+  // "running" (and chat unlocks) without a manual refresh.
+  useEffect(() => {
+    if (effectiveAgentStatus(agent) !== "starting") return
+    const t = setInterval(() => router.reload({ only: ["agent"] }), 5000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.status, (agent as { instance?: { status?: string } | null }).instance?.status])
+
   // Shared via inertia_share in ApplicationController — used to label the
   // user's own composed messages with their real name + email in the chat.
   const page = usePage<{ auth?: { user?: { id: number; name: string; email: string } | null } }>()
@@ -948,7 +969,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
             agentId={agent.id}
             agentName={agent.name}
             agentEmail={agentPrimaryEmail}
-            agentStatus={agent.status}
+            agentStatus={effectiveAgentStatus(agent)}
             currentUser={currentUser}
             initialMessages={chat_messages as any}
             agentThinking={agent_thinking}
