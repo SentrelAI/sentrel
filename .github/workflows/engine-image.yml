@@ -75,7 +75,7 @@ jobs:
         # amd64 + arm64 — Fly lax is x86 today but other regions / future
         # hosts may be arm. timeout-minutes + concurrency guard above keep
         # this from wedging if qemu emulation stalls.
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./engine
           platforms: linux/amd64,linux/arm64
