@@ -27,7 +27,8 @@ interface Template {
   role: string
   description: string
   icon: string
-  capabilities: Record<string, { enabled?: boolean; [k: string]: unknown }>
+  capabilities: Record<string, { enabled?: boolean; [k: string]: unknown   source_url?: string | null
+}>
   suggested_skill_slugs: string[]
   suggested_integrations?: string[]
   suggested_manager_role: string | null
@@ -123,6 +124,7 @@ const BLANK: Template = {
   suggested_provider: null,
   suggested_model: null,
   variables: [],
+  source_url: null,
 }
 
 // Persona preview payload fetched on demand from /agent_templates/:slug.json
@@ -226,6 +228,13 @@ export default function AgentNew({ templates, agents, org_email_domain, connecte
   }, [])
 
   function choose(t: Template) {
+    // Bundle-backed templates deploy through the full /deploy-agent wizard —
+    // same rich flow (inputs, integrations, schedules, skills) everywhere.
+    // Only templates without a source bundle use this page's inline flow.
+    if (t.source_url) {
+      window.location.href = `/deploy-agent?source=${encodeURIComponent(t.source_url)}`
+      return
+    }
     setPicked(t)
     const mgr = t.suggested_manager_role
       ? agents.find((a) => a.role.toLowerCase() === t.suggested_manager_role!.toLowerCase())
