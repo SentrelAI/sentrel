@@ -1,6 +1,6 @@
 import { Link, router } from "@inertiajs/react"
 import { useEffect, useState } from "react"
-import { Sparkles } from "lucide-react"
+import { ChevronDown, ChevronUp, Sparkles, Star } from "lucide-react"
 import AdminLayout from "@/layouts/admin-layout"
 import BulkActionBar from "@/components/admin/bulk-action-bar"
 import PaginationFooter, { PagyMeta } from "@/components/admin/pagination-footer"
@@ -14,6 +14,8 @@ interface Template {
   description: string
   icon: string | null
   published: boolean
+  featured: boolean
+  featured_position: number | null
   install_count: number
   system_template: boolean
   suggested_model: string
@@ -67,6 +69,38 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
 
   function togglePublished(t: Template) {
     router.put(`/admin/templates/${t.id}`, { published: !t.published }, { preserveScroll: true })
+  }
+
+  function toggleFeatured(t: Template) {
+    if (!t.featured && !t.system_template) {
+      const ok = confirm(
+        `"${t.slug}" is a community/org-owned template. Featuring shows it publicly, but it can only be deployed by its owning org unless it's promoted to a system template first. Feature anyway?`,
+      )
+      if (!ok) return
+    }
+    router.put(`/admin/templates/${t.id}`, { featured: !t.featured }, { preserveScroll: true })
+  }
+
+  // Swap featured_position with the neighbor in the current featured order.
+  // Two PUTs (no bulk endpoint) — fine at curated-row scale.
+  function moveFeatured(t: Template, dir: -1 | 1) {
+    const row = templates
+      .filter((x) => x.featured)
+      .sort((a, b) => (a.featured_position ?? Number.MAX_SAFE_INTEGER) - (b.featured_position ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name))
+    const idx = row.findIndex((x) => x.id === t.id)
+    const other = row[idx + dir]
+    if (!other) return
+    // Normalize to dense 1..n positions with the two rows swapped, so rows
+    // that were featured before positions existed (null) get real slots.
+    const reordered = [...row]
+    reordered[idx] = other
+    reordered[idx + dir] = t
+    reordered.forEach((x, i) => {
+      const pos = i + 1
+      if (x.featured_position !== pos) {
+        router.put(`/admin/templates/${x.id}`, { featured: true, featured_position: pos }, { preserveScroll: true })
+      }
+    })
   }
 
   function destroy(t: Template) {
@@ -153,9 +187,27 @@ export default function AdminTemplatesIndex({ templates, categories, pagy, q: in
                         <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800">pending</span>
                       )}
                       {!t.system_template && <span className="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700">community</span>}
+                      {t.featured && <span className="ml-1 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">featured</span>}
                     </td>
                     <td className="p-2 text-right">
-                      <button onClick={() => togglePublished(t)} className="rounded border px-2 py-1 text-xs hover:bg-muted">
+                      <button
+                        onClick={() => toggleFeatured(t)}
+                        title={t.featured ? "Remove from Featured" : "Add to Featured"}
+                        className={`rounded border px-2 py-1 text-xs hover:bg-muted ${t.featured ? "border-indigo-300 text-indigo-600" : ""}`}
+                      >
+                        <Star className={`size-3.5 ${t.featured ? "fill-current" : ""}`} />
+                      </button>
+                      {t.featured && (
+                        <>
+                          <button onClick={() => moveFeatured(t, -1)} title="Move up in Featured" className="ml-1 rounded border px-1.5 py-1 text-xs hover:bg-muted">
+                            <ChevronUp className="size-3.5" />
+                          </button>
+                          <button onClick={() => moveFeatured(t, 1)} title="Move down in Featured" className="ml-1 rounded border px-1.5 py-1 text-xs hover:bg-muted">
+                            <ChevronDown className="size-3.5" />
+                          </button>
+                        </>
+                      )}
+                      <button onClick={() => togglePublished(t)} className="ml-1 rounded border px-2 py-1 text-xs hover:bg-muted">
                         {t.published ? "Unpublish" : "Publish"}
                       </button>
                       <button onClick={() => destroy(t)} className="ml-1 rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50">

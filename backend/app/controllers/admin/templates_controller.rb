@@ -35,8 +35,19 @@ module Admin
       ActsAsTenant.without_tenant do
         template = AgentTemplate.find(params[:id])
         attrs = params.permit(:name, :description, :category, :published, :icon,
+                              :featured, :featured_position,
                               :identity_md, :personality_md, :instructions_md,
                               :email_signature_md, :suggested_model, :suggested_provider)
+        # Featuring without an explicit position appends to the end of the
+        # row; unfeaturing clears the position so re-featuring later doesn't
+        # resurrect a stale slot.
+        if attrs.key?(:featured) && !attrs.key?(:featured_position)
+          if ActiveModel::Type::Boolean.new.cast(attrs[:featured])
+            attrs[:featured_position] ||= (AgentTemplate.where(featured: true).maximum(:featured_position) || 0) + 1
+          else
+            attrs[:featured_position] = nil
+          end
+        end
         template.update!(attrs)
         redirect_to admin_templates_path, notice: "Updated #{template.slug}"
       end
@@ -148,6 +159,7 @@ module Admin
       {
         id: t.id, slug: t.slug, name: t.name, role: t.role, category: t.category,
         description: t.description, icon: t.icon, published: t.published,
+        featured: t.featured, featured_position: t.featured_position,
         install_count: t.install_count, system_template: t.system_template,
         organization_id: t.organization_id,
         suggested_model: t.suggested_model, suggested_provider: t.suggested_provider,
