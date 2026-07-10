@@ -159,6 +159,7 @@ class AgentBundlesController < ApplicationController
       platform_skill_slugs: params[:platform_skill_slugs],
       integration_choices: params[:integration_choices],
       inputs: unsafe_hash(params[:inputs]),
+      permissions: unsafe_hash(params[:permissions]),
     ).call
 
     agent = result.agent

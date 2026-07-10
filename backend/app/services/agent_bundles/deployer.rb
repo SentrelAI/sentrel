@@ -28,7 +28,7 @@ module AgentBundles
     def initialize(manifest:, user:, organization:, name: nil, slug: nil,
                    role: nil, model: nil, goal: nil, persona: nil,
                    schedules: nil, platform_skill_slugs: nil,
-                   integration_choices: nil, inputs: nil)
+                   integration_choices: nil, inputs: nil, permissions: nil)
       @m = manifest
       @user = user
       @org = organization
@@ -47,6 +47,9 @@ module AgentBundles
       # For any_of integration groups: the service the user picked per
       # group in the wizard. Drives the connect-next notices.
       @integration_choices = Array(integration_choices).map(&:to_s).reject(&:blank?).uniq
+      # Per-verb permission levels tuned in the wizard's Boundaries step.
+      # Only known verbs (from the bundle) with valid levels are honored.
+      @permissions_override = permissions.is_a?(Hash) ? permissions : {}
       # Deploy-time input values (bundle `inputs:` declarations) — extra
       # {{key}} substitution targets, e.g. github_repos for a bug-fixer.
       @inputs = inputs.is_a?(Hash) ? inputs.transform_keys(&:to_s).transform_values(&:to_s) : {}
@@ -158,8 +161,11 @@ module AgentBundles
     end
 
     def mapped_permissions
+      allowed_levels = (PERMISSION_MAP.keys + PERMISSION_MAP.values).to_set
       @m.permissions.each_with_object({}) do |(verb, level), h|
-        h[verb.to_s] = PERMISSION_MAP[level.to_s] || level.to_s
+        chosen = @permissions_override[verb.to_s].to_s
+        effective = allowed_levels.include?(chosen) ? chosen : level.to_s
+        h[verb.to_s] = PERMISSION_MAP[effective] || effective
       end
     end
 
