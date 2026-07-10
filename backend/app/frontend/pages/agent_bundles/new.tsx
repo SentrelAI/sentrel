@@ -150,11 +150,17 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [identityMd, setIdentityMd] = useState(preview?.persona?.identity_md || "")
   const [personalityMd, setPersonalityMd] = useState(preview?.persona?.personality_md || "")
   const [instructionsMd, setInstructionsMd] = useState(preview?.persona?.instructions_md || "")
+  const detectedTz = (() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } catch { return "UTC" }
+  })()
   const [schedules, setSchedules] = useState<ScheduleRow[]>(
     (preview?.schedules || []).map((s) => ({
       name: s.name,
       cron: s.cron,
-      timezone: s.timezone || "UTC",
+      // Bundles declare "{{timezone}}" against the timezone input — resolve
+      // to the visitor's detected zone so the select shows a real value
+      // instead of an unmatchable token.
+      timezone: !s.timezone || s.timezone.includes("{{") ? detectedTz : s.timezone,
       instruction: s.instruction || "",
     })),
   )
@@ -162,7 +168,10 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   // targets, e.g. github_repos). Seeded from each input's default.
   const bundleInputs = preview?.inputs || []
   const [inputValues, setInputValues] = useState<Record<string, string>>(
-    Object.fromEntries(bundleInputs.map((i) => [i.key, i.default || ""])),
+    Object.fromEntries(bundleInputs.map((i) => [
+      i.key,
+      i.default || (isTimezoneInput(i) ? detectedTz : ""),
+    ])),
   )
 
   // any_of integration groups: the user picks ONE alternative per group
@@ -241,6 +250,12 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   function svcLabel(service: string) {
     return svcEntry(service)?.label || service.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   }
+
+  // Per-verb permission levels, editable in the Boundaries step. Seeded
+  // from the bundle; sent with the deploy as overrides.
+  const [permissionLevels, setPermissionLevels] = useState<Record<string, string>>(
+    { ...(preview?.permissions || {}) },
+  )
 
   // Step rail state. Required steps ship open; a manual toggle pins a step
   // so auto-advance never fights the user.
@@ -395,6 +410,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
         g.multi ? g.options.filter((o) => connected.has(normSvc(o))) : [integrationChoices[gi]],
       ).filter(Boolean),
       inputs: inputValues,
+      permissions: permissionLevels,
       save_as_template: !updating && saveAsTemplate ? "1" : "0",
     }, {
       onError: (errors) => setDeployError(Object.values(errors).join(", ") || "Deploy failed"),
@@ -791,20 +807,29 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 what waits for your approval. The single biggest trust question a
                 non-technical deployer has — answered before deploy. */}
             {Object.keys(preview.permissions || {}).length > 0 && (
-              <WizardStep id="boundaries" title="Boundaries" summary={`${Object.values(preview.permissions).filter((v) => v === "ask" || v === "draft").length} actions need your approval · ${Object.values(preview.permissions).filter((v) => v === "block").length} never allowed`} open={!!openSteps["boundaries"]} onToggle={() => toggleStep("boundaries")}>
+              <WizardStep id="boundaries" title="Boundaries" summary={`${Object.values(permissionLevels).filter((v) => v === "ask" || v === "draft").length} actions need your approval · ${Object.values(permissionLevels).filter((v) => v === "block" || v === "never").length} never allowed`} open={!!openSteps["boundaries"]} onToggle={() => toggleStep("boundaries")}>
                 <p className="text-xs text-muted-foreground mb-3 max-w-lg">
-                  What this agent may do on its own, and where it stops and asks you first. Fine-tune later on the agent's page.
+                  These come from the agent's template — what it may do on its own, and where it stops and asks you first. Adjust any of them here; you can also change them later on the agent's page.
                 </p>
                 <div className="rounded-lg border bg-card divide-y">
-                  {Object.entries(preview.permissions).map(([verb, level]) => (
+                  {Object.entries(permissionLevels).map(([verb, level]) => (
                     <div key={verb} className="flex items-center gap-2 px-4 py-2 text-xs">
                       <span className="font-medium capitalize">{verb.replace(/_/g, " ")}</span>
-                      <span className={`ml-auto shrink-0 text-[11px] ${
-                        level === "auto" ? "text-emerald-600 dark:text-emerald-400"
-                        : level === "block" ? "text-red-600 dark:text-red-400"
-                        : "text-amber-600 dark:text-amber-400"}`}>
-                        {level === "auto" ? "does on its own" : level === "block" ? "never allowed" : level === "draft" ? "drafts for your approval" : "asks you first"}
-                      </span>
+                      <div className="ml-auto shrink-0">
+                        <Select value={level === "draft" ? "ask" : level === "never" ? "block" : level} onValueChange={(v) => setPermissionLevels((prev) => ({ ...prev, [verb]: v }))}>
+                          <SelectTrigger className={`h-7 w-44 text-[11px] ${
+                            level === "auto" ? "text-emerald-600 dark:text-emerald-400"
+                            : level === "block" || level === "never" ? "text-red-600 dark:text-red-400"
+                            : "text-amber-600 dark:text-amber-400"}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">does on its own</SelectItem>
+                            <SelectItem value="ask">asks you first</SelectItem>
+                            <SelectItem value="block">never allowed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   ))}
                 </div>
