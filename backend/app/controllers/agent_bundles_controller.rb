@@ -82,6 +82,11 @@ class AgentBundlesController < ApplicationController
       # Anonymous visitors get the preview but no org state — the page
       # shows a sign-in overlay and gates Deploy/Connect behind it.
       authenticated: user_signed_in?,
+      # Connect-in-place: the catalog entries + Nango Connect base so the
+      # wizard can run the same ConnectModal flow /integrations uses instead
+      # of bouncing the user off the deploy page.
+      integration_catalog: user_signed_in? ? IntegrationCatalog.list(current_tenant.id, configured_keys: Nango::Client.configured_provider_keys) : [],
+      nango_connect_base_url: ENV["NANGO_CONNECT_BASE_URL"],
       # Org state so the wizard renders live status on the bundle's
       # requirements: which services are already connected, and
       # which credential providers already have a stored secret.

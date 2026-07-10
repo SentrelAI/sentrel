@@ -21,6 +21,7 @@ import { slugify } from "@/lib/random-names"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe"
 import { TimezoneSelect, isTimezoneInput } from "@/components/timezone-select"
+import { ConnectModal, type CatalogApp } from "@/components/integrations/connect-modal"
 
 // The shareable "Deploy to sentrel" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
@@ -91,6 +92,8 @@ interface Props {
   // false → anonymous visitor: full preview renders behind a sign-in
   // overlay; Deploy/Connect open the overlay instead of acting.
   authenticated?: boolean
+  integration_catalog?: CatalogApp[]
+  nango_connect_base_url?: string | null
 }
 
 // "APOLLO_API_KEY" / "apollo-token" → "apollo" — same normalization the
@@ -119,7 +122,7 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true }: Props) {
+export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true, integration_catalog = [], nango_connect_base_url = null }: Props) {
   const [url, setUrl] = useState(source)
   // Deploy target: create a fresh agent, or redeploy the bundle onto an
   // existing one (spec-owned fields update in place; the agent keeps its
@@ -229,14 +232,20 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [secretMeta, setSecretMeta] = useState<Record<string, { base_url: string; usage_md: string }>>({})
   const [secretAdvanced, setSecretAdvanced] = useState<Set<string>>(new Set())
   const [secretBusy, setSecretBusy] = useState<string | null>(null)
-  const [connectBusy, setConnectBusy] = useState<string | null>(null)
   const [connectError, setConnectError] = useState<string | null>(null)
+  // Connect-in-place: which service's ConnectModal is open.
+  const [connectingApp, setConnectingApp] = useState<CatalogApp | null>(null)
 
-  // Send the user to the /integrations directory to connect this service
-  // there (3-mode connect modal) — same destination the inline chat card uses.
+  // Open the same 3-mode connect modal /integrations uses, right here —
+  // deploy context survives, status flips live on success. Services missing
+  // from the catalog (not yet supported) still fall back to /integrations.
   function connectIntegration(service: string) {
-    setConnectBusy(service)
     setConnectError(null)
+    const app = integration_catalog.find((a) => normSvc(a.slug) === normSvc(service))
+    if (app) {
+      setConnectingApp(app)
+      return
+    }
     window.location.href = "/integrations"
   }
 
@@ -840,8 +849,8 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                             ) : isConnected ? (
                               <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
                             ) : (
-                              <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === i.service} onClick={() => connectIntegration(i.service)}>
-                                {connectBusy === i.service ? "Opening…" : "Connect"}
+                              <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => connectIntegration(i.service)}>
+                                Connect
                               </Button>
                             )}
                           </span>
@@ -893,8 +902,8 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                                   {isConnected ? (
                                     <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
                                   ) : (
-                                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" disabled={connectBusy === service} onClick={() => { if (!group.multi) chooseIntegration(gi, service); connectIntegration(service) }}>
-                                      {connectBusy === service ? "Opening…" : "Connect"}
+                                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => { if (!group.multi) chooseIntegration(gi, service); connectIntegration(service) }}>
+                                      Connect
                                     </Button>
                                   )}
                                 </span>
@@ -1108,6 +1117,22 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   return (
     <AppLayout crumbs={[{ label: "Workspace", href: "/" }, { label: "Deploy agent" }]}>
       {pageBody}
+          {connectingApp && (
+        <ConnectModal
+          app={connectingApp}
+          scope="org"
+          connectBaseUrl={nango_connect_base_url}
+          onClose={() => setConnectingApp(null)}
+          onConnected={() => {
+            setConnected((prev) => {
+              const next = new Set(prev)
+              next.add(normSvc(connectingApp.slug))
+              return next
+            })
+            setConnectingApp(null)
+          }}
+        />
+      )}
     </AppLayout>
   )
 }
