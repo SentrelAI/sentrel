@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { agentsPath } from "@/routes"
 import { randomAgentName, slugify } from "@/lib/random-names"
+import { TimezoneSelect, isTimezoneInput } from "@/components/timezone-select"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 
 // Deterministic agent creation. No AI anywhere in this flow: pick a
@@ -46,6 +47,7 @@ interface Props {
   templates: Template[]
   agents: AgentSummary[]
   org_email_domain: string | null
+  connected_services?: string[]
 }
 
 interface ChannelChoice {
@@ -132,11 +134,25 @@ interface PersonaPreview {
   instructions_md: string | null
 }
 
-export default function AgentNew({ templates, agents, org_email_domain }: Props) {
+// The stored bundle definition (AgentTemplateVersion) — everything the
+// /deploy-agent wizard shows, served from the template row (no GitHub hit).
+interface TemplateDefinition {
+  inputs?: Array<{ key: string; label: string; description?: string | null; placeholder?: string | null; default?: string | null; required?: boolean }>
+  schedules?: Array<{ name: string; cron: string; timezone?: string | null; why?: string | null }>
+  integrations_required?: Array<{ service?: string; any_of?: string[]; required?: boolean; why?: string | null }>
+  channels_required?: Array<{ type: string; why?: string | null }>
+  permissions?: Record<string, string>
+  metadata?: { source_url?: string }
+}
+
+const normSvc = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+export default function AgentNew({ templates, agents, org_email_domain, connected_services = [] }: Props) {
   const [picked, setPicked] = useState<Template>(BLANK)
   const [mode, setMode] = useState<"blank" | "template" | "github">("blank")
   const [templateSearch, setTemplateSearch] = useState("")
   const [preview, setPreview] = useState<PersonaPreview | null>(null)
+  const [definition, setDefinition] = useState<TemplateDefinition | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [githubUrl, setGithubUrl] = useState("")
   const [bundleFile, setBundleFile] = useState<File | null>(null)
@@ -163,6 +179,9 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
     // you trust the agent's outbound.
     permissions: { send_email: "draft" } as Record<string, string>,
     skill_slugs_override: [] as string[],
+    // Deploy-time input values for the template's inputs declarations —
+    // substituted into persona + schedules server-side (Installer).
+    inputs: {} as Record<string, string>,
   })
 
   // Slug derives from name on first render (useForm initializers can't
@@ -230,6 +249,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
   function chooseBlank() {
     setMode("blank")
     setPreview(null)
+    setDefinition(null)
     choose(BLANK)
   }
 
@@ -256,6 +276,7 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
   async function fetchPersonaPreview(slug: string) {
     setPreviewLoading(true)
     setPreview(null)
+    setDefinition(null)
     try {
       const res = await fetch(`/agent_templates/${slug}.json`, { headers: { Accept: "application/json" } })
       if (!res.ok) return
@@ -265,6 +286,12 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         personality_md: body.personality_md || null,
         instructions_md: body.instructions_md || null,
       })
+      const def = (body.definition || null) as TemplateDefinition | null
+      setDefinition(def)
+      // Seed the deploy-inputs form from the definition's defaults.
+      const seeded: Record<string, string> = {}
+      for (const inp of def?.inputs || []) seeded[inp.key] = inp.default || ""
+      setData("inputs", seeded)
     } catch {
       // Preview is best-effort — selection already applied.
     } finally {
@@ -473,15 +500,84 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
                           </div>
                         </div>
                       )}
-                      {(picked.suggested_integrations?.length ?? 0) > 0 && (
+                      {/* Integrations — from the stored definition (with any_of
+                          groups + live connect status), falling back to the flat
+                          suggested list for legacy templates. */}
+                      {(definition?.integrations_required?.length || picked.suggested_integrations?.length) ? (
                         <div>
-                          <div className="font-medium mb-1">Integrations to connect</div>
-                          <div className="flex flex-wrap gap-1">
-                            {(picked.suggested_integrations || []).map((s) => (
-                              <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{s.replace(/_/g, " ")}</span>
+                          <div className="font-medium mb-1">Integrations</div>
+                          <div className="space-y-1">
+                            {(definition?.integrations_required?.length
+                              ? definition.integrations_required
+                              : (picked.suggested_integrations || []).map((svc) => ({ service: svc }))
+                            ).map((entry, idx) => {
+                              const connectedSet = new Set(connected_services.map(normSvc))
+                              const options = entry.service ? [entry.service] : (entry.any_of || [])
+                              return (
+                                <div key={idx} className="flex flex-wrap items-center gap-1">
+                                  {(entry.any_of?.length ?? 0) > 0 && <span className="text-[10px] text-muted-foreground">one of:</span>}
+                                  {options.map((svc) => {
+                                    const connected = connectedSet.has(normSvc(svc))
+                                    return connected ? (
+                                      <span key={svc} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                        {svc.replace(/_/g, " ")} ✓
+                                      </span>
+                                    ) : (
+                                      <a key={svc} href="/integrations" className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:text-foreground border border-transparent hover:border-border" title="Connect at /integrations">
+                                        {svc.replace(/_/g, " ")}
+                                      </a>
+                                    )
+                                  })}
+                                  {entry.required === false && <span className="text-[9px] text-muted-foreground">optional</span>}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                      {/* Schedules the template ships with (created at deploy) */}
+                      {(definition?.schedules?.length ?? 0) > 0 && (
+                        <div>
+                          <div className="font-medium mb-1">Schedules</div>
+                          <div className="space-y-0.5">
+                            {(definition?.schedules || []).map((sch) => (
+                              <div key={sch.name} className="flex items-baseline gap-2 text-[11px]">
+                                <span className="text-foreground">{sch.name}</span>
+                                <code className="text-[10px] text-muted-foreground font-mono">{sch.cron}</code>
+                                {sch.timezone && <span className="text-[10px] text-muted-foreground">{sch.timezone === "{{timezone}}" ? "your timezone" : sch.timezone}</span>}
+                              </div>
                             ))}
                           </div>
                         </div>
+                      )}
+                      {/* Channels + permission gates, so "what can it do out of
+                          the box" is visible before deploy */}
+                      {(definition?.channels_required?.length ?? 0) > 0 && (
+                        <div className="text-muted-foreground">
+                          <span className="font-medium text-foreground">Channels:</span>{" "}
+                          {(definition?.channels_required || []).map((c) => c.type).join(", ")}
+                        </div>
+                      )}
+                      {definition?.permissions && Object.keys(definition.permissions).length > 0 && (
+                        <details className="rounded border bg-background">
+                          <summary className="cursor-pointer px-2 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground">Permissions</summary>
+                          <div className="px-2 pb-2 space-y-0.5">
+                            {Object.entries(definition.permissions).map(([verb, level]) => (
+                              <div key={verb} className="flex justify-between text-[11px]">
+                                <code className="font-mono text-muted-foreground">{verb.replace(/_/g, " ")}</code>
+                                <span className={level === "ask" ? "text-amber-600 dark:text-amber-400" : level === "block" ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}>{level}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                      {definition?.metadata?.source_url && (
+                        <a
+                          href={`/deploy-agent?source=${encodeURIComponent(definition.metadata.source_url)}`}
+                          className="inline-block text-[11px] text-primary hover:underline"
+                        >
+                          Open in the full deploy wizard →
+                        </a>
                       )}
                       {picked.suggested_model && (
                         <div className="text-muted-foreground">
@@ -516,6 +612,37 @@ export default function AgentNew({ templates, agents, org_email_domain }: Props)
         </section>
 
         {mode !== "github" && (<>
+        {/* ── Setup inputs (template deploy-time {{key}} values) ──────── */}
+        {mode === "template" && (definition?.inputs?.length ?? 0) > 0 && (
+          <section>
+            <Overline className="mb-3">Setup</Overline>
+            <div className="rounded-lg border bg-card p-5 space-y-4">
+              {(definition?.inputs || []).map((input) => (
+                <div key={input.key} className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    {input.label}
+                    {input.required && <span className="text-[10px] text-amber-600 dark:text-amber-400">required</span>}
+                    <code className="text-[10px] text-muted-foreground font-mono">{"{{"}{input.key}{"}}"}</code>
+                  </Label>
+                  {isTimezoneInput(input) ? (
+                    <TimezoneSelect
+                      value={data.inputs[input.key] || ""}
+                      onChange={(tz) => setData("inputs", { ...data.inputs, [input.key]: tz })}
+                    />
+                  ) : (
+                    <Input
+                      value={data.inputs[input.key] || ""}
+                      onChange={(e) => setData("inputs", { ...data.inputs, [input.key]: e.target.value })}
+                      placeholder={input.placeholder || ""}
+                    />
+                  )}
+                  {input.description && <p className="text-[11px] text-muted-foreground">{input.description}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* ── Identity ───────────────────────────────────────────────── */}
         <section>
           <Overline className="mb-3">Identity</Overline>

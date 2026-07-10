@@ -114,6 +114,7 @@ module AgentTemplates
         "permissions"  => m.permissions,
         "goal"         => m.goal,
         "inputs"       => m.inputs,
+        "schedules"    => m.schedules,
         "skills"       => (
           m.skill_bundles.map { |sb| { "slug" => sb[:slug], "source" => "custom", "files" => sb[:files] } } +
           m.builtin_skill_slugs.map { |slug| { "slug" => slug, "source" => "built_in" } }

@@ -20,6 +20,7 @@ import { MarkdownEditor } from "@/components/markdown-editor"
 import { slugify } from "@/lib/random-names"
 import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe"
+import { TimezoneSelect, isTimezoneInput } from "@/components/timezone-select"
 
 // The shareable "Deploy to sentrel" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
@@ -778,12 +779,20 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                         )}
                         <code className="text-[10px] text-muted-foreground font-mono">{"{{"}{input.key}{"}}"}</code>
                       </Label>
-                      <Input
-                        value={inputValues[input.key] || ""}
-                        onChange={(e) => setInputValues((prev) => ({ ...prev, [input.key]: e.target.value }))}
-                        placeholder={input.placeholder || ""}
-                        className="h-8 text-sm"
-                      />
+                      {isTimezoneInput(input) ? (
+                        <TimezoneSelect
+                          value={inputValues[input.key] || ""}
+                          onChange={(tz) => setInputValues((prev) => ({ ...prev, [input.key]: tz }))}
+                          className="h-8 text-sm"
+                        />
+                      ) : (
+                        <Input
+                          value={inputValues[input.key] || ""}
+                          onChange={(e) => setInputValues((prev) => ({ ...prev, [input.key]: e.target.value }))}
+                          placeholder={input.placeholder || ""}
+                          className="h-8 text-sm"
+                        />
+                      )}
                       {input.description && (
                         <p className="text-[11px] text-muted-foreground">{input.description}</p>
                       )}

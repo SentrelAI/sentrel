@@ -326,7 +326,10 @@ class AgentsController < ApplicationController
       agents: current_tenant.agents.select(:id, :name, :slug, :role).order(:name).map { |a|
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
-      org_email_domain: current_tenant.try(:email_domain).presence
+      org_email_domain: current_tenant.try(:email_domain).presence,
+      # Connected service_names so the template panel can show per-integration
+      # connect status (same signal the /deploy-agent wizard gets).
+      connected_services: current_tenant.integrations.where(status: "connected").pluck(:service_name)
     }
   end
 
@@ -377,6 +380,7 @@ class AgentsController < ApplicationController
           user: current_user,
           organization: current_tenant,
           prefer_anthropic_oauth: org_has_anthropic_oauth?,
+          inputs: params[:inputs].respond_to?(:to_unsafe_h) ? params[:inputs].to_unsafe_h : (params[:inputs] || {}),
         ).call
       rescue AgentTemplates::Installer::InvalidDefinition, ActiveRecord::RecordInvalid => e
         return redirect_back fallback_location: new_agent_path, alert: e.message

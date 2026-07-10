@@ -20,13 +20,17 @@ module AgentTemplates
     class InvalidDefinition < StandardError; end
 
     def initialize(definition:, agent_attrs:, ai_config_attrs: {}, user:, organization:,
-                   prefer_anthropic_oauth: false)
+                   prefer_anthropic_oauth: false, inputs: {})
       @definition       = definition.is_a?(Hash) ? definition.deep_stringify_keys : (raise InvalidDefinition, "definition must be a Hash")
       @agent_attrs      = agent_attrs.to_h.symbolize_keys
       @ai_config_attrs  = ai_config_attrs.to_h.symbolize_keys
       @user             = user
       @organization     = organization
       @prefer_anthropic_oauth = prefer_anthropic_oauth
+      # Deploy-time input values for the definition's `inputs` declarations
+      # ({{key}} substitution in persona + schedules) — same contract as
+      # AgentBundles::Deployer.
+      @inputs = inputs.is_a?(Hash) ? inputs.transform_keys(&:to_s).transform_values(&:to_s).reject { |_, v| v.blank? } : {}
     end
 
     def call
@@ -40,6 +44,7 @@ module AgentTemplates
           create_ai_config!(agent)
           install_skills!(agent)
           install_approval_rules!(agent)
+          create_schedules!(agent)
           agent
         end
       end
@@ -68,13 +73,7 @@ module AgentTemplates
     # {{user_email}}, {{role}} in the persona md fields the same way
     # AgentTemplate#render did.
     def apply_persona!(agent)
-      ctx = {
-        "agent_name"   => agent.name,
-        "company_name" => @organization.name,
-        "user_name"    => @user.name,
-        "user_email"   => @user.try(:email),
-        "role"         => agent.role
-      }.compact
+      ctx = substitution_context(agent)
       persona = @definition["persona"] || {}
       agent.identity_md       ||= substitute(persona["identity_md"], ctx)
       agent.personality_md    ||= substitute(persona["personality_md"], ctx)
@@ -85,6 +84,51 @@ module AgentTemplates
     def substitute(text, ctx)
       return nil if text.blank?
       text.to_s.gsub(/\{\{\s*(\w+)\s*\}\}/) { ctx[Regexp.last_match(1)] || "" }
+    end
+
+    # Fixed keys + the definition's input defaults + caller-supplied values
+    # (highest precedence) — mirrors AgentBundles::Deployer's context.
+    def substitution_context(agent)
+      defaults = Array(@definition["inputs"]).each_with_object({}) do |i, h|
+        h[i["key"].to_s] = i["default"].to_s if i.is_a?(Hash) && i["default"].present?
+      end
+      {
+        "agent_name"   => agent.name,
+        "company_name" => @organization.name,
+        "user_name"    => @user.name,
+        "user_email"   => @user.try(:email),
+        "role"         => agent.role
+      }.compact.merge(defaults).merge(@inputs)
+    end
+
+    # Standing cron jobs from the definition (schedules[]) — previously only
+    # the /deploy-agent path created these, so template installs silently
+    # dropped every bundle schedule. Same interpolation + timezone guard as
+    # AgentBundles::Deployer#create_schedules!.
+    def create_schedules!(agent)
+      ctx = substitution_context(agent)
+      Array(@definition["schedules"]).each do |sched|
+        s = sched.is_a?(Hash) ? sched.stringify_keys : next
+        next if s["name"].blank? || s["cron"].blank? || s["instruction"].blank?
+        tz = substitute(s["timezone"].presence || "UTC", ctx).to_s
+        tz = "UTC" if tz.blank? || tz.include?("{{") || !valid_timezone?(tz)
+        agent.scheduled_work.create!(
+          organization: @organization,
+          mode: "cron",
+          name: s["name"],
+          instruction: substitute(s["instruction"], ctx),
+          cron_expression: s["cron"],
+          timezone: tz,
+          active: true,
+        )
+      end
+    end
+
+    def valid_timezone?(tz)
+      TZInfo::Timezone.get(tz)
+      true
+    rescue TZInfo::InvalidTimezoneIdentifier
+      false
     end
 
     def apply_capabilities!(agent)
