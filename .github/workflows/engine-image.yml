@@ -50,14 +50,14 @@ jobs:
       # surface that to the user.
       - name: Set up Docker Buildx (attempt 1)
         id: buildx-1
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         continue-on-error: true
       - name: Wait + retry on Docker Hub flake
         if: steps.buildx-1.outcome == 'failure'
         run: sleep 20
       - name: Set up Docker Buildx (attempt 2)
         if: steps.buildx-1.outcome == 'failure'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
