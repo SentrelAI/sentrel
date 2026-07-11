@@ -1208,29 +1208,39 @@ export default function DeployAgent({ source, upload, preview, error, connected_
               {deployError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
               )}
-              {authenticated && missingRequired.length > 0 && (
-                <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="size-3.5 shrink-0 mt-px" />
-                  <span>
-                    This agent needs <span className="font-semibold">{missingRequired.map(svcLabel).join(", ")}</span> connected to do its job — connect above, or deploy anyway via the arrow next to Deploy and connect later from the agent's page.
-                  </span>
-                </div>
-              )}
-              {authenticated && missingInputs.length > 0 && (
-                <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="size-3.5 shrink-0 mt-px" />
-                  <span>
-                    Fill in <span className="font-semibold">{missingInputs.join(", ")}</span> in Setup above — this bundle needs {missingInputs.length > 1 ? "them" : "it"} to work.
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-end">
+              <div className="flex items-center justify-end gap-3 flex-wrap">
+                {/* Compact readiness recap: one chip per unmet gate, each a
+                    jump-link to its step. The rail carries the detail; this
+                    row just answers "why is the button disabled". */}
+                {authenticated && (missingInputs.length > 0 || missingRequired.length > 0) && (
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                    {missingInputs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => document.querySelector("#step-setup")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
+                      >
+                        <AlertTriangle className="size-3" />
+                        {missingInputs.length} setup field{missingInputs.length === 1 ? "" : "s"} to fill
+                      </button>
+                    )}
+                    {missingRequired.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => document.querySelector("#step-connections")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
+                      >
+                        <Plug className="size-3" />
+                        {missingRequired.map((m) => (m === "a network" ? "connect one network" : `connect ${svcLabel(m)}`)).join(" · ")}
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="flex">
                   <Button
                     type="button"
                     onClick={deploy}
                     disabled={deploying || (authenticated && (missingRequired.length > 0 || missingInputs.length > 0))}
-                    title={!authenticated ? undefined : missingRequired.length > 0 ? `Connect ${missingRequired.map(svcLabel).join(", ")} first — or deploy anyway from the arrow menu` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
                     className={authenticated && missingRequired.length > 0 ? "rounded-r-none" : ""}
                   >
                     <Rocket className="size-4 mr-1.5" />
@@ -1238,13 +1248,9 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                       ? `Sign in to deploy ${preview.name}`
                       : deploying
                         ? (updating ? "Redeploying…" : "Deploying…")
-                        : missingRequired.length > 0
-                          ? `Connect ${svcLabel(missingRequired[0])} to deploy`
-                          : missingInputs.length > 0
-                            ? `Fill in ${missingInputs[0]} to deploy`
-                            : updating
-                              ? `Redeploy to ${targetAgent?.name || "agent"}`
-                              : `Deploy ${agentName.trim() || preview.name}`}
+                        : updating
+                          ? `Redeploy to ${targetAgent?.name || "agent"}`
+                          : `Deploy ${agentName.trim() || preview.name}`}
                   </Button>
                   {/* Escape hatch: required connections gate the main button,
                       but nothing breaks server-side without them — the agent
