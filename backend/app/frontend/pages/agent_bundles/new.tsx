@@ -22,7 +22,6 @@ import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe"
 import { TimezoneSelect, isTimezoneInput } from "@/components/timezone-select"
 import { ConnectModal, type CatalogApp } from "@/components/integrations/connect-modal"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 // The shareable "Deploy to sentrel" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
@@ -1236,12 +1235,11 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                     )}
                   </div>
                 )}
-                <div className="flex">
+                <div className="flex flex-col items-end gap-1.5">
                   <Button
                     type="button"
                     onClick={deploy}
                     disabled={deploying || (authenticated && (missingRequired.length > 0 || missingInputs.length > 0))}
-                    className={authenticated && missingRequired.length > 0 ? "rounded-r-none" : ""}
                   >
                     <Rocket className="size-4 mr-1.5" />
                     {!authenticated
@@ -1252,26 +1250,17 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                           ? `Redeploy to ${targetAgent?.name || "agent"}`
                           : `Deploy ${agentName.trim() || preview.name}`}
                   </Button>
-                  {/* Escape hatch: required connections gate the main button,
-                      but nothing breaks server-side without them — the agent
-                      deploys with a connect reminder on its page. Don't trap
-                      users who'll connect later (or wait on a pending app). */}
-                  {authenticated && missingRequired.length > 0 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button type="button" disabled={deploying} className="rounded-l-none border-l border-primary-foreground/20 px-2" aria-label="More deploy options">
-                          <ChevronDown className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem disabled={missingInputs.length > 0} onSelect={() => deploy()}>
-                          <div className="flex flex-col">
-                            <span>Deploy without connecting</span>
-                            <span className="text-[10px] text-muted-foreground">connect the apps later from the agent's page</span>
-                          </div>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  {/* Quiet escape hatch — connections are the only skippable
+                      gate (the agent deploys fine and nags to connect later);
+                      setup inputs are not (substitution needs them). */}
+                  {authenticated && missingRequired.length > 0 && missingInputs.length === 0 && !deploying && (
+                    <button
+                      type="button"
+                      onClick={() => deploy()}
+                      className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      or deploy without connecting — connect later from the agent's page
+                    </button>
                   )}
                 </div>
               </div>
