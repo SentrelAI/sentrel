@@ -22,6 +22,7 @@ import { MODELS_BY_PROVIDER } from "@/lib/model-catalog"
 import { describeCron, CRON_PRESETS, timezoneOptions } from "@/lib/cron-describe"
 import { TimezoneSelect, isTimezoneInput } from "@/components/timezone-select"
 import { ConnectModal, type CatalogApp } from "@/components/integrations/connect-modal"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 // The shareable "Deploy to sentrel" wizard.
 //   /deploy-agent?source=https://github.com/owner/repo[/tree/ref/subdir]
@@ -1211,7 +1212,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                   <span>
-                    This agent needs <span className="font-semibold">{missingRequired.map(svcLabel).join(", ")}</span> connected before deploy — use the Connect button{missingRequired.length > 1 ? "s" : ""} in Connections above.
+                    This agent needs <span className="font-semibold">{missingRequired.map(svcLabel).join(", ")}</span> connected to do its job — connect above, or deploy anyway via the arrow next to Deploy and connect later from the agent's page.
                   </span>
                 </div>
               )}
@@ -1224,25 +1225,49 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                 </div>
               )}
               <div className="flex justify-end">
-                <Button
-                  type="button"
-                  onClick={deploy}
-                  disabled={deploying || (authenticated && (missingRequired.length > 0 || missingInputs.length > 0))}
-                  title={!authenticated ? undefined : missingRequired.length > 0 ? `Connect ${missingRequired.map(svcLabel).join(", ")} first` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
-                >
-                  <Rocket className="size-4 mr-1.5" />
-                  {!authenticated
-                    ? `Sign in to deploy ${preview.name}`
-                    : deploying
-                      ? (updating ? "Redeploying…" : "Deploying…")
-                      : missingRequired.length > 0
-                        ? `Connect ${svcLabel(missingRequired[0])} to deploy`
-                        : missingInputs.length > 0
-                          ? `Fill in ${missingInputs[0]} to deploy`
-                          : updating
-                            ? `Redeploy to ${targetAgent?.name || "agent"}`
-                            : `Deploy ${agentName.trim() || preview.name}`}
-                </Button>
+                <div className="flex">
+                  <Button
+                    type="button"
+                    onClick={deploy}
+                    disabled={deploying || (authenticated && (missingRequired.length > 0 || missingInputs.length > 0))}
+                    title={!authenticated ? undefined : missingRequired.length > 0 ? `Connect ${missingRequired.map(svcLabel).join(", ")} first — or deploy anyway from the arrow menu` : missingInputs.length > 0 ? `Fill in ${missingInputs.join(", ")} first` : undefined}
+                    className={authenticated && missingRequired.length > 0 ? "rounded-r-none" : ""}
+                  >
+                    <Rocket className="size-4 mr-1.5" />
+                    {!authenticated
+                      ? `Sign in to deploy ${preview.name}`
+                      : deploying
+                        ? (updating ? "Redeploying…" : "Deploying…")
+                        : missingRequired.length > 0
+                          ? `Connect ${svcLabel(missingRequired[0])} to deploy`
+                          : missingInputs.length > 0
+                            ? `Fill in ${missingInputs[0]} to deploy`
+                            : updating
+                              ? `Redeploy to ${targetAgent?.name || "agent"}`
+                              : `Deploy ${agentName.trim() || preview.name}`}
+                  </Button>
+                  {/* Escape hatch: required connections gate the main button,
+                      but nothing breaks server-side without them — the agent
+                      deploys with a connect reminder on its page. Don't trap
+                      users who'll connect later (or wait on a pending app). */}
+                  {authenticated && missingRequired.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" disabled={deploying} className="rounded-l-none border-l border-primary-foreground/20 px-2" aria-label="More deploy options">
+                          <ChevronDown className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem disabled={missingInputs.length > 0} onSelect={() => deploy()}>
+                          <div className="flex flex-col">
+                            <span>Deploy without connecting</span>
+                            <span className="text-[10px] text-muted-foreground">connect the apps later from the agent's page</span>
+                          </div>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
               </div>
             </section>
           </>
