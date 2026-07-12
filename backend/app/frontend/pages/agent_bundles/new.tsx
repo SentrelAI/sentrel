@@ -1042,79 +1042,48 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                       class; if none is connected yet, nudge to connect one. */}
                   {choiceGroups.map((group, gi) => {
                     const chosen = integrationChoices[gi]
-                    const chosenConnected = !!chosen && connected.has(normSvc(chosen))
-                    const anyConnected = group.options.some((o) => connected.has(normSvc(o)))
                     const connectedCount = group.options.filter((o) => connected.has(normSvc(o))).length
                     return (
                       <div key={`choice-${gi}`} className="px-4 py-3 text-xs space-y-2">
                         <div className="flex items-center gap-2">
                           <Plug className="size-3.5 text-muted-foreground" />
-                          <span className="font-medium">{group.multi ? "Connect any" : "Pick one"}</span>
-                          <Badge variant="outline" className="text-[9px]">{group.multi ? `${connectedCount}/${group.options.length} connected` : `any of ${group.options.length}`}</Badge>
-                          {group.required && (
-                            <Badge variant="secondary" className="text-[9px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">required before deploy</Badge>
-                          )}
-                          {group.why && <span className="text-[10px] text-muted-foreground truncate">— {group.why}</span>}
+                          <span className="font-medium">{group.multi ? "Publishing networks" : "Pick one"}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {group.multi
+                              ? group.required && connectedCount === 0
+                                ? "connect at least one — the agent posts to every one you connect"
+                                : `${connectedCount} connected — posts to every one you connect`
+                              : `one of ${group.options.length}${group.required ? ", needed for the agent to work" : ""}`}
+                          </span>
                         </div>
-                        <div className="grid gap-1.5 sm:grid-cols-2">
+                        {/* One pill per option — the pill IS the connect action.
+                            No checkbox + button + banner triple-signal. */}
+                        <div className="flex flex-wrap gap-1.5">
                           {group.options.map((service) => {
                             const isConnected = connected.has(normSvc(service))
-                            // multi: a connected option is "active" (used). pick-one: the radio choice.
-                            const isActive = group.multi ? isConnected : chosen === service
+                            const isChosen = !group.multi && chosen === service
                             return (
                               <button
                                 key={service}
                                 type="button"
-                                onClick={() => { if (!group.multi) chooseIntegration(gi, service) }}
-                                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors ${
-                                  isActive ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
-                                } ${group.multi ? "cursor-default" : ""}`}
+                                onClick={() => {
+                                  if (!group.multi) chooseIntegration(gi, service)
+                                  if (!isConnected) connectIntegration(service)
+                                }}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 transition-colors ${
+                                  isConnected
+                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : isChosen
+                                      ? "border-primary/60 bg-primary/5 hover:bg-primary/10"
+                                      : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                                }`}
                               >
-                                {group.multi ? (
-                                  <span className={`grid size-3.5 place-items-center rounded-sm border shrink-0 ${isConnected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
-                                    {isConnected && <Check className="size-2.5" />}
-                                  </span>
-                                ) : (
-                                  <span className={`size-3 rounded-full border shrink-0 ${isActive ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
-                                )}
-                                <span className="font-medium truncate">{svcLabel(service)}</span>
-                                <span className="ml-auto shrink-0" onClick={(e) => e.stopPropagation()}>
-                                  {isConnected ? (
-                                    <Badge className="text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-600"><Check className="size-3" /> Connected</Badge>
-                                  ) : (
-                                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" onClick={() => { if (!group.multi) chooseIntegration(gi, service); connectIntegration(service) }}>
-                                      Connect
-                                    </Button>
-                                  )}
-                                </span>
+                                {isConnected ? <Check className="size-3" /> : <Plus className="size-3" />}
+                                <span className="font-medium">{svcLabel(service)}</span>
                               </button>
                             )
                           })}
                         </div>
-                        {group.multi ? (
-                          anyConnected ? (
-                            <p className="text-[10px] text-muted-foreground">
-                              Nova will post to the {connectedCount} connected network{connectedCount > 1 ? "s" : ""}. Connect more anytime — here or on the agent's page.
-                            </p>
-                          ) : (
-                            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-                              <AlertTriangle className="size-3.5 shrink-0 mt-px" />
-                              <span>Connect at least one network to enable Deploy — the agent posts to every one you connect.</span>
-                            </div>
-                          )
-                        ) : group.required && !chosenConnected ? (
-                          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-                            <AlertTriangle className="size-3.5 shrink-0 mt-px" />
-                            <span>
-                              This agent can't work without one of these. Connect <span className="font-semibold">{chosen}</span> (or pick a different one) to enable Deploy.
-                            </span>
-                          </div>
-                        ) : !anyConnected ? (
-                          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-                            <AlertTriangle className="size-3.5 shrink-0 mt-px" />
-                            <span>None of these is connected yet. The agent needs at least one — connect it now, or after deploy from the agent's page.</span>
-                          </div>
-                        ) : null}
                       </div>
                     )
                   })}
@@ -1207,12 +1176,12 @@ export default function DeployAgent({ source, upload, preview, error, connected_
               {deployError && (
                 <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">{deployError}</div>
               )}
-              <div className="flex items-center justify-end gap-3 flex-wrap">
+              <div className="flex flex-col items-end gap-2">
                 {/* Compact readiness recap: one chip per unmet gate, each a
                     jump-link to its step. The rail carries the detail; this
                     row just answers "why is the button disabled". */}
                 {authenticated && (missingInputs.length > 0 || missingRequired.length > 0) && (
-                  <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                  <div className="flex items-center justify-end gap-1.5 flex-wrap text-[11px]">
                     {missingInputs.length > 0 && (
                       <button
                         type="button"
