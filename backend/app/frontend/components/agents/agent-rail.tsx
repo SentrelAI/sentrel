@@ -79,6 +79,7 @@ interface Props {
   agent: Agent
   rail: RailPayload
   spend: SpendPayload | null
+  missingIntegrations?: MissingIntegration[]
 }
 
 // ── Card collapse-state helper (localStorage-backed) ────────────────
@@ -111,7 +112,17 @@ function useRailOpen() {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function AgentRail({ agent, rail, spend }: Props) {
+export interface MissingIntegration {
+  kind: "service" | "group"
+  slug?: string
+  label?: string
+  logo?: string | null
+  optional?: boolean
+  required?: boolean
+  options?: Array<{ slug: string; label: string; logo?: string | null }>
+}
+
+export function AgentRail({ agent, rail, spend, missingIntegrations = [] }: Props) {
   const [open, setOpen] = useRailOpen()
 
   if (!open) {
@@ -146,6 +157,7 @@ export function AgentRail({ agent, rail, spend }: Props) {
       <div className="flex-1 space-y-1.5 p-2">
         <ApprovalsCard agent={agent} approvals={rail.pending_approvals} />
         <StatusCard agent={agent} />
+        {missingIntegrations.length > 0 && <ConnectCard items={missingIntegrations} />}
         <ActivityCard activity={rail.recent_activity} />
         <SpendCard spend={spend} />
         <ChannelsCard agentId={agent.id} channels={rail.channels} />
@@ -511,6 +523,38 @@ function SpendCard({ spend }: { spend: SpendPayload | null }) {
           Month: ${spend.monthly_total_usd.toFixed(2)}
           {spend.monthly_cap_usd && ` / $${spend.monthly_cap_usd.toFixed(2)}`}
         </p>
+      </div>
+    </RailCard>
+  )
+}
+
+// Apps the agent's skills/template still need connected — the compact rail
+// version of what used to be a full-width banner shoving the page down.
+function ConnectCard({ items }: { items: MissingIntegration[] }) {
+  const count = items.length
+  return (
+    <RailCard
+      storageKey="connect"
+      title="Connect"
+      icon={Plug}
+      badge={<span className="rounded-full bg-amber-500/15 px-1.5 text-[10px] text-amber-600 dark:text-amber-400">{count}</span>}
+    >
+      <p className="mb-1.5 text-[10px] text-muted-foreground">
+        Needed for some of this agent's work — it runs fine meanwhile.
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {items.map((item, idx) =>
+          item.kind === "group" ? (
+            <a key={`g-${idx}`} href="/integrations" className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/5 px-2 py-0.5 text-[10px] text-amber-700 hover:bg-amber-500/15 dark:text-amber-400">
+              one of: {(item.options || []).map((o) => o.label).join(" · ")}
+            </a>
+          ) : (
+            <a key={item.slug} href="/integrations" className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground hover:border-foreground/40 hover:text-foreground">
+              {item.logo && <img src={item.logo} alt="" className="size-3" />}
+              {item.label}
+            </a>
+          ),
+        )}
       </div>
     </RailCard>
   )

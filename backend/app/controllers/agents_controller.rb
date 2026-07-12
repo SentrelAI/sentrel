@@ -295,19 +295,35 @@ class AgentsController < ApplicationController
   # against the integration catalog (label, logo, category) so the
   # client doesn't have to look those up itself.
   def missing_integrations_for(agent)
-    slugs = agent.missing_integration_slugs
-    return [] if slugs.empty?
+    connected = current_tenant.integrations.pluck(:service_name).map { |x| x.to_s.downcase }.to_set
     catalog = IntegrationCatalog.list(current_tenant.id).index_by { |t| t[:slug] }
-    slugs.map do |slug|
+    entry = ->(slug) {
       meta = catalog[slug] || {}
-      {
-        slug: slug,
-        label: meta[:label] || slug.titleize,
-        category: meta[:category] || "Other",
-        logo: meta[:logo],
-        description: meta[:description]
-      }
+      { slug: slug, label: meta[:label] || slug.titleize, category: meta[:category] || "Other",
+        logo: meta[:logo], description: meta[:description] }
+    }
+
+    items = agent.missing_integration_slugs.map { |slug| entry.call(slug).merge(kind: "service") }
+
+    # Template lineage: bundle-declared integrations the skills don't carry
+    # (e.g. Nova's publishing networks live in an any_of group, not in any
+    # skill's requires_connections — without this the agent looks like it
+    # needs nothing while it can't actually publish).
+    if agent.template_slug.present?
+      template = ActsAsTenant.without_tenant { AgentTemplate.find_by(slug: agent.template_slug) }
+      Array(template&.current_version&.definition&.dig("integrations_required")).each do |req|
+        next unless req.is_a?(Hash)
+        if req["service"].present?
+          slug = req["service"].to_s
+          next if connected.include?(slug.downcase) || items.any? { |i| i[:slug] == slug }
+          items << entry.call(slug).merge(kind: "service", optional: req["required"] == false)
+        elsif req["any_of"].is_a?(Array) && req["any_of"].none? { |o| connected.include?(o.to_s.downcase) }
+          items << { kind: "group", required: req["required"] != false,
+                     options: req["any_of"].map { |o| entry.call(o.to_s) } }
+        end
+      end
     end
+    items
   end
 
   def new
