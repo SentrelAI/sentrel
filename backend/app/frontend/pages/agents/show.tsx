@@ -1579,7 +1579,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         )}
 
         {section === "memory" && (
-          <div className="p-4 sm:p-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             <div className="mx-auto max-w-2xl space-y-4">
               <div>
                 <h2 className="text-sm font-semibold mb-1 flex items-center gap-2">
@@ -1602,7 +1602,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
         )}
 
         {section === "spend" && (
-          <div className="p-4 sm:p-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             <div className="mx-auto max-w-2xl">
               {spend ? (
                 <AgentSpendCard spend={spend} />
@@ -2977,7 +2977,8 @@ function WebhooksSection({ agentId, agentName, initialWebhooks }: { agentId: str
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4 max-w-5xl">
+    <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="max-w-5xl">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold">Webhooks</h3>
@@ -3081,6 +3082,7 @@ function WebhooksSection({ agentId, agentName, initialWebhooks }: { agentId: str
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }
