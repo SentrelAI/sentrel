@@ -212,13 +212,7 @@ interface Props {
   agent_files?: AgentFile[]
   anthropic_account_connected?: boolean
   available_llm_providers?: string[]
-  missing_integrations?: Array<{
-    slug: string
-    label: string
-    category: string
-    logo: string | null
-    description: string | null
-  }>
+  missing_integrations?: Array<Record<string, unknown>>
   rail?: import("@/components/agents/agent-rail").RailPayload
 }
 
@@ -895,7 +889,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
     { key: "chat", label: "Chat", icon: Send },
     { key: "inbox", label: "Inbox", icon: MessageSquare, count: conversations.length, alert: inboxNeedsAction },
     { key: "tasks", label: "Tasks", icon: CheckSquare, count: tasks.length },
-    { key: "schedule", label: "Schedule", icon: Clock, count: scheduled_tasks.length },
+    { key: "schedule", label: "Routines", icon: Clock, count: scheduled_tasks.length },
     { key: "webhooks", label: "Webhooks", icon: Plug, count: webhooks.length },
     { key: "skills", label: "Skills", icon: Sparkles, count: installed_skills.length },
     { key: "knowledge", label: "Knowledge", icon: BookOpen, count: knowledge_documents.length },
@@ -916,10 +910,6 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
       topBarActions={<AgentTopBarActions agent={agent} anthropicAccountConnected={anthropic_account_connected} availableLlmProviders={available_llm_providers} />}
     >
       <Head title={agent.name} />
-
-      {missing_integrations.length > 0 && (
-        <MissingIntegrationsCallout agentId={agent.id} integrations={missing_integrations} />
-      )}
 
       {/* ═══ Tabs ═══ */}
       <div className="-mx-4 -mt-4 flex items-center gap-0 overflow-x-auto border-b border-border px-4 sm:-mx-5 sm:px-5 md:-mx-6 md:-mt-6 md:px-6">
@@ -1633,6 +1623,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
           <AgentRail
             agent={agent}
             rail={rail}
+            missingIntegrations={missing_integrations}
             spend={spend ? {
               daily_total_usd: spend.today?.cost_usd ?? 0,
               monthly_total_usd: spend.thirty_day?.cost_usd ?? 0,
@@ -2193,7 +2184,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
     <div className="flex-1 overflow-y-auto">
       <div className="flex items-center justify-between gap-3 border-b px-6 py-3">
         <div>
-          <div className="font-display text-sm font-semibold tracking-[-0.01em]">Schedule</div>
+          <div className="font-display text-sm font-semibold tracking-[-0.01em]">Routines</div>
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
             {totalCount} schedule{totalCount === 1 ? "" : "s"} · {activeCount} active
           </div>
@@ -2204,7 +2195,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
           onClick={() => setEditor({ mode: "new" })}
         >
           <Plus className="size-3.5" strokeWidth={2.5} />
-          New schedule
+          New routine
         </Button>
       </div>
 
@@ -2221,7 +2212,7 @@ function ScheduleSection({ agentId, initialTasks }: { agentId: number; initialTa
           </p>
           <Button size="sm" className="mt-5 gap-1.5" onClick={() => setEditor({ mode: "new" })}>
             <Plus className="size-3.5" />
-            New schedule
+            New routine
           </Button>
         </div>
       ) : (
@@ -2456,8 +2447,8 @@ function ScheduleEditorDialog({
     ? tasks.find((t) => t.id === editor.id)
     : null
   const readOnly = editor.mode === "view"
-  const title = editor.mode === "new" ? "New schedule"
-    : editor.mode === "edit" ? "Edit schedule"
+  const title = editor.mode === "new" ? "New routine"
+    : editor.mode === "edit" ? "Edit routine"
     : "Schedule details"
 
   // Default content for the input fields (uncontrolled — we use refs).
@@ -2920,85 +2911,6 @@ function RunDetail({ run }: { run: ScheduledTaskRun }) {
   )
 }
 
-// ── Recommended-integrations callout ─────────────────────────────────
-// Shown above the section tabs when the agent has enabled skills that
-// require connected apps the org hasn't connected yet. Linking
-// straight to /integrations with the toolkit pre-selected via the hash
-// fragment so the user lands directly on the right OAuth button.
-function MissingIntegrationsCallout({
-  agentId,
-  integrations,
-}: {
-  agentId: number
-  integrations: Array<{ slug: string; label: string; category: string; logo: string | null; description: string | null }>
-}) {
-  const storageKey = `agent:${agentId}:missing-integrations-dismissed`
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false
-    return window.localStorage.getItem(storageKey) === "1"
-  })
-
-  if (dismissed) return null
-
-  function dismiss() {
-    setDismissed(true)
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, "1")
-    }
-  }
-
-  return (
-    <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <div className="mb-1 flex items-center gap-2">
-            <Plug className="size-4 text-amber-700 dark:text-amber-400" />
-            <h3 className="text-sm font-semibold">Connect {integrations.length} integration{integrations.length > 1 ? "s" : ""} to fully enable this agent</h3>
-          </div>
-          <p className="text-xs text-amber-800 dark:text-amber-300">
-            This agent's skills need these connected before it can use them. The agent will still run without them — it just won't be able to call those tools.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <a
-            href="/integrations"
-            className="rounded-md bg-amber-700 dark:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 dark:hover:bg-amber-500"
-          >
-            Connect now →
-          </a>
-          <button
-            type="button"
-            onClick={dismiss}
-            aria-label="Dismiss"
-            title="Dismiss"
-            className="rounded-md p-1 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
-          >
-            <XIcon className="size-4" />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {integrations.map((i) => (
-          <a
-            key={i.slug}
-            href={`/integrations#${i.slug}`}
-            className="inline-flex items-center gap-2 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-background px-2.5 py-1.5 text-xs hover:border-amber-500"
-            title={i.description || i.label}
-          >
-            {i.logo ? (
-              <img src={i.logo} alt="" className="size-4 rounded" />
-            ) : (
-              <span className="inline-block size-4 rounded bg-muted" />
-            )}
-            <span className="font-medium">{i.label}</span>
-            <span className="text-[10px] text-muted-foreground">{i.category}</span>
-          </a>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // Webhooks tab — inbound endpoints that wake the agent with an instruction
 // when an external service POSTs to them (Sentry alert rules, GitHub repo
 // webhooks, Linear, Zapier, curl). The token in the URL is the credential.
@@ -3065,7 +2977,7 @@ function WebhooksSection({ agentId, agentName, initialWebhooks }: { agentId: str
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4 max-w-3xl">
+    <div className="flex-1 overflow-y-auto px-6 py-4 max-w-5xl">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold">Webhooks</h3>

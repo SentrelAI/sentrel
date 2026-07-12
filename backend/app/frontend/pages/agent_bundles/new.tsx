@@ -752,7 +752,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
             </WizardStep>
 
             {/* Schedules — standing cron jobs, fully editable */}
-            <WizardStep id="schedules" title="Schedules" summary={`${schedules.length} scheduled routine${schedules.length === 1 ? "" : "s"}`} open={!!openSteps["schedules"]} onToggle={() => toggleStep("schedules")}>
+            <WizardStep id="schedules" title="Routines" summary={`${schedules.length} routine${schedules.length === 1 ? "" : "s"}`} open={!!openSteps["schedules"]} onToggle={() => toggleStep("schedules")}>
               <p className="text-xs text-muted-foreground mb-3 max-w-lg">
                 Routines the agent runs on its own — like a morning brief or a weekly report. Change when they run, remove any, or add your own.
               </p>
@@ -768,7 +768,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                           <Input
                             value={s.name}
                             onChange={(e) => setSchedules(schedules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-                            placeholder="Schedule name"
+                            placeholder="Routine name"
                           />
                           <div className="grid grid-cols-[12rem_1fr_minmax(10rem,14rem)] gap-2">
                             <Select
@@ -830,7 +830,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
                   className="h-7 text-xs gap-1"
                   onClick={() => setSchedules([...schedules, { name: "", cron: "0 9 * * 1-5", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", instruction: "" }])}
                 >
-                  <Plus className="size-3" /> Add schedule
+                  <Plus className="size-3" /> Add routine
                 </Button>
               </div>
             </WizardStep>
