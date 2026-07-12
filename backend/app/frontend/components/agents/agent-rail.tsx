@@ -546,9 +546,15 @@ function ConnectCard({ items }: { items: MissingIntegration[] }) {
       <div className="flex flex-wrap gap-1">
         {items.map((item, idx) =>
           item.kind === "group" ? (
-            <a key={`g-${idx}`} href="/integrations" className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/5 px-2 py-0.5 text-[10px] text-amber-700 hover:bg-amber-500/15 dark:text-amber-400">
-              one of: {(item.options || []).map((o) => o.label).join(" · ")}
-            </a>
+            <div key={`g-${idx}`} className="flex w-full flex-wrap items-center gap-1">
+              <span className="text-[10px] text-muted-foreground">one of:</span>
+              {(item.options || []).map((o) => (
+                <a key={o.slug} href="/integrations" className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground hover:border-foreground/40 hover:text-foreground">
+                  {o.logo && <img src={o.logo} alt="" className="size-3" />}
+                  {o.label}
+                </a>
+              ))}
+            </div>
           ) : (
             <a key={item.slug} href="/integrations" className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground hover:border-foreground/40 hover:text-foreground">
               {item.logo && <img src={item.logo} alt="" className="size-3" />}

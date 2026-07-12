@@ -297,10 +297,12 @@ class AgentsController < ApplicationController
   def missing_integrations_for(agent)
     connected = current_tenant.integrations.pluck(:service_name).map { |x| x.to_s.downcase }.to_set
     catalog = IntegrationCatalog.list(current_tenant.id).index_by { |t| t[:slug] }
+    brand_labels = { "tiktok" => "TikTok", "youtube" => "YouTube", "linkedin" => "LinkedIn",
+                     "instagram" => "Instagram", "facebook" => "Facebook" }
     entry = ->(slug) {
       meta = catalog[slug] || {}
-      { slug: slug, label: meta[:label] || slug.titleize, category: meta[:category] || "Other",
-        logo: meta[:logo], description: meta[:description] }
+      { slug: slug, label: meta[:label] || brand_labels[slug] || slug.titleize,
+        category: meta[:category] || "Other", logo: meta[:logo], description: meta[:description] }
     }
 
     items = agent.missing_integration_slugs.map { |slug| entry.call(slug).merge(kind: "service") }
