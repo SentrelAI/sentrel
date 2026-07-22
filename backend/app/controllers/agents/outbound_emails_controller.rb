@@ -42,7 +42,10 @@ class Agents::OutboundEmailsController < ApplicationController
       body_text: body_text,
       body_html: body_html,
       from_address: address,
-      from_name: current_user.name,
+      # The mailbox belongs to the AGENT — a manually drafted email still
+      # arrives as "Nova <nova@acme…>", not the operator's name. Who
+      # actually clicked send stays durable via acting_user_id below.
+      from_name: @agent.name,
       attachment_ids: Array(params[:attachment_ids]).reject(&:blank?),
       # The crucial bit: outbound_sender consults this for the persisted
       # Message.sender_user_id + AuditLog.acting_user_id. The audit row makes
