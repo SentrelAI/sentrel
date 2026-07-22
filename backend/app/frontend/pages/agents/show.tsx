@@ -997,7 +997,7 @@ export default function AgentShow({ agent, spend, conversations, emails, chat_me
                 })}
               </div>
 
-              {channelFilter === "email" && agentPrimaryEmail && (
+              {agentPrimaryEmail && (
                 <div className="px-3 py-2 border-b border-border">
                   <Button
                     size="sm"

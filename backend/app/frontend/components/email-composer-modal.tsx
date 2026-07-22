@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
-import { Send, X as XIcon, Loader2, User2 } from "lucide-react"
+import { Send, X as XIcon, Loader2, User2, Paperclip } from "lucide-react"
+// @ts-expect-error — @rails/activestorage ships JS without types
+import { DirectUpload } from "@rails/activestorage"
 
 import {
   Dialog,
@@ -96,6 +98,27 @@ export function EmailComposerModal({
   const [sending, setSending] = useState(false)
   const [showCc, setShowCc] = useState(initialCc.length > 0)
   const [showBcc, setShowBcc] = useState(false)
+  // Attachments: DirectUpload to ActiveStorage on pick; the send payload
+  // carries the signed_ids (outbound_sender resolves them into MIME parts).
+  const [attachments, setAttachments] = useState<Array<{ name: string; size: number; signedId: string | null; error?: string }>>([])
+  const [uploading, setUploading] = useState(false)
+
+  function pickFiles(files: FileList | null) {
+    if (!files?.length) return
+    setUploading(true)
+    let remaining = files.length
+    Array.from(files).forEach((file) => {
+      const entry = { name: file.name, size: file.size, signedId: null as string | null }
+      setAttachments((prev) => [...prev, entry])
+      const upload = new DirectUpload(file, "/rails/active_storage/direct_uploads")
+      upload.create((error: Error | null, blob: { signed_id: string }) => {
+        setAttachments((prev) => prev.map((a) => (a === entry || (a.name === file.name && a.signedId === null && !a.error)
+          ? { ...a, signedId: error ? null : blob.signed_id, error: error ? "upload failed" : undefined }
+          : a)))
+        if (--remaining === 0) setUploading(false)
+      })
+    })
+  }
 
   // Re-seed state every time the modal opens. The parent renders this
   // component permanently and toggles `open` — without this hook, the
@@ -112,6 +135,7 @@ export function EmailComposerModal({
     setBody(asString(initialBody))
     setShowCc(asString(initialCc).length > 0)
     setShowBcc(false)
+    setAttachments([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTo, initialCc, initialSubject, initialBody])
 
@@ -137,6 +161,7 @@ export function EmailComposerModal({
           bcc: bcc.split(/[,;]+/).map((s) => s.trim()).filter(Boolean),
           subject,
           body_text: body,
+          attachment_ids: attachments.map((a) => a.signedId).filter(Boolean),
         }),
       })
       if (!res.ok) {
@@ -239,15 +264,37 @@ export function EmailComposerModal({
             />
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t">
-            <Button type="button" variant="ghost" onClick={onClose} disabled={sending}>
-              <XIcon className="size-3.5 mr-1" />
-              Cancel
-            </Button>
-            <Button type="submit" disabled={sending || !agentEmail}>
-              {sending ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <Send className="size-3.5 mr-1" />}
-              {sending ? "Sending…" : "Send"}
-            </Button>
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {attachments.map((a, i) => (
+                <span key={`${a.name}-${i}`} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${a.error ? "border-destructive/50 text-destructive" : "text-muted-foreground"}`}>
+                  <Paperclip className="size-3" />
+                  <span className="max-w-[180px] truncate">{a.name}</span>
+                  <span className="text-[10px] opacity-70">{a.error || (a.signedId ? `${Math.max(1, Math.round(a.size / 1024))} KB` : "uploading…")}</span>
+                  <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} className="hover:text-foreground" aria-label={`Remove ${a.name}`}>
+                    <XIcon className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-2 border-t">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+              <Paperclip className="size-3.5" />
+              Attach
+              <input type="file" multiple className="hidden" onChange={(e) => { pickFiles(e.target.files); e.target.value = "" }} />
+            </label>
+            <div className="ml-auto flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={onClose} disabled={sending}>
+                <XIcon className="size-3.5 mr-1" />
+                Cancel
+              </Button>
+              <Button type="submit" disabled={sending || uploading || !agentEmail} title={uploading ? "Waiting for attachments to finish uploading" : undefined}>
+                {sending ? <Loader2 className="size-3.5 animate-spin mr-1" /> : <Send className="size-3.5 mr-1" />}
+                {sending ? "Sending…" : uploading ? "Uploading…" : "Send"}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>
