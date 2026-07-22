@@ -254,6 +254,7 @@ function effectiveAgentStatus(agent: Agent): string {
 // ── Header bar content for this page ──
 function agentStatusDot(status: string): "online" | "working" | "idle" | "error" | "offline" {
   if (status === "running" || status === "starting") return "working"
+  if (status === "sleeping") return "idle"
   if (status === "paused") return "offline"
   if (status === "stopped") return "error"
   return "idle"
@@ -264,7 +265,7 @@ function AgentTopBarMeta({ agent }: { agent: Agent }) {
     <div className="flex items-center gap-3 border-l pl-3">
       <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
         <StatusDot status={agentStatusDot(effectiveAgentStatus(agent))} pulse={effectiveAgentStatus(agent) !== "paused"} />
-        <span className="uppercase tracking-[0.1em]">{effectiveAgentStatus(agent) === "starting" ? "starting up…" : effectiveAgentStatus(agent)}</span>
+        <span className="uppercase tracking-[0.1em]">{effectiveAgentStatus(agent) === "starting" ? "starting up…" : effectiveAgentStatus(agent) === "sleeping" ? "asleep — wakes on demand" : effectiveAgentStatus(agent)}</span>
       </span>
       {agent.ai_config && (
         <span className="hidden rounded-sm bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">

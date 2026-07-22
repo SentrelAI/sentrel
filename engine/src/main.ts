@@ -18,6 +18,7 @@ import { startOpenAITranslatorProxy, stopOpenAITranslatorProxy } from "./proxy/o
 import { invalidateSystemPromptCache } from "./runtime/system-prompt-cache.js";
 import { drainWarmQueryPool } from "./runtime/warm-query-pool.js";
 import { logger, flushLogs } from "./logger.js";
+import { startIdleStop, touch } from "./idle-stop.js";
 import type { JobData } from "./types.js";
 
 async function main() {
@@ -98,9 +99,11 @@ async function main() {
           return;
         }
       }
+      touch();
       const currentAgent = await host.getAgent(config.employeeId);
       await runAgent(currentAgent, job.data);
       incrementJobCount();
+      touch();
     } catch (err) {
       captureException(err, { jobType: job.data?.type, channel: job.data?.channel });
       throw err;
@@ -169,6 +172,23 @@ async function main() {
   logger.info("═══════════════════════════════════════");
   logger.info("  ALCHEMY ENGINE ready. Waiting for jobs...");
   logger.info("═══════════════════════════════════════");
+
+  // Scale-to-zero: exit cleanly after sitting idle; Rails wakes us when
+  // new work is queued. onSleep mirrors graceful shutdown minus the
+  // status write — the asleep report owns status so the platform can
+  // tell "sleeping" (auto-wakes) apart from "stopped" (user's call).
+  startIdleStop({
+    heartbeatEnabled: !!agent.heartbeat_enabled,
+    onSleep: async () => {
+      stopAnthropicBillingProxy();
+      stopOpenAITranslatorProxy();
+      stopSupportedIntegrationsCache();
+      await stopTelegramPolling();
+      stopWhatsApp();
+      await worker.close();
+      await flushSentry();
+    },
+  });
 
   // Fly path: cloud-init isn't used (we boot directly from the image), so
   // the engine itself pings Rails to flip agent_instances.status from

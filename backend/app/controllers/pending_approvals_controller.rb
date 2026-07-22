@@ -69,6 +69,26 @@ class PendingApprovalsController < ApplicationController
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
     redis.publish("agent-#{approval.agent_id}-approvals", msg)
     Rails.logger.info "ActionApproval ##{approval.id}: published #{approval.decision} to engine"
+
+    # Scale-to-zero: pub/sub is fire-and-forget — a sleeping engine has no
+    # subscriber and the decision would be lost. Queue a durable continuation
+    # through the inbox (drained on boot) and wake the machine. jobId matches
+    # the gateway's own continuation id, so if the engine WAS awake and
+    # already enqueued one, BullMQ dedupes and this copy is ignored.
+    if approval.agent&.status == "sleeping"
+      AgentEventBus.publish(
+        type: "scheduled_task",
+        agent: approval.agent,
+        channel: approval.try(:origin).presence || "web",
+        job_id: "approval-resume-#{approval.approval_token}",
+        payload: {
+          instruction: "The user just decided on your earlier approval request " \
+                       "(#{approval.try(:summary) || approval.payload_type}): #{approval.decision}" \
+                       "#{approval.decision_text.present? ? " — #{approval.decision_text}" : ''}. " \
+                       "Continue that work accordingly; do not re-request approval."
+        }
+      )
+    end
   rescue => e
     Rails.logger.error "ActionApproval publish failed: #{e.message}"
   end

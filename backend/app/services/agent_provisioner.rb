@@ -123,7 +123,12 @@ module AgentProvisioner
           # Node at runtime. 4GB gives ~1.5GB headroom for the agent's
           # own tool calls. 2 CPUs because we now have Bun engine + Node
           # subprocess + Chrome all competing.
-          guest: { cpus: 2, memory_mb: 4096, cpu_kind: "shared" }
+          guest: { cpus: 2, memory_mb: 4096, cpu_kind: "shared" },
+          # Scale-to-zero: the engine exits 0 after sitting idle (see engine
+          # idle-stop). on-failure restarts crashes but lets that clean exit
+          # actually stop the machine — the default policy would boot it
+          # right back up and the fleet would never sleep.
+          restart: { policy: "on-failure", max_retries: 3 }
         }
       }
       res = fly_api(:post, "/apps/#{app_name}/machines", body)
@@ -200,6 +205,9 @@ module AgentProvisioner
         # facing links (download URLs from share_file, etc.). Falls back to
         # RAILS_INTERNAL_URL when not set explicitly.
         "WEBHOOK_BASE_URL"    => ENV["WEBHOOK_BASE_URL"].presence || ENV["RAILS_INTERNAL_URL"].to_s,
+        # Scale-to-zero: minutes of no jobs/chat before the engine exits and
+        # the machine stops (wakes on demand). "0" disables self-stop.
+        "IDLE_STOP_MINUTES"   => ENV.fetch("IDLE_STOP_MINUTES", "20"),
         # BYO LLM keys — Credential.find_for(agent, …) prefers the org's
         # stored key over the platform-wide ENV fallback so customers can
         # bill against their own account. Same lookup for openai (for
