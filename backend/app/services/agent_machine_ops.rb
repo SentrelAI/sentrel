@@ -83,6 +83,9 @@ module AgentMachineOps
     # Apply current default sizing — keeps existing agents in sync with
     # whatever agent_provisioner.rb currently provisions for new ones.
     cfg["guest"] = { "cpus" => 2, "memory_mb" => 4096, "cpu_kind" => "shared" }
+    # Scale-to-zero: adopt the clean-exit-stops policy on redeploy so
+    # existing machines can sleep (see agent_provisioner).
+    cfg["restart"] = { "policy" => "on-failure", "max_retries" => 3 }
 
     fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
     clear_operation_failure(agent)

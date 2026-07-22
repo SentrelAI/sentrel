@@ -10,6 +10,17 @@ class EmployeeHealthCheckJob < ApplicationJob
     Agent.find_each do |agent|
       raw = redis.get("health:#{agent.id}")
 
+      # Scale-to-zero: a sleeping agent's engine exited on purpose — no
+      # heartbeat is the expected state, not an outage. A fresh heartbeat
+      # (engine woke and reported in) still flips it back to running below.
+      if agent.status == "sleeping"
+        next unless raw
+        health = JSON.parse(raw) rescue nil
+        next unless health && (Time.now.to_f * 1000 - health["timestamp"].to_f) / 1000 < HEALTHY_WINDOW_SECONDS
+        mark_healthy(agent, Time.zone.at(health["timestamp"].to_f / 1000))
+        next
+      end
+
       if raw
         health = JSON.parse(raw)
         age_seconds = (Time.now.to_f * 1000 - health["timestamp"].to_f) / 1000

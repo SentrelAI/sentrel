@@ -145,7 +145,9 @@ const RecoveryThinkingContext = createContext<RecoveryThinking>({
 export const RecoveryThinkingProvider = RecoveryThinkingContext.Provider;
 
 function isAgentReady(status: string) {
-  return status === "running";
+  // "sleeping" is ready on purpose: sending a message queues it in Redis
+  // and wakes the machine — that IS the wake path (scale-to-zero).
+  return status === "running" || status === "sleeping";
 }
 
 function agentLoadingLabel(status: string) {
@@ -153,6 +155,8 @@ function agentLoadingLabel(status: string) {
     case "pending":
     case "starting":
       return "Agent is starting up…";
+    case "sleeping":
+      return "Agent is asleep — your message will wake it";
     case "paused":
       return "Agent is paused";
     case "stopped":

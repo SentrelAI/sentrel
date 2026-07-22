@@ -9,6 +9,20 @@ class Api::AgentInstancesController < ApplicationController
   skip_before_action :set_tenant
   before_action :authenticate_engine!
 
+  # POST /api/agent_instances/asleep
+  # Body: { employee_id: N }
+  # Scale-to-zero: the engine calls this right before exiting on idle. The
+  # agent reads "sleeping" (auto-wakes on new work via AgentWaker + the
+  # WakeSweep schedule sweep); the instance reads "stopped" so the sweep's
+  # existing gate matches. A user-initiated stop never comes through here.
+  def asleep
+    agent = Agent.find_by(id: params[:employee_id])
+    return head :not_found unless agent
+    agent.update_column(:status, "sleeping")
+    agent.instance&.update_columns(status: "stopped", stopped_at: Time.current, updated_at: Time.current)
+    head :ok
+  end
+
   # POST /api/agent_instances/ready
   # Body: { employee_id: N, public_ip: "1.2.3.4" }
   def ready

@@ -50,6 +50,9 @@ module AgentEventBus
       origin: origin,
       payload: enriched_payload
     }.to_json)
+    # Scale-to-zero: the event is safely queued in Redis — if the agent's
+    # engine is asleep, kick its machine awake to come drain it.
+    AgentWaker.wake_async(agent)
     job_id
   rescue => e
     Rails.logger.error "AgentEventBus.publish(#{type}) failed for agent #{agent&.id}: #{e.message}"
