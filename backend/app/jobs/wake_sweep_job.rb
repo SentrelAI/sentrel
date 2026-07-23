@@ -48,6 +48,13 @@ class WakeSweepJob
     instance = agent.instance
     return unless instance
     return unless instance.status == "stopped"
+    # Scale-to-zero semantics: only auto-wake agents that went down on
+    # their own ("sleeping") or whose machine died under a live agent
+    # ("running" + stopped machine = crash). A user-stopped agent stays
+    # stopped — without this gate the sweep resurrected deliberately
+    # killed agents whose routines were still active (agents 73/74/75,
+    # two days after being stopped).
+    return unless %w[sleeping running].include?(agent.status)
 
     Rails.logger.info "[WakeSweep] agent=#{agent_id} machine=#{instance.machine_id} is stopped — sending start"
     AgentMachineOps.start(agent)
