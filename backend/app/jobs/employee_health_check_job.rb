@@ -16,8 +16,15 @@ class EmployeeHealthCheckJob < ApplicationJob
       if agent.status == "sleeping"
         next unless raw
         health = JSON.parse(raw) rescue nil
-        next unless health && (Time.now.to_f * 1000 - health["timestamp"].to_f) / 1000 < HEALTHY_WINDOW_SECONDS
-        mark_healthy(agent, Time.zone.at(health["timestamp"].to_f / 1000))
+        next unless health
+        beat_at = Time.zone.at(health["timestamp"].to_f / 1000)
+        fresh = (Time.now.to_f * 1000 - health["timestamp"].to_f) / 1000 < HEALTHY_WINDOW_SECONDS
+        # The heartbeat written seconds BEFORE the engine slept stays fresh
+        # for ~3 minutes — treating it as "the engine woke up" un-slept the
+        # whole fleet and then tombstoned it as unresponsive. Only a beat
+        # newer than the sleep transition proves a wake.
+        woke_after_sleep = agent.instance&.stopped_at.nil? || beat_at > agent.instance.stopped_at
+        mark_healthy(agent, beat_at) if fresh && woke_after_sleep
         next
       end
 
