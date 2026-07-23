@@ -81,6 +81,9 @@ export function startIdleStop(opts: {
     logger.info(`Idle for ${Math.round(idleMs / 60000)}m — going to sleep (machine will stop)`);
     try {
       await reportAsleep();
+      // Remove our heartbeat so the Rails health check can't mistake the
+      // final pre-sleep beat (fresh for ~3 min) for a wake-up.
+      await redis.del(`health:${config.employeeId}`);
       await opts.onSleep();
     } catch (err) {
       logger.error("Sleep shutdown hit an error — exiting anyway", { error: (err as Error).message });
