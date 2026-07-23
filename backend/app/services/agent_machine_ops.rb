@@ -32,7 +32,24 @@ module AgentMachineOps
   def start(agent)
     app = app_name(agent)
     mid = machine_id(agent) or return operation_failure(agent, :start, "Agent has no machine_id recorded")
-    fly_api(:post, "/apps/#{app}/machines/#{mid}/start")
+    begin
+      fly_api(:post, "/apps/#{app}/machines/#{mid}/start")
+    rescue => e
+      # Wakes race machine state transitions (412 failed_precondition, e.g.
+      # "unable to start from 'created'" while an update/restart settles).
+      # Read the actual state: already coming up → success; 'created' →
+      # launch it via a config re-post; anything else → real failure.
+      raise unless e.message.include?("412")
+      m = fly_api(:get, "/apps/#{app}/machines/#{mid}")
+      case m["state"]
+      when "started", "starting", "replacing"
+        # Already waking — the goal state is reached, nothing to do.
+      when "created"
+        fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: m["config"], skip_launch: false })
+      else
+        raise
+      end
+    end
     clear_operation_failure(agent)
     { ok: true, message: "Start requested" }
   rescue ApiNotFound
