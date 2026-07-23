@@ -17,12 +17,25 @@ class Agents::AiConfigsController < ApplicationController
     config.assign_attributes(ai_config_params)
     env_changed = config.new_record? || AiConfig::ENV_AFFECTING_FIELDS.any? { |f| config.changes.key?(f) }
     config.save!
+    reload_result = nil
     if env_changed
-      AgentMachineOps.reload(@agent) rescue nil
+      reload_result = begin
+        AgentMachineOps.reload(@agent)
+      rescue => e
+        { ok: false, message: e.message }
+      end
     else
       EngineSync.trigger(@agent)
     end
-    render json: { ok: true, provider: config.provider, model_id: config.model_id }
+    render json: {
+      ok: true, provider: config.provider, model_id: config.model_id,
+      # env-affecting switch → the machine restarts with the new brain.
+      # Surface whether that actually happened so the UI never implies a
+      # change took effect when the machine kept the old env.
+      restarting: env_changed,
+      machine_ok: reload_result.nil? ? true : !!reload_result[:ok],
+      machine_message: reload_result&.dig(:message)
+    }
   rescue ActiveRecord::RecordInvalid => e
     render json: { ok: false, message: e.message }, status: :unprocessable_entity
   end

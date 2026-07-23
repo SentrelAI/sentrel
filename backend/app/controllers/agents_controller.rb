@@ -557,12 +557,19 @@ class AgentsController < ApplicationController
         env_changed ||= credential_grants_changed?
         update_credential_grants
       end
+      notice = "Agent updated"
       if env_changed
-        AgentMachineOps.reload(@agent) rescue nil
+        result = begin
+          AgentMachineOps.reload(@agent)
+        rescue => e
+          { ok: false, message: e.message }
+        end
+        notice = result[:ok] ? "Agent updated — restarting with the new configuration" :
+                 "Agent updated, but the machine didn't pick it up (#{result[:message]}). Use Reload on the agent page."
       else
         EngineSync.trigger(@agent)
       end
-      redirect_to agent_path(@agent), notice: "Agent updated"
+      redirect_to agent_path(@agent), notice: notice
     else
       redirect_back fallback_location: edit_agent_path(@agent), alert: @agent.errors.full_messages.join(", ")
     end

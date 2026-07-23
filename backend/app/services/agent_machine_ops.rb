@@ -70,7 +70,16 @@ module AgentMachineOps
     current = fly_api(:get, "/apps/#{app}/machines/#{mid}")
     cfg = current["config"] || {}
     cfg["env"] = AgentProvisioner::FlyBackend.env_for(agent)
-    fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
+    begin
+      fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
+    rescue => e
+      # Config updates race machine transitions the same way starts do —
+      # one short settle + retry covers the common case (a brain switch
+      # clicked while the machine is mid stop/start).
+      raise unless e.message.include?("412")
+      sleep 2
+      fly_api(:post, "/apps/#{app}/machines/#{mid}", { config: cfg, skip_launch: false })
+    end
 
     # Also fire the Redis sync so the engine rebuilds in-memory state
     # once it's back up (skills, channel pollers, etc.).
