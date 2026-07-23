@@ -108,7 +108,14 @@ export function AgentModelPicker({ agentId, currentProvider, currentModelId, ant
         body: JSON.stringify({ ai_config: { provider, model_id } }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      toast.success(`Model → ${model_id}`)
+      const body = await res.json().catch(() => ({}))
+      if (body.restarting && body.machine_ok) {
+        toast.success(`Model → ${model_id} — agent restarting with the new brain (~15s)`)
+      } else if (body.restarting && !body.machine_ok) {
+        toast.error(`Saved, but the machine didn't pick it up: ${body.machine_message || "unknown"}. Hit Reload on the agent page.`, { duration: 8000 })
+      } else {
+        toast.success(`Model → ${model_id}`)
+      }
       // Inertia reload so the agent's top-bar meta + props refresh.
       router.reload({ only: ["agent"] })
     } catch (err) {
