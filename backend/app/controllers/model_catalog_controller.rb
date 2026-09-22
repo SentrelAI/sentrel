@@ -10,6 +10,7 @@ class ModelCatalogController < ApplicationController
     render json: {
       groups: ModelCatalog.groups(anthropic_account_connected: connected),
       all: ModelCatalog.all(anthropic_account_connected: connected),
+      default_model: ModelCatalog.default_model,
       synced_at: CatalogModel.maximum(:synced_at)
     }
   end

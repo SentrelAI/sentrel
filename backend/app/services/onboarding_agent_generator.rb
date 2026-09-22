@@ -117,7 +117,7 @@ class OnboardingAgentGenerator
 
       agent.create_ai_config!(
         provider: "anthropic",
-        model_id: "claude-sonnet-4-6",
+        model_id: ModelCatalog.default_model,
         temperature: 0.7,
         max_tokens: 4096
       )

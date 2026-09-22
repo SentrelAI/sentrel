@@ -22,6 +22,7 @@ export type ModelCatalog = {
   groups: CatalogGroup[]
   all: CatalogOption[]
   synced_at?: string | null
+  default_model?: string
 }
 
 // The full catalog is a few hundred models — fetched on demand (first time a

@@ -181,7 +181,7 @@ module AgentBundles
       end
       agent.create_ai_config!(
         provider:       provider,
-        model_id:       (cfg["model_id"] || cfg["id"]).presence || "claude-sonnet-4-6",
+        model_id:       (cfg["model_id"] || cfg["id"]).presence || ModelCatalog.default_model,
         temperature:    cfg["temperature"] || 0.7,
         max_tokens:     cfg["max_tokens"] || 8192,
         thinking_level: cfg["thinking_level"].presence || "none",

@@ -48,6 +48,8 @@ interface Props {
   templates: Template[]
   agents: AgentSummary[]
   org_email_domain: string | null
+  // Newest synced Claude (ModelCatalog.default_model) — follows releases.
+  default_model: string
   connected_services?: string[]
 }
 
@@ -149,7 +151,7 @@ interface TemplateDefinition {
 
 const normSvc = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
 
-export default function AgentNew({ templates, agents, org_email_domain, connected_services = [] }: Props) {
+export default function AgentNew({ templates, agents, org_email_domain, default_model, connected_services = [] }: Props) {
   const [picked, setPicked] = useState<Template>(BLANK)
   const [mode, setMode] = useState<"blank" | "template" | "github">("blank")
   const [templateSearch, setTemplateSearch] = useState("")
@@ -170,7 +172,7 @@ export default function AgentNew({ templates, agents, org_email_domain, connecte
     template_slug: "",
     ai_config: {
       provider: "anthropic",
-      model_id: "claude-sonnet-4-6",
+      model_id: default_model,
       temperature: 0.7,
       max_tokens: 8192,
       thinking_level: "none",
@@ -252,7 +254,7 @@ export default function AgentNew({ templates, agents, org_email_domain, connecte
       ai_config: {
         ...data.ai_config,
         provider: t.suggested_provider || "anthropic",
-        model_id: t.suggested_model || "claude-sonnet-4-6",
+        model_id: t.suggested_model || default_model,
       },
       skill_slugs_override: t.suggested_skill_slugs,
     })

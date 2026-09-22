@@ -13,8 +13,22 @@ module ModelCatalog
   SUBSCRIPTION_GROUP = "Your Claude subscription".freeze
   ANTHROPIC_GROUP = "Anthropic (direct)".freeze
   OPENROUTER_GROUP = "OpenRouter — recommended".freeze
+  # Only used before the first sync lands; the live answer is default_model.
+  FALLBACK_DEFAULT_MODEL = "claude-sonnet-5".freeze
 
   module_function
+
+  # The model a new agent starts on: the newest Claude the daily sync has
+  # featured (tool-calling, rolling alias, not an image model). Follows new
+  # releases with no deploy. An admin can pin a different one by giving it a
+  # lower `position`.
+  def default_model
+    CatalogModel.published.featured.where(provider: "anthropic").ordered.pick(:model_id) ||
+      FALLBACK_DEFAULT_MODEL
+  rescue StandardError => e
+    Rails.logger.warn("[ModelCatalog] default_model failed: #{e.class}: #{e.message}")
+    FALLBACK_DEFAULT_MODEL
+  end
 
   # Grouped catalog. Drops the subscription group unless the org is connected;
   # surfaces it first when it is (mirrors the web picker).
