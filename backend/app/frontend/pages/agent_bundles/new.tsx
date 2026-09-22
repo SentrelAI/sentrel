@@ -89,6 +89,8 @@ interface Props {
   platform_skills: PlatformSkill[]
   agents: ExistingAgent[]
   agent_id: string | null
+  // Newest synced Claude (ModelCatalog.default_model) — follows releases.
+  default_model: string
   // false → anonymous visitor: full preview renders behind a sign-in
   // overlay; Deploy/Connect open the overlay instead of acting.
   authenticated?: boolean
@@ -125,7 +127,7 @@ interface KpiRow {
   value: string
 }
 
-export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, authenticated = true, integration_catalog = [], nango_connect_base_url = null, org_email_domain = null, managed_email_zone = null, suggested_email_label = null }: Props) {
+export default function DeployAgent({ source, upload, preview, error, connected_services, credential_providers, platform_skills, agents, agent_id, default_model, authenticated = true, integration_catalog = [], nango_connect_base_url = null, org_email_domain = null, managed_email_zone = null, suggested_email_label = null }: Props) {
   const [url, setUrl] = useState(source)
   // Deploy target: create a fresh agent, or redeploy the bundle onto an
   // existing one (spec-owned fields update in place; the agent keeps its
@@ -143,7 +145,7 @@ export default function DeployAgent({ source, upload, preview, error, connected_
   const [provider, setProvider] = useState(preview?.model?.provider || "anthropic")
   // Live model list for the chosen provider (models.dev, synced daily).
   const modelOptions = useModelOptionsFor(provider)
-  const [modelId, setModelId] = useState(preview?.model?.id || preview?.model?.model_id || "claude-sonnet-4-6")
+  const [modelId, setModelId] = useState(preview?.model?.id || preview?.model?.model_id || default_model)
   const [mission, setMission] = useState(preview?.goal?.mission || "")
   const [definitionOfDone, setDefinitionOfDone] = useState(preview?.goal?.definition_of_done || "")
   const [kpis, setKpis] = useState<KpiRow[]>(

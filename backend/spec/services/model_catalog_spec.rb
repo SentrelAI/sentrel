@@ -78,4 +78,33 @@ RSpec.describe ModelCatalog do
       expect(groups.flat_map { |g| g[:options] }).to all(include(:provider, :model_id, :label))
     end
   end
+
+  describe ".default_model" do
+    it "picks the newest featured Claude" do
+      create_model(provider: "anthropic", model_id: "claude-opus-9", name: "Claude Opus 9", featured: true,
+                   release_date: Date.new(2026, 7, 1))
+      create_model(provider: "anthropic", model_id: "claude-sonnet-10", name: "Claude Sonnet 10", featured: true,
+                   release_date: Date.new(2026, 9, 1))
+      # Newer, but not featured (e.g. a date-pinned duplicate) or not Anthropic.
+      create_model(provider: "anthropic", model_id: "claude-sonnet-10-20260901", name: "pinned",
+                   release_date: Date.new(2026, 9, 2))
+      create_model(provider: "openrouter", model_id: "openai/gpt-10", name: "GPT-10", featured: true,
+                   release_date: Date.new(2026, 9, 3))
+
+      expect(described_class.default_model).to eq("claude-sonnet-10")
+    end
+
+    it "honors an admin-pinned position over release date" do
+      create_model(provider: "anthropic", model_id: "claude-opus-9", name: "Claude Opus 9", featured: true,
+                   release_date: Date.new(2026, 7, 1), position: -1)
+      create_model(provider: "anthropic", model_id: "claude-sonnet-10", name: "Claude Sonnet 10", featured: true,
+                   release_date: Date.new(2026, 9, 1))
+
+      expect(described_class.default_model).to eq("claude-opus-9")
+    end
+
+    it "falls back before the first sync" do
+      expect(described_class.default_model).to eq(ModelCatalog::FALLBACK_DEFAULT_MODEL)
+    end
+  end
 end

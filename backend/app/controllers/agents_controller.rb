@@ -249,6 +249,7 @@ class AgentsController < ApplicationController
         { id: a.to_param, name: a.name, slug: a.slug, role: a.role }
       },
       org_email_domain: current_tenant.try(:email_domain).presence,
+      default_model: ModelCatalog.default_model,
       # Connected service_names so the template panel can show per-integration
       # connect status (same signal the /deploy-agent wizard gets).
       connected_services: current_tenant.integrations.where(status: "connected").pluck(:service_name)

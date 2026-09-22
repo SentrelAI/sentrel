@@ -79,6 +79,7 @@ class AgentBundlesController < ApplicationController
       # ?agent_id= preselects update mode (deep-link from an agent page).
       agents: user_signed_in? ? current_tenant.agents.order(:name).map { |a| { id: a.to_param, name: a.name, slug: a.slug } } : [],
       agent_id: params[:agent_id].to_s.presence,
+      default_model: ModelCatalog.default_model,
       # Anonymous visitors get the preview but no org state — the page
       # shows a sign-in overlay and gates Deploy/Connect behind it.
       authenticated: user_signed_in?,
