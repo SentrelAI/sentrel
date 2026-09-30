@@ -1657,7 +1657,15 @@ async function buildQueryOptions(
   let externalMcpToolNames: string[] = [];
   try {
     const { buildExternalMcpServers } = await import("./integrations/external-mcp.js");
-    const ext = await buildExternalMcpServers(agent.id);
+    const rawUserId = Number((job.payload as { user_id?: unknown } | undefined)?.user_id);
+    const ext = await buildExternalMcpServers({
+      agentId: agent.id,
+      orgId: agent.organization_id,
+      // Per-user sign-ins follow the person behind the run: whoever sent the
+      // message, or approved the card that resumed it. None → workspace servers only.
+      userId: Number.isFinite(rawUserId) && rawUserId > 0 ? rawUserId : null,
+      origin: taskOrigin,
+    });
     const skipped = new Set<string>();
     for (const [name, cfg] of Object.entries(ext.servers)) {
       // Never let a connected server replace a built-in one of the same name

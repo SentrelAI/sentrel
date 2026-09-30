@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_30_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -524,10 +524,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
     t.index ["token"], name: "index_invitations_on_token", unique: true
   end
 
+  create_table "mcp_connections", force: :cascade do |t|
+    t.text "access_token_ciphertext"
+    t.datetime "created_at", null: false
+    t.datetime "expires_at"
+    t.text "last_error"
+    t.bigint "mcp_server_id", null: false
+    t.bigint "organization_id", null: false
+    t.text "refresh_token_ciphertext"
+    t.jsonb "scopes", default: [], null: false
+    t.string "status", default: "connected", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["mcp_server_id", "user_id"], name: "index_mcp_connections_on_mcp_server_id_and_user_id", unique: true
+    t.index ["mcp_server_id"], name: "index_mcp_connections_on_mcp_server_id"
+    t.index ["organization_id"], name: "index_mcp_connections_on_organization_id"
+    t.index ["user_id"], name: "index_mcp_connections_on_user_id"
+  end
+
   create_table "mcp_servers", force: :cascade do |t|
     t.text "access_token_ciphertext"
     t.bigint "agent_id"
-    t.string "auth_mode", default: "oauth", null: false
+    t.string "auth_mode", default: "token", null: false
     t.string "authorize_endpoint"
     t.string "client_id"
     t.datetime "created_at", null: false
@@ -538,6 +556,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
     t.string "name", null: false
     t.bigint "organization_id", null: false
     t.text "refresh_token_ciphertext"
+    t.string "registered_redirect_uri"
+    t.string "resource"
     t.jsonb "scopes", default: [], null: false
     t.string "slug", null: false
     t.string "status", default: "disconnected", null: false
@@ -866,6 +886,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_30_120000) do
   add_foreign_key "integrations", "users", column: "owner_user_id"
   add_foreign_key "invitations", "organizations"
   add_foreign_key "invitations", "users", column: "invited_by_id"
+  add_foreign_key "mcp_connections", "mcp_servers"
+  add_foreign_key "mcp_connections", "organizations"
+  add_foreign_key "mcp_connections", "users"
   add_foreign_key "mcp_servers", "agents"
   add_foreign_key "mcp_servers", "organizations"
   add_foreign_key "memberships", "organizations"

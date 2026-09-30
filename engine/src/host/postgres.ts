@@ -326,6 +326,25 @@ export class PostgresHost implements Host {
     return rows[0] ? { id: rows[0].id } : null;
   }
 
+  async consumeApprovedToolCall(agentId: number, callKey: string): Promise<boolean> {
+    const { rows } = await this.pool.query(
+      `UPDATE pending_approvals
+          SET tool_input = tool_input || '{"_consumed": true}'::jsonb, updated_at = NOW()
+        WHERE id = (
+          SELECT id FROM pending_approvals
+           WHERE agent_id = $1 AND payload_type = 'mcp_tool_call' AND status = 'approved'
+             AND tool_input->>'_call_key' = $2
+             AND NOT (tool_input ? '_consumed')
+             AND COALESCE(reviewed_at, updated_at) > NOW() - INTERVAL '24 hours'
+           ORDER BY id DESC
+           LIMIT 1
+           FOR UPDATE SKIP LOCKED)
+        RETURNING id`,
+      [agentId, callKey],
+    );
+    return rows.length > 0;
+  }
+
   async getLatestPendingApproval(agentId: number): Promise<PendingApproval | null> {
     const { rows } = await this.pool.query(
       `SELECT id, agent_id, tool_name, tool_input, status, context, message_id

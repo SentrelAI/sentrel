@@ -104,8 +104,11 @@ Rails.application.routes.draw do
     # ACL: Credential.find_for resolves per-agent grant first, falls back to
     # org default. Every fetch writes an audit log row.
     get "secrets", to: "secrets#show"
-    # Engine asks for the agent's connected external MCP servers + fresh tokens.
+    # Engine asks for the agent's connected external MCP servers + fresh tokens,
+    # and reports back when a server rejects one (refresh / sign in again).
     get "mcp_servers", to: "mcp_servers#index"
+    post "mcp_servers/:id/refresh", to: "mcp_servers#refresh"
+    post "mcp_servers/:id/auth_error", to: "mcp_servers#auth_error"
     # Skill self-authoring — agents create + install skills via the engine's
     # skills.create / skills.install_on_me MCP tools. Both require the
     # engine secret; org scoping flows from agent_id → agent.organization_id.
@@ -376,6 +379,11 @@ Rails.application.routes.draw do
         post :authorize
       end
     end
+
+    # Where every MCP server's OAuth sign-in lands (registered as the client's
+    # redirect URI). Declared before the provider routes below; their
+    # constraint doesn't match "mcp" anyway.
+    get "oauth/mcp/callback", to: "mcp_servers#callback", as: :mcp_oauth_callback
 
     # OAuth flows for AI provider subscriptions (Anthropic Pro/Max/Team,
     # ChatGPT Plus/Pro/Business). NOT loaded into agents as MCP tools —

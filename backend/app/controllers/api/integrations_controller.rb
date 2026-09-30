@@ -48,9 +48,10 @@ class Api::IntegrationsController < ActionController::API
     # because the connected-list it consults didn't know Meta was wired. Add
     # each connected MCP server (+ aliases) so propose_connection + the secrets
     # guard treat them as connected.
+    user = params[:user_id].present? ? agent.organization.members.find_by(id: params[:user_id]) : nil
     McpServer.where(organization_id: agent.organization_id)
       .where("agent_id IS NULL OR agent_id = ?", agent.id)
-      .select(&:connected?).each do |s|
+      .select { |s| s.connected?(user) }.each do |s|
       mcp_provider_aliases(s).each do |p|
         items << { provider: p, label: s.name, api_base_url: nil, connect_mode: "mcp", tool: "mcp", docs_url: nil }
       end
