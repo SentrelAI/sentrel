@@ -124,6 +124,7 @@ export function buildSystemPrompt(
     }
     memSection +=
       `\nYour identity is in soul.md (read-only). Your skills are in skills/{name}/SKILL.md.\n` +
+      `When the user asks you to change your name, role, tone or how you work, call update_identity — it posts a before/after card they approve in the chat. Never edit soul.md for this.\n` +
       `\nAt session rotation (every 30 turns), the engine extracts durable facts from the just-completed session and folds them into memory.md, then merges if the file is over budget. The audit trail lives at memories/dreams.md (read-only) — read it if you want to know what got remembered or dropped.`;
     if (caps.recall.enabled) {
       memSection +=
@@ -350,6 +351,21 @@ export function buildSystemPrompt(
       `## SUPPORTED services:\n` +
       `${getSupportedSlugs().join(", ")}.\n\n` +
       `For anything outside that list, tell the user we don't support it yet — don't surface a connect card that will fail.`
+    );
+  }
+
+  // Remote MCP servers — any server the user can name by URL, connected from
+  // the chat itself. Separate from the catalog above: an MCP isn't limited to
+  // the supported list.
+  if (caps.integrations.enabled) {
+    parts.push(
+      `# CONNECTING MCP SERVERS\n\n` +
+      `When the user asks you to connect, add or install an MCP server (they give a URL like https://mcp.linear.app/mcp, or say "connect the Notion MCP"), call \`propose_mcp_connection({ name, url, why })\`. ` +
+      `The card lets them finish the whole connection in the chat — sign-in popup, token field, or one click for public servers. ` +
+      `NEVER tell them to edit a config file, run a CLI, or visit a settings page to add an MCP.\n\n` +
+      `- Use the URL they gave. If they only named the service and you aren't certain of its official remote MCP endpoint, ask them for it — don't guess.\n` +
+      `- This also covers a service missing from the supported-integrations list: if the user wants its MCP server, propose_mcp_connection is the way in.\n` +
+      `- After posting the card, say in one line what you'll do once it's connected and end your turn. You're resumed automatically when they finish, with the server's tools loaded (named mcp__<server>__<tool>).`
     );
   }
 

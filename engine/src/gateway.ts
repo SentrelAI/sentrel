@@ -406,16 +406,19 @@ function subscribeApprovalChannel(): void {
         if (!resolved) {
           const summary = typeof msg.summary === "string" && msg.summary ? ` ("${msg.summary}")` : "";
           const note = msg.text ? ` They added a note: "${msg.text}".` : "";
+          // "connected" = the user finished a Connect card (e.g. an MCP server)
+          // — not a yes/no decision, so it gets its own resume instruction.
+          const instruction = msg.value === "connected"
+            ? `The user just finished connecting what you asked for${summary}. Its tools are loaded in this run — ` +
+              `pick their original request back up and complete it. Don't ask them to connect it again.`
+            : `The user just decided on your earlier approval request${summary}: ${msg.value}.${note} ` +
+              `Continue that piece of work accordingly — act on it if approved, stand down gracefully if rejected, ` +
+              `and apply any amendment. Do not re-request approval for the same action unless the amendment changes it materially.`;
           await queue.add("scheduled_task", {
             type: "scheduled_task",
             agentId: config.employeeId,
             channel: (typeof msg.originChannel === "string" && msg.originChannel) || "web",
-            payload: {
-              instruction:
-                `The user just decided on your earlier approval request${summary}: ${msg.value}.${note} ` +
-                `Continue that piece of work accordingly — act on it if approved, stand down gracefully if rejected, ` +
-                `and apply any amendment. Do not re-request approval for the same action unless the amendment changes it materially.`,
-            },
+            payload: { instruction },
           }, {
             jobId: `approval-resume-${msg.approvalToken}`,
             priority: 1,
@@ -712,6 +715,10 @@ export function emitActionApproval(data: {
 //   oauth          → POST /integrations/:slug/connect → OAuth popup
 //   api_credential → open /settings/credentials?provider=:slug in a new tab
 //   org_credential → same destination, framed for org-wide secrets
+//   mcp            → connect the remote MCP at `url` inside the card
+//
+// approvalToken identifies the persisted proposal row, so whatever completes
+// the connection can resolve it (and resume the agent's work).
 //
 // Replaces the old propose_connection + secrets.get text path with a
 // single consistent UX. Legacy callers without `kind` default to
@@ -720,7 +727,9 @@ export function emitConnectionProposal(data: {
   service: string;
   label: string;
   why: string;
-  kind?: "oauth" | "api_credential" | "org_credential";
+  kind?: "oauth" | "api_credential" | "org_credential" | "mcp";
+  url?: string;
+  approvalToken?: string;
 }): void {
   broadcast({
     type: "connection_proposal",
@@ -728,6 +737,8 @@ export function emitConnectionProposal(data: {
     service: data.service,
     label: data.label,
     why: data.why,
+    url: data.url,
+    approvalToken: data.approvalToken,
     timestamp: Date.now(),
   });
 }

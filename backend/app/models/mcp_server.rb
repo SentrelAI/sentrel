@@ -19,6 +19,7 @@ class McpServer < ApplicationRecord
   validates :name, :slug, :url, presence: true
   validates :slug, uniqueness: { scope: :organization_id }
   validates :transport, inclusion: { in: %w[http sse stdio] }
+  validates :auth_mode, inclusion: { in: %w[oauth token none] }
 
   scope :connected, -> { where(status: "connected") }
 
@@ -46,7 +47,7 @@ class McpServer < ApplicationRecord
   end
 
   def connected?
-    status == "connected" && access_token.present?
+    status == "connected" && (auth_mode == "none" || access_token.present?)
   end
 
   private

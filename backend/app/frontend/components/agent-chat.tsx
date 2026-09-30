@@ -216,6 +216,9 @@ type ConnectionProposalState = {
   service: string
   label: string
   why: string
+  kind?: "oauth" | "api_credential" | "org_credential" | "mcp"
+  url?: string
+  approvalToken?: string
   dismiss: () => void
 } | null
 
@@ -570,6 +573,8 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
       label: String(payload.label || seed.payload_type),
       why: String(payload.why || ""),
       kind: kind || "oauth",
+      url: typeof payload.url === "string" ? payload.url : undefined,
+      approvalToken: seed.approval_token,
       dismiss: () => setConnectionProposal(null),
     }
   })()
@@ -598,7 +603,9 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
             status: decision.value === "reject" || decision.value === "rejected" || decision.value === "cancel" ? "rejected" : "approved",
           }),
         })
-        setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
+        // An applied identity change renames the agent across the page.
+        if (seed.payload_type === "identity_update" && decision.value === "approve") setTimeout(() => router.reload(), 3500)
+        else setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
       },
     }
   })()
@@ -908,6 +915,8 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
         label: data.label || data.service,
         why: data.why || "",
         kind: data.kind || "oauth",
+        url: data.url,
+        approvalToken: data.approvalToken,
         dismiss: () => setConnectionProposal(null),
       })
     }
@@ -995,8 +1004,10 @@ export function AgentChat({ agentId, agentName, agentEmail = null, agentStatus =
           // The exact delay matches a typical agent post-decision turn (~3s
           // for short text, longer for additional tool calls — we land on
           // the safer side and rely on the existing message list to show
-          // whatever was persisted by then).
-          setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
+          // whatever was persisted by then). An applied identity change
+          // renames the agent across the page, so that one reloads every prop.
+          if (data.payloadType === "identity_update" && decision.value === "approve") setTimeout(() => router.reload(), 3500)
+          else setTimeout(() => router.reload({ only: ["initialMessages", "pending_action_approvals"], preserveScroll: true }), 3500)
         },
       })
     }

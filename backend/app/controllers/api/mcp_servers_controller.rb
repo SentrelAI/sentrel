@@ -7,7 +7,8 @@ class Api::McpServersController < ApplicationController
   before_action :verify_engine_secret!
 
   # GET /api/mcp_servers?agent_id=N
-  # → [{ name, slug, url, transport, access_token }]  (connected servers only)
+  # → [{ name, slug, url, transport, access_token }]  (connected servers only;
+  #   access_token is null for a public server that takes no auth)
   def index
     agent = Agent.find(params.require(:agent_id))
 
@@ -16,8 +17,8 @@ class Api::McpServersController < ApplicationController
       .where("agent_id IS NULL OR agent_id = ?", agent.id)
 
     payload = servers.filter_map do |s|
-      token = fresh_token(s)
-      next if token.blank?
+      token = s.auth_mode == "none" ? nil : fresh_token(s)
+      next if token.blank? && s.auth_mode != "none"
       { name: s.slug, url: s.url, transport: s.transport, access_token: token }
     end
 

@@ -156,6 +156,7 @@ export default function IntegrationsIndex({
 
     const res = await post()
     const data = await res.json().catch(() => ({}))
+    if (res.ok && data.connected) { router.reload(); return } // public server — nothing to sign in to
     if (res.ok && data.id) { window.location.href = `/mcp_servers/${data.id}/connect`; return }
 
     // OAuth discovery failed → this MCP authenticates with a static token, not

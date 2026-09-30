@@ -40,8 +40,18 @@ class PendingApprovalsController < ApplicationController
       reviewed_at: Time.current,
     )
 
+    # An approved identity card is applied here, before the agent hears the
+    # decision — so the reply that follows already runs as the new identity.
+    if approval.payload_type == "identity_update" && approval.status == "approved"
+      begin
+        Agents::IdentityUpdate.apply!(approval, user: current_user)
+      rescue Agents::IdentityUpdate::Stale, ActiveRecord::RecordInvalid => e
+        approval.update!(status: "rejected", decision: "stale", decision_text: e.message)
+      end
+    end
+
     if approval.payload_type.present? && approval.approval_token.present?
-      publish_action_approval(approval)
+      approval.publish_decision!
     elsif decision_value == "approved" || decision_value == "approve"
       execute_approved_action(approval)
     end
@@ -50,54 +60,6 @@ class PendingApprovalsController < ApplicationController
       format.json { render json: { ok: true } }
       format.html { redirect_to pending_approvals_path, notice: "Approval #{decision_value}" }
     end
-  end
-
-  # Item 4 — generic approval flow. Push the user's decision into the engine's
-  # approval pubsub channel so the request_approval tool's await unblocks.
-  def publish_action_approval(approval)
-    msg = {
-      type: "action_approval_response",
-      approvalToken: approval.approval_token,
-      value: approval.decision,
-      text: approval.decision_text,
-      # Context for the engine's continuation job (fired when the requesting
-      # run already released its turn): what was approved, and where the work
-      # originated so the resumed reply lands in the right channel.
-      summary: approval.try(:summary),
-      originChannel: approval.try(:origin)
-    }.to_json
-    redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
-    redis.publish("agent-#{approval.agent_id}-approvals", msg)
-    Rails.logger.info "ActionApproval ##{approval.id}: published #{approval.decision} to engine"
-
-    # Scale-to-zero: pub/sub is fire-and-forget — a sleeping engine has no
-    # subscriber and the decision would be lost. Queue a durable continuation
-    # through the inbox (drained on boot) and wake the machine. jobId matches
-    # the gateway's own continuation id, so if the engine WAS awake and
-    # already enqueued one, BullMQ dedupes and this copy is ignored.
-    if approval.agent&.status == "sleeping"
-      AgentEventBus.publish(
-        type: "scheduled_task",
-        agent: approval.agent,
-        channel: approval.try(:origin).presence || "web",
-        job_id: "approval-resume-#{approval.approval_token}",
-        payload: {
-          instruction: "The user just decided on your earlier approval request " \
-                       "(#{approval.try(:summary) || approval.payload_type}): #{approval.decision}" \
-                       "#{approval.decision_text.present? ? " — #{approval.decision_text}" : ''}. " \
-                       "Continue that work accordingly; do not re-request approval.",
-          # Structured echo of the decision. The engine replays it as an
-          # email pre-approval so an approved email_draft doesn't get stopped
-          # a SECOND time by the send_email draft policy — the user already
-          # said yes, and that second card is invisible on a resumed run.
-          approvalPayloadType: approval.payload_type,
-          approvalDecision: approval.decision,
-          approvalSummary: approval.try(:summary)
-        }
-      )
-    end
-  rescue => e
-    Rails.logger.error "ActionApproval publish failed: #{e.message}"
   end
 
   private
