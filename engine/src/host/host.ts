@@ -201,6 +201,11 @@ export interface Host {
     origin?: { channel: string; metadata: Record<string, unknown>; conversationId?: number | null };
   }): Promise<{ id: number } | null>;
 
+  // Claim a human's approval of one specific MCP tool call (payload_type
+  // "mcp_tool_call", matched by its _call_key) — single use, within a day.
+  // Lets a run resumed after the approval card make exactly that call once.
+  consumeApprovedToolCall(agentId: number, callKey: string): Promise<boolean>;
+
   saveAuditLog(
     orgId: number,
     agentId: number,

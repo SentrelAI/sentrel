@@ -10,6 +10,10 @@ require "resolv"
 # The card passes the proposal's approval_token along; once the server is
 # connected we resolve that proposal, which resumes the agent's work with the
 # new tools loaded — the user never has to leave the chat or re-prompt.
+#
+# OAuth servers are signed into per user: the server row is set up once for
+# the workspace (discovery + dynamic client registration), and every sign-in
+# lands on the signed-in user's own McpConnection.
 class McpServersController < ApplicationController
   # The engine mounts external servers in the same namespace as its built-in
   # ones (mcp__<slug>__<tool>), so a server must never take one of these names.
@@ -138,7 +142,8 @@ class McpServersController < ApplicationController
     start_oauth(server, popup: params[:popup].present?)
   end
 
-  # GET /mcp_servers/callback?code=&state= → exchange + persist + sync agents.
+  # GET /oauth/mcp/callback?code=&state= → exchange + persist + sync agents.
+  # (/mcp_servers/callback is the same action, for clients registered with it.)
   def callback
     pk = session.delete(:mcp_oauth) || {}
     popup = pk["popup"] == true
@@ -152,34 +157,48 @@ class McpServersController < ApplicationController
     }
     return fail_with.("MCP OAuth state mismatch — reconnect.") if pk["state"].blank? || pk["state"] != params[:state]
     return fail_with.(params[:error_description].presence || "MCP OAuth missing code.") if params[:code].blank?
-    return fail_with.("MCP OAuth session mismatch.") if pk["org_id"].to_i != current_tenant.id
+    return fail_with.("MCP OAuth session mismatch.") if pk["org_id"].to_i != current_tenant.id || pk["user_id"].to_i != current_user.id
 
     server = McpServer.find_by!(id: pk["server_id"], organization_id: current_tenant.id)
-    tokens = Mcp::Oauth.exchange_code(server, code: params[:code], code_verifier: pk["code_verifier"], redirect_uri: callback_mcp_servers_url)
-    Mcp::Oauth.apply_tokens!(server, tokens)
+    tokens = Mcp::Oauth.exchange_code(server, code: params[:code], code_verifier: pk["code_verifier"],
+                                      redirect_uri: pk["redirect_uri"].presence || oauth_redirect_uri)
+    connection = server.connections.find_or_initialize_by(user: current_user)
+    connection.organization = server.organization
+    # What this sign-in asked for; the token response's scope wins if it says.
+    connection.scopes = tokens["scope"].to_s.split.presence || Array(pk["scopes"])
+    Mcp::Oauth.apply_tokens!(connection, tokens)
     connected!(server, pending_proposal(approval_token))
     return render_popup_result(ok: true, server: server, approval_token: approval_token) if popup
     redirect_to integrations_path, notice: "Connected #{server.name}"
   rescue => e
     Rails.logger.error("MCP OAuth callback failed: #{e.class}: #{e.message}")
-    server&.update(status: "error", last_error: e.message.to_s[0, 500])
     fail_with ? fail_with.("MCP connect failed: #{e.message}") : redirect_to(integrations_path, alert: "MCP connect failed: #{e.message}")
   end
 
   # DELETE /mcp_servers/:id
+  # An OAuth server signs out just the current user — everyone else's sign-in
+  # is theirs — and goes away with its last connection. Token and public
+  # servers are shared, so disconnecting removes them for the workspace.
   def destroy
     server = McpServer.find_by!(id: params[:id], organization_id: current_tenant.id)
-    server.update(status: "disconnected", access_token: nil, refresh_token: nil)
+    if server.auth_mode == "oauth"
+      server.connection_for(current_user)&.destroy
+      server.destroy if server.connections.none?
+    else
+      server.update(status: "disconnected", access_token: nil, refresh_token: nil)
+      server.destroy
+    end
     sync_agents_using(server)
-    server.destroy
     head :no_content
   end
 
   private
 
   def serialize(s)
+    connection = s.auth_mode == "oauth" ? s.connection_for(current_user) : nil
     { id: s.id, name: s.name, slug: s.slug, url: s.url, status: s.status, auth_mode: s.auth_mode,
-      scopes: s.scopes, connected: s.connected?, agent_id: s.agent_id }
+      scopes: s.scopes, connected: s.connected?(current_user), agent_id: s.agent_id,
+      needs_sign_in: connection&.status == "needs_sign_in" }
   end
 
   # What connecting `url` takes: { mode: "none" }, { mode: "oauth", meta: }
@@ -190,7 +209,7 @@ class McpServersController < ApplicationController
     probe = Mcp::Oauth.probe(url, transport: transport)
     return { mode: "none" } if probe[:auth] == :none
 
-    meta = Mcp::Oauth.discover(url, resource_metadata: probe[:resource_metadata])
+    meta = Mcp::Oauth.discover(url, resource_metadata: probe[:resource_metadata], scope: probe[:scope])
     oauth_ok = client_id.present? || meta[:registration_endpoint].present?
     oauth_ok ? { mode: "oauth", meta: meta } : { mode: "token" }
   rescue Mcp::Oauth::Unreachable
@@ -200,22 +219,26 @@ class McpServersController < ApplicationController
   end
 
   # Upsert the server row with its discovered endpoints and a client id —
-  # the caller's, else a dynamically registered one (re-registered whenever
-  # the auth server changes, since client ids don't carry across issuers).
+  # the caller's, else one dynamically registered once per server and reused
+  # until the auth server or our callback URL changes (a client id is bound
+  # to both).
   def setup_oauth_server!(slug, name:, url:, transport:, meta:, proposal:, client_id: nil)
     server = upsert_server(slug, name: name, url: url, proposal: proposal)
-    client_id = client_id.presence
-    client_id ||= server.client_id if server.client_id.present? && server.issuer == meta[:issuer]
-    client_id ||= Mcp::Oauth.register_client(meta[:registration_endpoint], redirect_uri: callback_mcp_servers_url)
+    redirect_uri = oauth_redirect_uri
+    reusable = server.client_id.present? && server.issuer == meta[:issuer] &&
+               server.registered_redirect_uri == redirect_uri
+    client_id = client_id.presence || (server.client_id if reusable)
+    client_id ||= Mcp::Oauth.register_client(meta[:registration_endpoint], redirect_uri: redirect_uri)
     server.update!(
-      transport:          transport,
-      auth_mode:          "oauth",
-      client_id:          client_id,
-      scopes:             meta[:scopes],
-      issuer:             meta[:issuer],
-      authorize_endpoint: meta[:authorize_endpoint],
-      token_endpoint:     meta[:token_endpoint],
-      status:             server.connected? ? server.status : "disconnected",
+      transport:               transport,
+      auth_mode:               "oauth",
+      client_id:               client_id,
+      registered_redirect_uri: redirect_uri,
+      scopes:                  meta[:scopes],
+      resource:                meta[:resource],
+      issuer:                  meta[:issuer],
+      authorize_endpoint:      meta[:authorize_endpoint],
+      token_endpoint:          meta[:token_endpoint],
     )
     server
   end
@@ -235,16 +258,25 @@ class McpServersController < ApplicationController
     server
   end
 
+  # Sign the current user in. Asks for the server's scope plus anything the
+  # user's connection was later found to need (403 insufficient_scope).
   def start_oauth(server, popup:, approval_token: nil)
     state = SecureRandom.urlsafe_base64(32)
     verifier, challenge = Mcp::Oauth.pkce_pair
+    scopes = (Array(server.scopes) | Array(server.connection_for(current_user)&.scopes))
+    # Clients registered before the redirect URI was recorded used the old
+    # /mcp_servers/callback; the provider only accepts what was registered.
+    redirect_uri = server.registered_redirect_uri.presence || callback_mcp_servers_url
     session[:mcp_oauth] = {
       "server_id" => server.id, "state" => state, "code_verifier" => verifier, "org_id" => current_tenant.id,
-      "popup" => popup, "approval_token" => approval_token
+      "user_id" => current_user.id, "popup" => popup, "approval_token" => approval_token,
+      "scopes" => scopes, "redirect_uri" => redirect_uri
     }
-    redirect_to Mcp::Oauth.authorize_url(server, redirect_uri: callback_mcp_servers_url, state: state, code_challenge: challenge),
+    redirect_to Mcp::Oauth.authorize_url(server, redirect_uri: redirect_uri, state: state, code_challenge: challenge, scopes: scopes),
                 allow_other_host: true
   end
+
+  def oauth_redirect_uri = mcp_oauth_callback_url
 
   # A server just became usable: make the agents re-read their servers, and
   # if a chat card asked for it, resolve that proposal — publishing

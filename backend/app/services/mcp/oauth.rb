@@ -31,7 +31,7 @@ module Mcp
     # WWW-Authenticate (RFC 9728 §5.1). Only the status line is read — a
     # streamable-HTTP server may hold the SSE body open. With `token:` it
     # checks a pasted Bearer instead — :required then means it was rejected.
-    # → { auth: :none } | { auth: :required, resource_metadata: url_or_nil }
+    # → { auth: :none } | { auth: :required, resource_metadata: url_or_nil, scope: str_or_nil }
     def probe(url, transport: "http", token: nil)
       uri = URI(url)
       if transport == "sse"
@@ -60,7 +60,9 @@ module Mcp
 
       case res.code.to_i
       when 200..299 then { auth: :none }
-      when 401, 403 then { auth: :required, resource_metadata: resource_metadata_from(res["WWW-Authenticate"]) }
+      when 401, 403
+        challenge = res["WWW-Authenticate"]
+        { auth: :required, resource_metadata: resource_metadata_from(challenge), scope: challenge_param(challenge, "scope") }
       else raise Unreachable, "#{uri.host} answered #{res.code} — that doesn't look like an MCP endpoint"
       end
     rescue Unreachable
@@ -74,7 +76,9 @@ module Mcp
     # live, so try, in order: the URL the server's 401 pointed at, the
     # path-suffixed and root well-known locations, and finally (older MCP
     # servers with no resource metadata) the MCP origin as its own auth server.
-    def discover(url, resource_metadata: nil)
+    # The scope to request is the one the server's 401 challenge named, when it
+    # named one; otherwise whatever the metadata says it supports.
+    def discover(url, resource_metadata: nil, scope: nil)
       u = URI(url)
       origin = origin_of(u)
       prm = first_json([
@@ -99,7 +103,7 @@ module Mcp
         authorize_endpoint:    asm["authorization_endpoint"],
         token_endpoint:        asm["token_endpoint"],
         registration_endpoint: asm["registration_endpoint"],
-        scopes:                Array(prm["scopes_supported"]).presence || Array(asm["scopes_supported"]),
+        scopes:                scope.to_s.split.presence || Array(prm["scopes_supported"]).presence || Array(asm["scopes_supported"]),
         resource:              prm["resource"] || url
       }
     end
@@ -135,16 +139,18 @@ module Mcp
       [ verifier, challenge ]
     end
 
-    def authorize_url(server, redirect_uri:, state:, code_challenge:)
+    # `scopes` defaults to the server's; a re-authorization for more access
+    # (403 insufficient_scope) passes the union it needs.
+    def authorize_url(server, redirect_uri:, state:, code_challenge:, scopes: server.scopes)
       params = {
         response_type:         "code",
         client_id:             server.client_id,
         redirect_uri:          redirect_uri,
-        scope:                 Array(server.scopes).join(" "),
+        scope:                 Array(scopes).join(" ").presence,
         state:                 state,
         code_challenge:        code_challenge,
         code_challenge_method: "S256",
-        resource:              server.url # RFC 8707 — bind the token to this MCP
+        resource:              server.oauth_resource # RFC 8707 — bind the token to this MCP
       }
       "#{server.authorize_endpoint}?#{URI.encode_www_form(params.compact)}"
     end
@@ -156,34 +162,36 @@ module Mcp
         redirect_uri:  redirect_uri,
         client_id:     server.client_id,
         code_verifier: code_verifier,
-        resource:      server.url
+        resource:      server.oauth_resource
       })
     end
 
-    # Headless: trade the refresh token for a fresh access token. Called by the
-    # engine's token endpoint when the stored access token is near expiry.
-    def refresh!(server)
-      raise "no refresh_token stored" if server.refresh_token.blank?
+    # Headless: trade a refresh token for a fresh access token. Callers must
+    # hold the connection's row lock (McpConnection#fresh_access_token!) —
+    # refresh tokens rotate, so a concurrent second refresh would fail.
+    def refresh!(server, refresh_token:)
+      raise "no refresh_token stored" if refresh_token.blank?
       token_post(server, {
         grant_type:    "refresh_token",
-        refresh_token: server.refresh_token,
+        refresh_token: refresh_token,
         client_id:     server.client_id,
-        resource:      server.url
+        resource:      server.oauth_resource
       })
     end
 
-    # Persist a token response onto the server record. Meta returns
-    # { access_token, token_type, expires_in, refresh_token? }.
-    def apply_tokens!(server, tokens)
-      server.access_token  = tokens["access_token"] if tokens["access_token"].present?
-      server.refresh_token = tokens["refresh_token"] if tokens["refresh_token"].present?
+    # Persist a token response onto the record holding the tokens (an
+    # McpConnection). { access_token, token_type, expires_in, refresh_token? }
+    # — a rotated refresh token replaces the old one every time.
+    def apply_tokens!(record, tokens)
+      record.access_token  = tokens["access_token"] if tokens["access_token"].present?
+      record.refresh_token = tokens["refresh_token"] if tokens["refresh_token"].present?
       if (ttl = tokens["expires_in"]).present?
-        server.expires_at = Time.current + ttl.to_i.seconds
+        record.expires_at = Time.current + ttl.to_i.seconds
       end
-      server.status = "connected"
-      server.last_error = nil
-      server.save!
-      server
+      record.status = "connected"
+      record.last_error = nil
+      record.save!
+      record
     end
 
     # ── internals ──────────────────────────────────────────────────────────
@@ -220,7 +228,12 @@ module Mcp
 
     # `Bearer realm="OAuth", resource_metadata="https://…"` → the URL.
     def resource_metadata_from(header)
-      header.to_s[/resource_metadata="([^"]+)"/, 1]
+      challenge_param(header, "resource_metadata")
+    end
+
+    # One quoted auth-param from a WWW-Authenticate challenge, e.g. scope.
+    def challenge_param(header, name)
+      header.to_s[/(?:\A|[\s,])#{Regexp.escape(name)}="([^"]*)"/, 1].presence
     end
 
     def origin_of(uri)

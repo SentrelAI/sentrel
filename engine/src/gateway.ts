@@ -418,7 +418,8 @@ function subscribeApprovalChannel(): void {
             type: "scheduled_task",
             agentId: config.employeeId,
             channel: (typeof msg.originChannel === "string" && msg.originChannel) || "web",
-            payload: { instruction },
+            // The resumed run acts for whoever decided (their MCP sign-ins etc.).
+            payload: { instruction, ...(typeof msg.userId === "number" ? { user_id: msg.userId } : {}) },
           }, {
             jobId: `approval-resume-${msg.approvalToken}`,
             priority: 1,

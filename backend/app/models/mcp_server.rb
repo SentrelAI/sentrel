@@ -1,17 +1,21 @@
-# An OAuth-connected external MCP server (e.g. Meta's official Ads MCP).
+# A remote MCP server connected to the workspace (Linear, ScribeMD, Meta Ads…).
 #
-# This is a direct connection to a remote MCP endpoint that speaks the MCP OAuth spec
-# (RFC 9728 protected resource). We discover its authorization server, run a
-# PKCE authorization-code flow to mint a resource-bound access token, store
-# the access + refresh tokens encrypted, and hand the agent's engine a fresh
-# Bearer token at connect time (refreshing transparently).
+# auth_mode says where its credentials live:
+#   oauth — speaks the MCP OAuth spec (RFC 9728 protected resource). The row
+#           holds the shared part (discovered endpoints, resource, scope, the
+#           dynamically registered client); each user signs in for themselves
+#           and gets an McpConnection with their own tokens.
+#   token — a workspace-wide Bearer token on the row itself (pasted, or minted
+#           outside the MCP flow like Meta's Facebook Login).
+#   none  — a public server that takes no credentials.
 #
-# Provider-agnostic by design: any MCP that advertises OAuth metadata works —
-# Meta today, others tomorrow, with no per-provider code.
+# Provider-agnostic by design: any MCP that advertises OAuth metadata works,
+# with no per-provider code.
 class McpServer < ApplicationRecord
   acts_as_tenant :organization
   belongs_to :organization
   belongs_to :agent, optional: true
+  has_many :connections, class_name: "McpConnection", dependent: :destroy
 
   encrypts :access_token_ciphertext, deterministic: false
   encrypts :refresh_token_ciphertext, deterministic: false
@@ -46,9 +50,23 @@ class McpServer < ApplicationRecord
     expires_at < Time.current + skew_seconds
   end
 
-  def connected?
-    status == "connected" && (auth_mode == "none" || access_token.present?)
+  # Usable by `user`'s runs? OAuth servers are only ever connected per user.
+  def connected?(user = nil)
+    case auth_mode
+    when "none"  then status == "connected"
+    when "oauth" then user.present? && connection_for(user)&.usable? == true
+    else              status == "connected" && access_token.present?
+    end
   end
+
+  def connection_for(user)
+    return nil unless user
+    connections.find_by(user_id: user.is_a?(User) ? user.id : user)
+  end
+
+  # The RFC 8707 resource the tokens are bound to — what discovery reported,
+  # falling back to the endpoint URL for rows set up before it was stored.
+  def oauth_resource = resource.presence || url
 
   private
 

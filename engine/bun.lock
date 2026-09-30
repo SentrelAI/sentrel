@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "alchemy_engine",
@@ -13,6 +14,7 @@
         "@libsql/client": "^0.17.2",
         "@logtail/node": "^0.5.8",
         "@logtail/winston": "^0.5.8",
+        "@modelcontextprotocol/sdk": "1.29.0",
         "@sentry/node": "^10.48.0",
         "bullmq": "^5.73.0",
         "cron-parser": "^5.5.0",

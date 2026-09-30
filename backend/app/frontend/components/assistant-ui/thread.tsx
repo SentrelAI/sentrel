@@ -502,6 +502,25 @@ function ActionPreview({ payloadType, payload }: { payloadType: string; payload:
   if (payloadType === "identity_update") {
     return <IdentityChangePreview changes={(payload.changes || {}) as Record<string, { before?: string; after?: string }>} />;
   }
+  if (payloadType === "mcp_tool_call") {
+    // A remote MCP tool that declares it changes or deletes data: show exactly
+    // what will run, with which arguments.
+    return (
+      <div className="space-y-1.5">
+        <div className="text-xs">
+          <span className="font-medium">{String(payload.server || "")}</span>
+          <span className="text-muted-foreground"> · </span>
+          <span className="font-mono">{String(payload.tool || "")}</span>
+        </div>
+        {payload.description ? (
+          <div className="text-xs text-muted-foreground line-clamp-3">{String(payload.description)}</div>
+        ) : null}
+        <pre className="text-xs bg-muted p-2.5 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap">
+          {JSON.stringify(payload.arguments ?? {}, null, 2)}
+        </pre>
+      </div>
+    );
+  }
   // Universal fallback — agent-supplied markdown preview wins over JSON dump.
   if (previewMd) {
     return (

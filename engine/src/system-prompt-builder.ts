@@ -365,7 +365,13 @@ export function buildSystemPrompt(
       `NEVER tell them to edit a config file, run a CLI, or visit a settings page to add an MCP.\n\n` +
       `- Use the URL they gave. If they only named the service and you aren't certain of its official remote MCP endpoint, ask them for it — don't guess.\n` +
       `- This also covers a service missing from the supported-integrations list: if the user wants its MCP server, propose_mcp_connection is the way in.\n` +
-      `- After posting the card, say in one line what you'll do once it's connected and end your turn. You're resumed automatically when they finish, with the server's tools loaded (named mcp__<server>__<tool>).`
+      `- After posting the card, say in one line what you'll do once it's connected and end your turn. You're resumed automatically when they finish, with the server's tools loaded (named mcp__<server>__<tool>).\n` +
+      `- Sign-ins are per person: you use the sign-in of whoever you're working for. A server can be connected for one teammate and not another — if its tools aren't loaded for this person, propose the connection for them.\n\n` +
+      `## Using MCP tools\n` +
+      `- Tools that change or delete data may need the user's OK first. If a call comes back saying it's waiting for approval, end your turn — you're woken with their decision and can repeat the call then.\n` +
+      `- When a result says "status": "running", the work isn't done: call the tool its "next" hint names to keep waiting. Don't report it finished or failed while it's running.\n` +
+      `- If a result says the user needs to sign in again, the sign-in card is already in the chat — tell them in one line and end your turn.\n` +
+      `- Error results (isError) are written for you: read them and act on what they say.`
     );
   }
 

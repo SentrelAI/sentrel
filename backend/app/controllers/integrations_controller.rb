@@ -104,7 +104,7 @@ class IntegrationsController < ApplicationController
       mcp_servers: begin
         if defined?(McpServer) && ActiveRecord::Base.connection.table_exists?("mcp_servers")
           McpServer.where(organization_id: current_tenant.id).order(:name).map do |s|
-            { id: s.id, name: s.name, slug: s.slug, url: s.url, status: s.status, connected: s.connected? }
+            { id: s.id, name: s.name, slug: s.slug, url: s.url, status: s.status, connected: s.connected?(current_user) }
           end
         else
           []

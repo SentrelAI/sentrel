@@ -34,7 +34,9 @@ class PendingApproval < ApplicationRecord
       # run already released its turn): what was approved, and where the work
       # originated so the resumed reply lands in the right channel.
       summary: try(:summary),
-      originChannel: try(:origin)
+      originChannel: try(:origin),
+      # Who decided — the resumed run acts for them (e.g. uses their MCP sign-in).
+      userId: reviewed_by_id
     }.to_json
     redis = Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
     redis.publish("agent-#{agent_id}-approvals", msg)
@@ -69,7 +71,8 @@ class PendingApproval < ApplicationRecord
           # said yes, and that second card is invisible on a resumed run.
           approvalPayloadType: payload_type,
           approvalDecision: decision,
-          approvalSummary: try(:summary)
+          approvalSummary: try(:summary),
+          user_id: reviewed_by_id
         }
       )
     end
