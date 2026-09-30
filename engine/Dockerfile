@@ -38,7 +38,14 @@ RUN bun install \
        node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64-musl
 
 # --- Stage 2: runtime image ---------------------------------------------------
-FROM oven/bun:1.1.38-slim AS runtime
+# Debian 12 (bookworm), with Bun copied in from the deps stage. Every
+# oven/bun:1.1.38 variant is Debian 11 (bullseye), whose security archive
+# left deb.debian.org when its LTS ended — the apt-get install below started
+# 404ing (Sep 2026) and :latest stopped updating. Bun is one glibc binary,
+# so the version stays pinned while the OS underneath is supported again.
+FROM debian:bookworm-slim AS runtime
+COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
 
 # System packages needed at runtime:
 #   - poppler / tesseract — PDF extraction fallbacks (rag/extractor.ts)
