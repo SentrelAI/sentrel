@@ -109,6 +109,27 @@ class Agent < ApplicationRecord
       &.dig("address")
   end
 
+  # One revision row per persona field the last save actually changed — the
+  # agent's prompt-edit history. `before` is the persona attributes as they
+  # were before that save.
+  def record_persona_revisions!(before, user:, note: nil)
+    AgentPersonaRevision::FIELDS.each do |field|
+      next unless saved_changes.key?(field)
+      after = self[field]
+      next if after.blank? # clearing a field isn't a promotable edit
+      persona_revisions.create!(
+        organization: organization,
+        user: user,
+        field: field,
+        before_text: before[field],
+        after_text: after,
+        note: note.presence,
+      )
+    end
+  rescue => e
+    Rails.logger.error("persona revision capture failed: #{e.message}")
+  end
+
   private
 
   # Best-effort Fly teardown. AgentProvisioner.terminate_for rescues + logs

@@ -9,6 +9,11 @@
 // Agent doesn't pause — it returns a normal text reply explaining what'll
 // happen once the user connects. After the OAuth completes, the user
 // re-prompts and the agent has the toolkit available.
+//
+// propose_mcp_connection is the same card for a remote MCP server the user
+// names by URL. The card connects it without leaving the chat (sign-in popup,
+// pasted token, or nothing for a public server), and finishing resolves the
+// proposal — which resumes this work in a fresh run with the server's tools.
 
 import { randomUUID } from "crypto";
 import { z } from "zod";
@@ -94,10 +99,48 @@ export function buildConnectionsMcpServer(ctx: ConnectionsContext) {
     },
   );
 
+  const proposeMcpConnectionTool = tool(
+    "propose_mcp_connection",
+    "Surface an inline 'Connect <name> MCP' card in the chat when the user asks you to connect, add or install a remote MCP server. The user finishes the whole connection inside the card — sign-in popup for OAuth servers, a token field for token-auth servers, one click for public ones — and you're resumed automatically with the server's tools once it's connected. ALWAYS prefer this over telling the user to edit config files or visit a settings page.",
+    {
+      url: z.string().describe("The server's remote MCP endpoint, e.g. https://mcp.linear.app/mcp. Must be a public https URL. Use the URL the user gave; if they only named the service and you aren't certain of its official MCP URL, ask them for it instead of guessing."),
+      name: z.string().describe("Display name for the server, e.g. 'Linear'."),
+      why: z.string().describe("One-line user-facing reason. Shows on the card."),
+    },
+    async (args) => {
+      let url: URL;
+      try {
+        url = new URL(args.url.trim());
+      } catch {
+        return { content: [{ type: "text", text: `'${args.url}' isn't a valid URL. Ask the user for the server's MCP endpoint (it usually ends in /mcp or /sse).` }], isError: true };
+      }
+      if (url.protocol !== "https:") {
+        return { content: [{ type: "text", text: `MCP servers must be reached over https — '${args.url}' isn't. Ask the user for the https endpoint.` }], isError: true };
+      }
+
+      const label = args.name.trim() || url.hostname;
+      await postProposal({
+        ctx,
+        slug: label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "mcp",
+        label,
+        why: args.why,
+        kind: "mcp",
+        url: url.toString(),
+      });
+
+      return {
+        content: [{
+          type: "text",
+          text: `Posted a 'Connect ${label} MCP' card. The user connects it right in the chat; when they finish you'll be resumed automatically with ${label}'s tools (named mcp__<server>__<tool>). Tell them briefly what you'll do once it's connected, then end your turn — don't wait or poll.`,
+        }],
+      };
+    },
+  );
+
   return createSdkMcpServer({
     name: "connections",
     version: "0.1.0",
-    tools: [proposeConnectionTool],
+    tools: [proposeConnectionTool, proposeMcpConnectionTool],
   });
 }
 
@@ -110,16 +153,20 @@ export async function postProposal(opts: {
   slug: string;
   label: string;
   why: string;
-  kind: "oauth" | "api_credential" | "org_credential";
+  kind: "oauth" | "api_credential" | "org_credential" | "mcp";
+  url?: string; // mcp only: the server's endpoint
 }): Promise<void> {
-  const { ctx, slug, label, why, kind } = opts;
+  const { ctx, slug, label, why, kind, url } = opts;
   // randomUUID (not Date.now) so two proposals for the same slug can't collide
   // on the pending_approvals.approval_token UNIQUE index.
-  const approvalToken = `${kind === "oauth" ? "conn" : "cred"}_${slug}_${randomUUID()}`;
-  const summary = kind === "oauth"
-    ? `Connect ${label} — ${why}`
+  const prefix = kind === "oauth" ? "conn" : kind === "mcp" ? "mcp" : "cred";
+  const approvalToken = `${prefix}_${slug}_${randomUUID()}`;
+  const isConnect = kind === "oauth" || kind === "mcp";
+  const target = kind === "mcp" ? `${label} MCP` : label;
+  const summary = isConnect
+    ? `Connect ${target} — ${why}`
     : `Add ${label} credential — ${why}`;
-  const connectButtonLabel = kind === "oauth" ? `Connect ${label}` : `Add ${label} credential`;
+  const connectButtonLabel = isConnect ? `Connect ${target}` : `Add ${label} credential`;
 
   try {
     await host.createPendingActionApproval({
@@ -127,7 +174,7 @@ export async function postProposal(opts: {
       agentId: ctx.agentId,
       summary,
       payloadType: "connection_proposal",
-      payload: { service: slug, label, why, kind },
+      payload: { service: slug, label, why, kind, ...(url ? { url } : {}) },
       options: [
         { label: connectButtonLabel, value: "connect" },
         { label: "Not now", value: "dismiss" },
@@ -141,7 +188,7 @@ export async function postProposal(opts: {
     logger.warn("Failed to persist connection proposal", { error: (err as Error).message });
   }
 
-  emitConnectionProposal({ service: slug, label, why, kind });
+  emitConnectionProposal({ service: slug, label, why, kind, url, approvalToken });
   logger.info(`Proposal posted: ${kind} ${label} (${why})`);
 }
 

@@ -71,7 +71,7 @@ import {
   GitMergeIcon as GithubIcon,
 } from "lucide-react";
 import { ShieldAlertIcon, CheckIcon as CheckCircleIcon, XIcon as XCircleIcon } from "lucide-react";
-import { type FC, useState, useEffect, createContext, useContext } from "react";
+import { type FC, useState, useEffect, useRef, createContext, useContext } from "react";
 
 // Command approval context — set by AgentChat, consumed by Thread
 type CmdApprovalData = {
@@ -106,16 +106,21 @@ const CurrentUserEmailContext = createContext<string | null>(null);
 export const CurrentUserEmailProvider = CurrentUserEmailContext.Provider;
 
 // Item 5 — propose_connection: agent asks the user to wire up external
-// access. ONE card type handles both kinds:
+// access. ONE card type handles every kind:
 //   connect → send the user to the /integrations directory to connect
 //   api_credential → open /settings/credentials?provider=:slug in new tab
+//   mcp → connect the remote MCP server at `url` inside the card itself
 // Missing kind defaults to "oauth" for back-compat with rows
 // persisted before the unified flow.
 type ConnectionProposalData = {
   service: string
   label: string
   why: string
-  kind?: "oauth" | "api_credential" | "org_credential"
+  kind?: "oauth" | "api_credential" | "org_credential" | "mcp"
+  url?: string
+  // The persisted proposal row — sent along when connecting so the server
+  // can resolve it, which resumes the agent's work.
+  approvalToken?: string
   dismiss: () => void
 } | null
 
@@ -494,6 +499,9 @@ function ActionPreview({ payloadType, payload }: { payloadType: string; payload:
       </div>
     );
   }
+  if (payloadType === "identity_update") {
+    return <IdentityChangePreview changes={(payload.changes || {}) as Record<string, { before?: string; after?: string }>} />;
+  }
   // Universal fallback — agent-supplied markdown preview wins over JSON dump.
   if (previewMd) {
     return (
@@ -519,11 +527,89 @@ function ActionPreview({ payloadType, payload }: { payloadType: string; payload:
   );
 }
 
+// update_identity card body: what changes about the agent, before → after.
+// Name and role are one-liners; the persona sections get a line diff so a
+// one-sentence tweak to a long section is easy to spot.
+const IDENTITY_FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  role: "Role",
+  identity_md: "Identity",
+  personality_md: "Personality",
+  instructions_md: "Instructions",
+};
+
+function IdentityChangePreview({ changes }: { changes: Record<string, { before?: string; after?: string }> }) {
+  const fields = Object.keys(IDENTITY_FIELD_LABELS).filter((f) => changes[f]);
+  return (
+    <div className="space-y-2.5">
+      {fields.map((field) => {
+        const before = changes[field].before || "";
+        const after = changes[field].after || "";
+        const short = field === "name" || field === "role";
+        return (
+          <div key={field} className="space-y-1">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{IDENTITY_FIELD_LABELS[field]}</div>
+            {short ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {before && <span className="text-muted-foreground line-through">{before}</span>}
+                {before && <span className="text-muted-foreground">→</span>}
+                <span className="font-medium">{after}</span>
+              </div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded-md border bg-muted/30 py-1.5 font-mono text-[11px] leading-relaxed">
+                {lineDiff(before, after).map((line, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "whitespace-pre-wrap px-2.5",
+                      line.kind === "add" && "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
+                      line.kind === "del" && "bg-red-500/10 text-red-700 line-through decoration-red-400/60 dark:text-red-400",
+                      line.kind === "same" && "text-muted-foreground",
+                    )}
+                  >
+                    {line.kind === "add" ? "+ " : line.kind === "del" ? "− " : "  "}{line.text || " "}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Minimal LCS line diff. Persona sections are a few dozen lines, so the
+// quadratic table is fine; past ~400 lines we just show the new text.
+function lineDiff(before: string, after: string): Array<{ kind: "same" | "add" | "del"; text: string }> {
+  const a = before ? before.split("\n") : [];
+  const b = after ? after.split("\n") : [];
+  if (a.length * b.length > 160_000) return b.map((text) => ({ kind: "add" as const, text }));
+  const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const out: Array<{ kind: "same" | "add" | "del"; text: string }> = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { out.push({ kind: "same", text: a[i] }); i++; j++; }
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) out.push({ kind: "del", text: a[i++] });
+    else out.push({ kind: "add", text: b[j++] });
+  }
+  while (i < a.length) out.push({ kind: "del", text: a[i++] });
+  while (j < b.length) out.push({ kind: "add", text: b[j++] });
+  return out;
+}
+
 const InlineConnectionProposal: FC = () => {
   const proposal = useContext(ConnectionProposalContext);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!proposal) return null;
+  if (proposal.kind === "mcp") return <InlineMcpConnect key={proposal.approvalToken || proposal.url} proposal={proposal} />;
 
   const isCredential = proposal.kind === "api_credential" || proposal.kind === "org_credential";
   const headerVerb = isCredential ? "Add" : "Connect";
@@ -583,6 +669,239 @@ const InlineConnectionProposal: FC = () => {
             {busy ? "Opening…" : buttonLabel}
           </button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// "Connect <name> MCP" — the whole connection happens in this card. On mount
+// it asks the server what connecting takes, then offers exactly that: a
+// sign-in popup (OAuth), a token field, or a single click for a public
+// server. Success resolves the proposal server-side, which resumes the
+// agent's work with the new tools — no re-prompt needed.
+type McpAuth = "none" | "oauth" | "token";
+
+const InlineMcpConnect: FC<{ proposal: NonNullable<ConnectionProposalData> }> = ({ proposal }) => {
+  const agentName = useContext(AgentNameContext);
+  const url = proposal.url || "";
+  const host = (() => { try { return new URL(url).host; } catch { return url; } })();
+  const [auth, setAuth] = useState<McpAuth | null>(null);
+  const [probeError, setProbeError] = useState<string | null>(null);
+  const [probeNonce, setProbeNonce] = useState(0);
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [waitingForPopup, setWaitingForPopup] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+  const popupRef = useRef<Window | null>(null);
+
+  const csrf = () => document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || "";
+  const jsonHeaders = () => ({ "Content-Type": "application/json", Accept: "application/json", "X-CSRF-Token": csrf() });
+
+  // What does this server need? Nothing is saved until the user clicks.
+  useEffect(() => {
+    let cancelled = false;
+    setAuth(null);
+    setProbeError(null);
+    fetch("/mcp_servers/probe", { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ url }) })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && data.auth) setAuth(data.auth as McpAuth);
+        else setProbeError(data.error || `Couldn't reach ${host}.`);
+      })
+      .catch((err) => { if (!cancelled) setProbeError(`Couldn't reach ${host}: ${(err as Error).message}`); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, probeNonce]);
+
+  // The sign-in popup reports back by postMessage and, in case the provider
+  // severed window.opener, on a BroadcastChannel. Both may arrive.
+  useEffect(() => {
+    const onResult = (data: any) => {
+      if (!data || data.type !== "sentrel:mcp_oauth") return;
+      if (data.approvalToken && proposal.approvalToken && data.approvalToken !== proposal.approvalToken) return;
+      setWaitingForPopup(false);
+      setBusy(false);
+      if (data.ok) setConnected(true);
+      else setError(data.error || "Sign-in didn't complete.");
+    };
+    const onMessage = (e: MessageEvent) => { if (e.origin === window.location.origin) onResult(e.data); };
+    window.addEventListener("message", onMessage);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("sentrel:mcp_oauth");
+      channel.onmessage = (e) => onResult(e.data);
+    } catch { /* older browser — postMessage still works */ }
+    return () => { window.removeEventListener("message", onMessage); channel?.close(); };
+  }, [proposal.approvalToken]);
+
+  // Popup closed without a result: ask the server before giving up — the
+  // result message can be lost if the provider cut the opener link.
+  useEffect(() => {
+    if (!waitingForPopup) return;
+    const timer = setInterval(async () => {
+      if (!popupRef.current?.closed) return;
+      clearInterval(timer);
+      await new Promise((r) => setTimeout(r, 800));
+      const res = await fetch("/mcp_servers", { headers: { Accept: "application/json" } }).catch(() => null);
+      const servers: Array<{ url: string; connected: boolean }> = res?.ok ? await res.json().catch(() => []) : [];
+      const same = (a: string) => a.replace(/\/+$/, "") === url.replace(/\/+$/, "");
+      if (servers.some((s) => same(s.url) && s.connected)) setConnected(true);
+      setWaitingForPopup(false);
+      setBusy(false);
+    }, 700);
+    return () => clearInterval(timer);
+  }, [waitingForPopup, url]);
+
+  // Leave the success state up briefly, then clear the card — the agent's
+  // resumed reply takes over from here.
+  useEffect(() => {
+    if (!connected) return;
+    const t = setTimeout(proposal.dismiss, 6000);
+    return () => clearTimeout(t);
+  }, [connected, proposal.dismiss]);
+
+  // OAuth: open the popup synchronously (popup blockers only allow it inside
+  // the click), then POST the setup form into it. The server discovers the
+  // endpoints, registers a client and redirects the popup to consent.
+  const signIn = () => {
+    setError(null);
+    const target = `mcp_oauth_${Date.now()}`;
+    const popup = window.open("", target, "popup,width=520,height=720");
+    if (!popup) {
+      setError("Your browser blocked the sign-in window. Allow popups for this site and try again.");
+      return;
+    }
+    popupRef.current = popup;
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/mcp_servers/authorize";
+    form.target = target;
+    const fields = { authenticity_token: csrf(), name: proposal.label, url, approval_token: proposal.approvalToken || "" };
+    for (const [name, value] of Object.entries(fields)) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+    setBusy(true);
+    setWaitingForPopup(true);
+  };
+
+  // Public server (no token) or token-auth server (with one).
+  const connectDirect = async (accessToken?: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/mcp_servers", {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({
+          name: proposal.label, url, approval_token: proposal.approvalToken,
+          ...(accessToken ? { access_token: accessToken } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.connected) setConnected(true);
+      else if (res.ok && data.connect_url) setAuth("oauth"); // turned out to need sign-in
+      else if (data.needs_token) { setAuth("token"); if (accessToken) setError(data.error); }
+      else setError(data.error || "Couldn't connect.");
+    } catch (err) {
+      setError(`Network error: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hint = connected
+    ? `${agentName} is picking your request back up.`
+    : probeError
+      ? null
+      : auth === "oauth"
+        ? `Opens ${host} sign-in in a popup. ${agentName} never sees your password.`
+        : auth === "token"
+          ? `${host} connects with an access token.`
+          : auth === "none"
+            ? "Public server — no sign-in needed."
+            : `Checking ${host}…`;
+
+  return (
+    <div className="mx-auto w-full max-w-(--thread-max-width) pb-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
+      <div className="rounded-xl border bg-card p-3 space-y-2">
+        <div className="flex items-start gap-2 text-xs">
+          {connected
+            ? <CheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            : <Plug2Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
+          <div className="min-w-0 space-y-0.5">
+            <div className="font-medium">
+              {connected
+                ? <><strong>{proposal.label}</strong> connected</>
+                : <>Connect <strong>{proposal.label}</strong> MCP {proposal.why ? `— ${proposal.why}` : ""}</>}
+            </div>
+            <div className="truncate font-mono text-[11px] text-muted-foreground">{url}</div>
+            {hint && <div className="text-muted-foreground">{hint}</div>}
+          </div>
+        </div>
+        {(probeError || error) && (
+          <div className="rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-2 text-xs text-red-700 dark:text-red-400">
+            {probeError || error}
+          </div>
+        )}
+        {!connected && auth === "token" && (
+          <input
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && token.trim() && !busy) connectDirect(token.trim()); }}
+            placeholder={`Paste your ${proposal.label} access token`}
+            className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-emerald-600/30"
+          />
+        )}
+        {!connected && (
+          <div className="flex justify-end gap-2 pt-1 border-t">
+            <button
+              onClick={proposal.dismiss}
+              className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors"
+            >
+              Not now
+            </button>
+            {probeError ? (
+              <button
+                onClick={() => setProbeNonce((n) => n + 1)}
+                className="px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-muted transition-colors"
+              >
+                Try again
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (auth === "oauth") signIn();
+                  else if (auth === "token") connectDirect(token.trim());
+                  else if (auth === "none") connectDirect();
+                }}
+                disabled={!auth || busy || (auth === "token" && !token.trim())}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                {(!auth || busy) && <Loader2Icon className="size-3 animate-spin" />}
+                {!auth
+                  ? "Checking…"
+                  : waitingForPopup
+                    ? "Waiting for sign-in…"
+                    : busy
+                      ? "Connecting…"
+                      : auth === "oauth"
+                        ? <>Sign in to {proposal.label} <ExternalLinkIcon className="size-3" /></>
+                        : `Connect ${proposal.label}`}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

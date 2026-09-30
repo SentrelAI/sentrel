@@ -439,7 +439,7 @@ class AgentsController < ApplicationController
   def update
     persona_before = @agent.attributes.slice(*AgentPersonaRevision::FIELDS)
     if @agent.update(agent_params)
-      record_persona_revisions!(persona_before)
+      @agent.record_persona_revisions!(persona_before, user: current_user, note: params[:revision_note].to_s.strip)
       env_changed = false
       if params[:ai_config].present? && @agent.ai_config
         @agent.ai_config.assign_attributes(ai_config_params)
@@ -853,27 +853,6 @@ class AgentsController < ApplicationController
 
   # Replaces the agent's credential grants with whatever the form sent.
   # Empty array clears all grants — agent falls back to org defaults.
-  # One revision row per persona field the save actually changed — the
-  # agent's prompt-edit history. note comes from the editor's optional
-  # "what/why" input.
-  def record_persona_revisions!(before)
-    AgentPersonaRevision::FIELDS.each do |field|
-      next unless @agent.saved_changes.key?(field)
-      after = @agent[field]
-      next if after.blank? # clearing a field isn't a promotable edit
-      @agent.persona_revisions.create!(
-        organization: current_tenant,
-        user: current_user,
-        field: field,
-        before_text: before[field],
-        after_text: after,
-        note: params[:revision_note].to_s.strip.presence,
-      )
-    end
-  rescue => e
-    Rails.logger.error("persona revision capture failed: #{e.message}")
-  end
-
   def update_credential_grants
     requested_ids = Array(params[:granted_credential_ids]).map(&:to_i).reject(&:zero?)
     # Only allow grants for credentials in the agent's organization.

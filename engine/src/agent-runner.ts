@@ -16,6 +16,7 @@ import { buildSchedulingMcpServer } from "./tools/scheduling.js";
 import { buildTasksMcpServer } from "./tools/tasks.js";
 import { buildApprovalsMcpServer, noteEmailApproval } from "./tools/approvals.js";
 import { buildConnectionsMcpServer } from "./tools/connections.js";
+import { buildIdentityMcpServer } from "./tools/identity.js";
 import { resolveActionApproval } from "./security/action-approval.js";
 import { createQueryState, type QueryState } from "./tools/integrations.js";
 import { buildKnowledgeMcpServer } from "./tools/knowledge.js";
@@ -1561,6 +1562,17 @@ async function buildQueryOptions(
   mcpServers.skills = skillsCreatorServer;
   baseMcpServers.skills = skillsCreatorServer;
 
+  // update_identity — the agent proposes a change to its own name / role /
+  // persona when the user asks in chat; a teammate approves it on a
+  // before/after card. Always-on, like skills.
+  const identityServer = buildIdentityMcpServer({
+    agentId: agent.id,
+    orgId: agent.organization_id,
+    origin: taskOrigin,
+  });
+  mcpServers.identity = identityServer;
+  baseMcpServers.identity = identityServer;
+
   // share_file — publish a file from the agent's sandbox to a public URL
   // via Rails ActiveStorage. Always-on. Without this, when agents produce
   // files (rendered videos, CSVs, PDFs), they construct chat replies with
@@ -1646,11 +1658,19 @@ async function buildQueryOptions(
   try {
     const { buildExternalMcpServers } = await import("./integrations/external-mcp.js");
     const ext = await buildExternalMcpServers(agent.id);
+    const skipped = new Set<string>();
     for (const [name, cfg] of Object.entries(ext.servers)) {
+      // Never let a connected server replace a built-in one of the same name
+      // (Rails reserves these slugs too; this covers anything older).
+      if (mcpServers[name]) {
+        logger.warn(`external MCP ${name}: name taken by a built-in server — skipped`);
+        skipped.add(name);
+        continue;
+      }
       mcpServers[name] = cfg;
       baseMcpServers[name] = cfg;
     }
-    externalMcpToolNames = ext.toolNames;
+    externalMcpToolNames = ext.toolNames.filter((t) => !skipped.has(t.split("__")[1] ?? ""));
   } catch (err) {
     logger.warn("external MCP registration skipped:", err);
   }

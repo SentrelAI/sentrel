@@ -13,7 +13,7 @@ export interface ExternalMcpServer {
   name: string;        // slug used as the mcpServers key (e.g. "meta_ads")
   url: string;         // MCP endpoint
   transport: "http" | "sse" | "stdio";
-  access_token: string;
+  access_token: string | null; // null → a public server that takes no auth
 }
 
 export interface ExternalMcpWiring {
@@ -56,9 +56,9 @@ function parseJsonRpc(text: string): any {
 }
 
 // Minimal MCP handshake over streamable HTTP to enumerate tool names.
-async function listTools(url: string, token: string): Promise<string[]> {
+async function listTools(url: string, token: string | null): Promise<string[]> {
   const base: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
@@ -87,14 +87,14 @@ async function listTools(url: string, token: string): Promise<string[]> {
 }
 
 // Build SDK mcpServers entries + the allowlist tool names for the agent's
-// connected external servers. HTTP/SSE get a Bearer header; stdio reserved.
+// connected external servers. HTTP/SSE get a Bearer header (none for a public
+// server); stdio reserved.
 export async function buildExternalMcpServers(agentId: number): Promise<ExternalMcpWiring> {
   const servers = await fetchExternalMcpServers(agentId);
   const out: Record<string, unknown> = {};
   const toolNames: string[] = [];
 
   for (const s of servers) {
-    if (!s.access_token) continue;
     if (s.transport !== "http" && s.transport !== "sse") {
       logger.warn(`external MCP ${s.name}: transport "${s.transport}" not supported yet`);
       continue;
@@ -102,7 +102,7 @@ export async function buildExternalMcpServers(agentId: number): Promise<External
     out[s.name] = {
       type: s.transport,
       url: s.url,
-      headers: { Authorization: `Bearer ${s.access_token}` },
+      ...(s.access_token ? { headers: { Authorization: `Bearer ${s.access_token}` } } : {}),
     };
     try {
       const names = await listTools(s.url, s.access_token);

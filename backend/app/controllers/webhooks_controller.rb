@@ -375,10 +375,8 @@ class WebhooksController < ApplicationController
   end
 
   # Publish the user's decision back into the engine's per-agent approval
-  # channel so the request_approval tool's await unblocks. Mirrors the
-  # publish_action_approval method on PendingApprovalsController — we
-  # don't reach into that controller's private API because cross-controller
-  # plumbing is fragile.
+  # channel so the request_approval tool's await unblocks. A slimmer
+  # sibling of PendingApproval#publish_decision! (no continuation context).
   def publish_approval_to_engine(approval)
     msg = {
       type: "action_approval_response",

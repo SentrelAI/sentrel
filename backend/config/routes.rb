@@ -368,7 +368,13 @@ Rails.application.routes.draw do
     # discovered from the server's well-known metadata, not hardcoded.
     resources :mcp_servers, only: [ :index, :create, :destroy ] do
       member     { get :connect }
-      collection { get :callback }
+      collection do
+        get  :callback
+        # The agent's in-chat "Connect <name> MCP" card: probe what the server
+        # needs, then (for OAuth) a form POST into the sign-in popup.
+        post :probe
+        post :authorize
+      end
     end
 
     # OAuth flows for AI provider subscriptions (Anthropic Pro/Max/Team,
